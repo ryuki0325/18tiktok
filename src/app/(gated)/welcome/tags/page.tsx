@@ -1,9 +1,9 @@
 import { viewerContext } from "@/lib/viewer";
-import { TagPicker } from "./TagPicker";
+import { Quiz } from "./Quiz";
 
 export const metadata = { title: "はじめに" };
 
 export default async function Welcome() {
   const ctx = await viewerContext();
-  return <TagPicker initialTags={ctx.preferredTags} initialAudience={ctx.audience} />;
+  return <Quiz initialAudience={ctx.audience} initialTags={ctx.preferredTags} initialIntensity={ctx.maxIntensity} />;
 }

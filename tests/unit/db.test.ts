@@ -55,11 +55,11 @@ describe("通報と自動非公開", () => {
 
 describe("投稿と審査", () => {
   it("同意が揃わないと投稿できない", async () => {
-    const r = await createVideo(db, { creatorId, category: "women", title: "t", description: "", tags: [], consents: [true, true, false], ipHash: "x", userAgent: "ua" });
+    const r = await createVideo(db, { creatorId, category: "women", intensity: 1, title: "t", description: "", tags: [], consents: [true, true, false], ipHash: "x", userAgent: "ua" });
     expect(r.ok).toBe(false);
   });
   it("投稿は審査待ちになり、同意が追記型ログに残り、承認で公開される", async () => {
-    const r = await createVideo(db, { creatorId, category: "women", title: "新作", description: "説明", tags: ["夜景"], link: "https://example.com/x", consents: [true, true, true], ipHash: "iphash", userAgent: "ua" });
+    const r = await createVideo(db, { creatorId, category: "women", intensity: 1, title: "新作", description: "説明", tags: ["夜景"], link: "https://example.com/x", consents: [true, true, true], ipHash: "iphash", userAgent: "ua" });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.video.status).toBe("pending_review");
@@ -70,11 +70,11 @@ describe("投稿と審査", () => {
     expect(v.status).toBe("published");
   });
   it("許可リスト外のドメインは審査待ちリンクになる", async () => {
-    const r = await createVideo(db, { creatorId, category: "women", title: "外部", description: "", tags: [], link: "https://unknown-partner.net/p", consents: [true, true, true], ipHash: "x", userAgent: "ua" });
+    const r = await createVideo(db, { creatorId, category: "women", intensity: 1, title: "外部", description: "", tags: [], link: "https://unknown-partner.net/p", consents: [true, true, true], ipHash: "x", userAgent: "ua" });
     expect(r.ok && r.linkPending).toBe(true);
   });
   it("短縮URLは拒否", async () => {
-    const r = await createVideo(db, { creatorId, category: "women", title: "短縮", description: "", tags: [], link: "https://bit.ly/x", consents: [true, true, true], ipHash: "x", userAgent: "ua" });
+    const r = await createVideo(db, { creatorId, category: "women", intensity: 1, title: "短縮", description: "", tags: [], link: "https://bit.ly/x", consents: [true, true, true], ipHash: "x", userAgent: "ua" });
     expect(r.ok).toBe(false);
   });
 });
@@ -172,5 +172,20 @@ describe("定期処理", () => {
     expect(r.sessions).toBeGreaterThanOrEqual(1);
     const logs = await db.select().from(s.adminAuditLogs).where(eq(s.adminAuditLogs.action, "job.purge_expired"));
     expect(logs.length).toBe(1);
+  });
+});
+
+describe("刺激の強さの絞り込み", () => {
+  it("上限より強い動画はどのタブにも出ない", async () => {
+    setDbForTest(Promise.resolve(db));
+    const all = await feed("recommended", { viewerKey: "d:int", audience: "all", maxIntensity: 3 }, 50);
+    expect(all.some((v) => v.intensity === 3)).toBe(true);
+    for (const max of [1, 2]) {
+      for (const tab of ["recommended", "popular"] as const) {
+        const r = await feed(tab, { viewerKey: "d:int", audience: "all", maxIntensity: max }, 50);
+        expect(r.length).toBeGreaterThan(0);
+        expect(r.every((v) => v.intensity <= max)).toBe(true);
+      }
+    }
   });
 });

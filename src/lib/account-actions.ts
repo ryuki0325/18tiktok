@@ -39,7 +39,7 @@ async function afterLogin(userId: string) {
     let tags: string[] = [];
     try { tags = JSON.parse(decodeURIComponent(jar.get("ptags")?.value ?? "[]")); } catch {}
     const aud = jar.get("aud")?.value;
-    await conn.insert(userPreferences).values({ userId, theme: cookiePref, preferredTags: tags, audience: isAudience(aud) ? aud : "all" }).onConflictDoNothing();
+    await conn.insert(userPreferences).values({ userId, theme: cookiePref, preferredTags: tags, audience: isAudience(aud) ? aud : "all", maxIntensity: [1, 2, 3].includes(Number(jar.get("mi")?.value)) ? Number(jar.get("mi")?.value) : 3 }).onConflictDoNothing();
   }
 }
 

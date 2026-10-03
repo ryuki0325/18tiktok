@@ -293,3 +293,18 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
 .sk-video { position: absolute; inset: 0; background: radial-gradient(70% 50% at 50% 40%, #1a1424, #050508); }
 @keyframes sk { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
+
+/* ---- はじめに：質問 ---- */
+.onb-chips { display: flex; flex-wrap: wrap; gap: 10px; }
+.onb-level { display: flex; align-items: center; gap: 16px; padding: 18px 16px; border-radius: 18px; background: color-mix(in srgb, var(--surface) 85%, transparent); box-shadow: inset 0 0 0 1px var(--border); text-align: left; transition: box-shadow .2s, transform .15s; }
+.onb-level:active { transform: scale(.98); }
+.onb-level[aria-checked="true"] { box-shadow: 0 0 0 2px var(--accent), 0 10px 28px color-mix(in srgb, var(--accent) 30%, transparent); }
+.onb-level[aria-checked="true"] .onb-check { opacity: 1; transform: none; }
+.onb-meter { display: flex; gap: 4px; align-items: flex-end; height: 28px; }
+.onb-meter i { width: 8px; border-radius: 3px; background: color-mix(in srgb, var(--text) 18%, transparent); }
+.onb-meter i:nth-child(1) { height: 12px; } .onb-meter i:nth-child(2) { height: 20px; } .onb-meter i:nth-child(3) { height: 28px; }
+.onb-meter i[data-on="true"] { background: linear-gradient(180deg, var(--accent), var(--accent-2)); }
+.onb-busy { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; gap: 14px; align-items: center; justify-content: center; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); font-size: 14px; }
+.onb .sec { animation: onbIn .28s cubic-bezier(.2,.8,.2,1); }
+@keyframes onbIn { from { opacity: 0; transform: translateX(16px); } }
+@media (prefers-reduced-motion: reduce) { .onb .sec { animation: none; } }

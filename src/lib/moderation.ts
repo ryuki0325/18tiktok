@@ -104,7 +104,7 @@ export const CONSENT_TEXT = [
 ];
 
 export async function createVideo(conn: DB, input: {
-  creatorId: string; title: string; description: string; tags: string[]; link?: string; category: "women" | "men" | "couple";
+  creatorId: string; title: string; description: string; tags: string[]; link?: string; category: "women" | "men" | "couple"; intensity: number;
   consents: [boolean, boolean, boolean]; ipHash: string; userAgent: string;
 }) {
   if (!input.consents.every(Boolean)) return { ok: false as const, error: "3つの確認事項すべてにチェックが必要です" };
@@ -126,7 +126,7 @@ export async function createVideo(conn: DB, input: {
     const t = tx as unknown as DB;
     // 段階審査：最初のN本は必ず審査。実績ランクも「今は」全件審査（自動チェックの実装後に緩める）
     const [v] = await tx.insert(s.videos).values({
-      creatorId: input.creatorId, title: input.title, description: input.description, hue, category: input.category,
+      creatorId: input.creatorId, title: input.title, description: input.description, hue, category: input.category, intensity: input.intensity,
       status: "pending_review", reviewRequired: true,
       statusReason: cp.approvedPosts < fullReviewCount ? `新規投稿者の審査（${cp.approvedPosts + 1}/${fullReviewCount}本目）` : null,
     }).returning();

@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/auth";
 import { reviewAction } from "@/lib/admin-actions";
 import { VideoBackdrop } from "@/components/VideoBackdrop";
 import { ago } from "@/components/format";
+import { audienceLabel, intensityLabel } from "@/lib/audience";
 
 export const metadata = { title: "動画審査" };
 
@@ -36,6 +37,7 @@ export default async function Reviews() {
               <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}><b style={{ fontSize: 16 }}>{v.title}</b><span className="cap">@{handle}・承認済み{approved}本・違反{violations}・{ago(v.createdAt)}</span></div>
                 {v.description && <p style={{ margin: 0, fontSize: 14 }}>{v.description}</p>}
+                <div className="cap">ジャンル：{audienceLabel(v.category)}・刺激の強さ：<b style={{ color: v.intensity === 3 ? "var(--bad)" : undefined }}>{intensityLabel(v.intensity)}</b>（投稿者の申告。内容と合っているか確認）</div>
                 <div className="cap">タグ：{tagRows.filter((t) => t.videoId === v.id).map((t) => `#${t.name}`).join(" ") || "なし"}</div>
                 <div className="cap">リンク：{l ? `${l.url}（${l.status === "active" ? "許可ドメイン" : "ドメイン審査待ち"}）` : "なし"}</div>
                 <div className="cap">同意記録：{c ? `v${c.consentVersion}・権利 ${c.ownsRights ? "✓" : "✗"}・出演者18歳以上/同意 ${c.performersAdultConsented ? "✓" : "✗"}・転載でない ${c.notReposted ? "✓" : "✗"}・${c.createdAt.toLocaleString("ja-JP")}` : <span style={{ color: "var(--bad)" }}>なし</span>}</div>

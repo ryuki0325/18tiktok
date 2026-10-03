@@ -36,6 +36,20 @@
       "when": 1791023406487,
       "tag": "0004_featured_health",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791027318823,
+      "tag": "0005_crazy_snowbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791027552940,
+      "tag": "0006_demo_upgrade",
+      "breakpoints": true
     }
   ]
 }

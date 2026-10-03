@@ -22,7 +22,7 @@ export default async function EditVideo({ params }: { params: Promise<{ id: stri
   return (
     <div className="screen">
       <NavBar title="投稿を編集" back="/creator/videos" />
-      <EditForm id={v.id} title={v.title} description={v.description} link={link?.url ?? ""} tags={allTags.map((t) => t.name)} selected={mine.map((t) => t.name)} published={v.status === "published"} />
+      <EditForm id={v.id} title={v.title} description={v.description} link={link?.url ?? ""} tags={allTags.map((t) => t.name)} selected={mine.map((t) => t.name)} published={v.status === "published"} intensity={v.intensity} />
     </div>
   );
 }

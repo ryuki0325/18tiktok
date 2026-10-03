@@ -3,25 +3,25 @@ import type { DB } from "./index";
 import * as s from "./schema";
 import { randomBytes } from "node:crypto";
 import { hashPassword } from "@/lib/crypto";
-import { TAG_GROUPS, type VideoCategory } from "@/lib/audience";
+import { ALL_QUIZ_TAGS, TAG_GROUPS, type VideoCategory } from "@/lib/audience";
 
-export const SEED_TAGS = [...new Set([...TAG_GROUPS.flatMap((g) => g.tags), "夜景", "ジャズ", "シネマ", "バー", "チル", "ファッション"])];
+export const SEED_TAGS = [...new Set([...ALL_QUIZ_TAGS, ...TAG_GROUPS.flatMap((g) => g.tags)])];
 
-const DEMO: { handle: string; category: VideoCategory; hue: number[]; videos: { title: string; desc: string; tags: string[]; likes: number; link: string | null }[] }[] = [
+const DEMO: { handle: string; category: VideoCategory; hue: number[]; videos: { title: string; desc: string; tags: string[]; likes: number; link: string | null; intensity?: number }[] }[] = [
   { handle: "luna_night", category: "women", hue: [285, 320, 250], videos: [
-    { title: "雨上がりの窓辺", desc: "雨上がりの夜、ネオンが滲む窓辺で。少しだけ特別な時間を。", tags: ["セクシー", "夜のひととき", "ベッドルーム"], likes: 123000, link: "https://example.com/luna/1" },
-    { title: "紫の時間", desc: "照明を落とした部屋で、ゆっくり流れる夜。", tags: ["ランジェリー", "ムード"], likes: 18400, link: null },
+    { title: "雨上がりの窓辺", desc: "雨上がりの夜、ネオンが滲む窓辺で。少しだけ特別な時間を。", tags: ["セクシー", "大人の色気", "ベッドルーム", "ランジェリー"], intensity: 2, likes: 123000, link: "https://example.com/luna/1" },
+    { title: "紫の時間", desc: "照明を落とした部屋で、ゆっくり流れる夜。", tags: ["ランジェリー", "誘惑", "ホテル"], intensity: 3, likes: 18400, link: null },
   ] },
   { handle: "aoi_lounge", category: "men", hue: [205, 230, 180], videos: [
-    { title: "深夜のドライブ", desc: "深夜のドライブ。高速の光の帯をゆっくり追いかけて。", tags: ["ドライブ", "ボディライン", "大人の時間"], likes: 84500, link: "https://partner-a.example/aoi" },
-    { title: "湾岸の灯り", desc: "夜明け前の湾岸。静かな水面に映る街の灯り。", tags: ["バスタイム", "癒し"], likes: 32700, link: "https://partner-a.example/aoi/2" },
+    { title: "深夜のドライブ", desc: "深夜のドライブ。高速の光の帯をゆっくり追いかけて。", tags: ["車内", "細マッチョ", "大人の色気"], intensity: 1, likes: 84500, link: "https://partner-a.example/aoi" },
+    { title: "湾岸の灯り", desc: "夜明け前の湾岸。静かな水面に映る街の灯り。", tags: ["バスルーム", "筋肉質", "囁き"], intensity: 2, likes: 32700, link: "https://partner-a.example/aoi/2" },
   ] },
   { handle: "rin.velvet", category: "couple", hue: [345, 20, 300], videos: [
-    { title: "ベルベットと低いジャズ", desc: "ベルベットの赤と、低いジャズ。今夜のプレイリストと一緒に。", tags: ["カップル", "誘惑", "ホテル"], likes: 56100, link: null },
+    { title: "ベルベットと低いジャズ", desc: "ベルベットの赤と、低いジャズ。今夜のプレイリストと一緒に。", tags: ["ラブラブ", "イチャイチャ", "ホテル", "リアルな関係"], intensity: 3, likes: 56100, link: null },
   ] },
   { handle: "mio_gold", category: "women", hue: [38, 25, 55], videos: [
-    { title: "琥珀色のラウンジ", desc: "ホテルのラウンジ、琥珀色の照明。グラスの音だけが響く。", tags: ["ホテル", "美脚", "ラウンジ"], likes: 211000, link: "https://example.com/mio" },
-    { title: "仕事終わりのバー", desc: "仕事終わりのバー。カウンター越しの、短い会話。", tags: ["ナイトプール", "セクシー"], likes: 47800, link: null },
+    { title: "琥珀色のラウンジ", desc: "ホテルのラウンジ、琥珀色の照明。グラスの音だけが響く。", tags: ["ホテル", "美脚", "年上の女性"], intensity: 1, likes: 211000, link: "https://example.com/mio" },
+    { title: "仕事終わりのバー", desc: "仕事終わりのバー。カウンター越しの、短い会話。", tags: ["ナイトプール", "グラマー", "刺激的"], intensity: 2, likes: 47800, link: null },
   ] },
 ];
 
@@ -71,7 +71,7 @@ export async function seed(db: DB, opts: { demo: boolean }) {
     for (const v of c.videos) {
       const shift = videoIds.length * 17;
       const [row] = await db.insert(s.videos).values({
-        creatorId: u.id, title: v.title, description: v.desc, status: "published", category: c.category,
+        creatorId: u.id, title: v.title, description: v.desc, status: "published", category: c.category, intensity: v.intensity ?? 1,
         hue: [(c.hue[0] + shift) % 360, (c.hue[1] + shift) % 360, (c.hue[2] + shift) % 360] as [number, number, number],
         baseLikes: v.likes, reviewRequired: false, publishedAt: new Date(Date.now() - hoursAgo * 3600_000),
       }).returning();

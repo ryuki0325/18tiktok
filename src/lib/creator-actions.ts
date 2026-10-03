@@ -34,13 +34,14 @@ const Post = z.object({
   tags: z.array(z.string()).min(1, "タグを1つ以上選んでください").max(5, "タグは5つまでです"),
   link: z.string().trim().max(2048).optional(),
   category: z.enum(["women", "men", "couple"], { message: "ジャンル（出演者）を選んでください" }),
+  intensity: z.coerce.number().int().min(1, "刺激の強さを選んでください").max(3),
 });
 
 export async function createVideoAction(_: FormState, form: FormData): Promise<FormState> {
   const u = await currentUser();
   if (!u) redirect("/login?next=/creator/new");
   if (!(await rateLimit(`post:${u.id}`, 20, 86400))) return { error: "1日の投稿上限に達しました" };
-  const parsed = Post.safeParse({ title: form.get("title"), description: form.get("description") ?? "", tags: form.getAll("tags"), link: form.get("link") || undefined, category: form.get("category") });
+  const parsed = Post.safeParse({ title: form.get("title"), description: form.get("description") ?? "", tags: form.getAll("tags"), link: form.get("link") || undefined, category: form.get("category"), intensity: form.get("intensity") ?? 0 });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const consents = (["c1", "c2", "c3"] as const).map((k) => form.get(k) === "on") as [boolean, boolean, boolean];
   const r = await createVideo(await db(), {
@@ -75,13 +76,14 @@ const Edit = z.object({
   description: z.string().trim().max(300, "説明は300文字までです"),
   tags: z.array(z.string()).min(1, "タグを1つ以上選んでください").max(5, "タグは5つまでです"),
   link: z.string().trim().max(2048),
+  intensity: z.coerce.number().int().min(1).max(3),
 });
 
 /** 自分の投稿の編集。タイトル・説明・タグはそのまま反映。外部リンクを変えたときは再審査（差し替え対策） */
 export async function updateVideoAction(_: FormState, form: FormData): Promise<FormState> {
   const u = await currentUser();
   if (!u) redirect("/login");
-  const parsed = Edit.safeParse({ id: form.get("id"), title: form.get("title"), description: form.get("description") ?? "", tags: form.getAll("tags"), link: form.get("link") ?? "" });
+  const parsed = Edit.safeParse({ id: form.get("id"), title: form.get("title"), description: form.get("description") ?? "", tags: form.getAll("tags"), link: form.get("link") ?? "", intensity: form.get("intensity") ?? 1 });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const d = parsed.data;
   const conn = await db();
@@ -101,10 +103,11 @@ export async function updateVideoAction(_: FormState, form: FormData): Promise<F
     }
   }
   await conn.transaction(async (tx) => {
-    const rereview = linkChange && linkChange !== "remove" && v.status === "published";
+    // リンクの差し替えや、刺激の強さを上げたときは再審査（絞り込みのすり抜け対策）
+    const rereview = v.status === "published" && ((linkChange && linkChange !== "remove") || d.intensity > v.intensity);
     await tx.update(videos).set({
-      title: d.title, description: d.description,
-      ...(rereview ? { status: "pending_review" as const, statusReason: "外部リンクの変更による再審査" } : {}),
+      title: d.title, description: d.description, intensity: d.intensity,
+      ...(rereview ? { status: "pending_review" as const, statusReason: d.intensity > v.intensity ? "刺激の強さの変更による再審査" : "外部リンクの変更による再審査" } : {}),
     }).where(eq(videos.id, v.id));
     await tx.delete(videoTags).where(eq(videoTags.videoId, v.id));
     const tagRows = await tx.select().from(tags).where(inArray(tags.name, d.tags));
@@ -116,5 +119,5 @@ export async function updateVideoAction(_: FormState, form: FormData): Promise<F
     }
   });
   revalidatePath("/creator/videos");
-  redirect(`/creator/videos?edited=1${linkChange && linkChange !== "remove" && v.status === "published" ? "&rereview=1" : ""}`);
+  redirect(`/creator/videos?edited=1${v.status === "published" && ((linkChange && linkChange !== "remove") || d.intensity > v.intensity) ? "&rereview=1" : ""}`);
 }

@@ -70,19 +70,25 @@ test("入力欄は16px以上（iPhoneでフォーカス時に拡大されない�
   expect(size).toBeGreaterThanOrEqual(16);
 });
 
-test("はじめに：ジャンルを選ぶ → タグ3つ → そのジャンルのフィード", async ({ page }) => {
+test("はじめに：5つの質問 → ジャンルと刺激の強さで絞られたフィード", async ({ page }) => {
   await page.goto("/age-gate");
   await page.getByRole("button", { name: "はい、18歳以上です" }).click();
   await page.waitForURL(/welcome\/tags/);
   await page.getByRole("radio", { name: /男性/ }).click();
-  await expect(page.getByRole("heading", { name: /好みを/ })).toBeVisible();
-  const start = page.getByRole("button", { name: /あと3つ|はじめる/ });
-  await expect(start).toBeDisabled();
-  for (const t of ["セクシー", "ホテル", "ボディライン"]) await page.locator(".onb-chip", { hasText: new RegExp(`^${t}$`) }).click();
-  await page.getByRole("button", { name: /はじめる/ }).click();
+  await expect(page.getByRole("heading", { name: "今夜の気分は？" })).toBeVisible();
+  await page.getByRole("radio", { name: /大人の色気/ }).click();
+  await expect(page.getByRole("heading", { name: /シチュエーション/ })).toBeVisible();
+  await page.locator(".onb-chip", { hasText: /^車内$/ }).click();
+  await page.locator(".onb-chip", { hasText: /^バスルーム$/ }).click();
+  await page.getByRole("button", { name: /次へ（2つ選択中）/ }).click();
+  await expect(page.getByRole("heading", { name: "惹かれるのは？" })).toBeVisible();
+  await expect(page.locator(".onb-chip", { hasText: /^筋肉質$/ })).toBeVisible();
+  await expect(page.locator(".onb-chip", { hasText: /^スレンダー$/ })).toHaveCount(0); // 男性を選んだので女性向けの選択肢は出ない
+  await page.locator(".onb-chip", { hasText: /^筋肉質$/ }).click();
+  await page.getByRole("button", { name: /次へ/ }).click();
+  await page.getByRole("radio", { name: /ソフト/ }).click();
   await page.waitForURL(/\/$/);
-  const r = await page.request.get("/api/v1/feed?tab=recommended");
-  const j = await r.json();
+  const j = await (await page.request.get("/api/v1/feed?tab=recommended")).json();
   expect(j.videos.length).toBeGreaterThan(0);
-  expect(j.videos.every((v: { category: string }) => v.category === "men")).toBe(true);
+  expect(j.videos.every((v: { category: string; intensity: number }) => v.category === "men" && v.intensity <= 1)).toBe(true);
 });

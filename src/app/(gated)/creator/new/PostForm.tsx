@@ -3,7 +3,7 @@ import { useActionState, useState } from "react";
 import { createVideoAction } from "@/lib/creator-actions";
 import { Check, Field, FormMessage } from "@/components/forms/Field";
 import { Icon } from "@/components/Icon";
-import { VIDEO_CATEGORIES } from "@/lib/audience";
+import { INTENSITIES, VIDEO_CATEGORIES } from "@/lib/audience";
 
 export function PostForm({ tags, domains }: { tags: string[]; domains: { domain: string; name: string }[] }) {
   const [state, action, pending] = useActionState(createVideoAction, undefined);
@@ -11,7 +11,8 @@ export function PostForm({ tags, domains }: { tags: string[]; domains: { domain:
   const [checks, setChecks] = useState({ c1: false, c2: false, c3: false });
   const [title, setTitle] = useState("");
   const [cat, setCat] = useState<string | null>(null);
-  const ready = !!cat && title.trim() && sel.length > 0 && checks.c1 && checks.c2 && checks.c3;
+  const [lv, setLv] = useState<number | null>(null);
+  const ready = !!cat && !!lv && title.trim() && sel.length > 0 && checks.c1 && checks.c2 && checks.c3;
   return (
     <form action={action} style={{ display: "flex", flexDirection: "column", flex: 1 }}>
       <div className="sec" style={{ gap: 18, paddingBottom: 16 }}>
@@ -26,6 +27,14 @@ export function PostForm({ tags, domains }: { tags: string[]; domains: { domain:
             {VIDEO_CATEGORIES.map((c) => <button type="button" key={c.id} role="radio" aria-checked={cat === c.id} onClick={() => setCat(c.id)}>{c.label}</button>)}
           </div>
           {cat && <input type="hidden" name="category" value={cat} />}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span className="label">刺激の強さ<small>必須・視聴者の絞り込みに使われます</small></span>
+          <div className="seg" role="radiogroup" aria-label="刺激の強さ">
+            {INTENSITIES.map((x) => <button type="button" key={x.level} role="radio" aria-checked={lv === x.level} onClick={() => setLv(x.level)}>{x.label}</button>)}
+          </div>
+          {lv && <span className="cap">{INTENSITIES.find((x) => x.level === lv)?.desc}。実際の内容より弱く選ぶと差し戻しの対象になります。</span>}
+          {lv && <input type="hidden" name="intensity" value={lv} />}
         </div>
         <Field label="タイトル" hint="必須・60文字まで" htmlFor="title"><input className="input" id="title" name="title" maxLength={60} placeholder="例）最高の時間でした…" value={title} onChange={(e) => setTitle(e.target.value)} required /></Field>
         <Field label="説明" hint="300文字まで" htmlFor="description"><textarea className="input" id="description" name="description" maxLength={300} placeholder="動画の雰囲気を短く" /></Field>
