@@ -38,6 +38,39 @@ export function mediaProvider(): Provider | null {
   return null;
 }
 
+/** 設定の状態（管理者向けの表示用。鍵そのものは返さない） */
+export function mediaStatus() {
+  const b = bunnyEnv();
+  return {
+    provider: mediaProvider() ?? "なし（アップロードは準備中の表示）",
+    bunny: {
+      libraryId: process.env.BUNNY_STREAM_LIBRARY_ID ? "設定済み" : "未設定",
+      apiKey: process.env.BUNNY_STREAM_API_KEY ? "設定済み" : "未設定",
+      cdnHost: b ? b.cdn : process.env.BUNNY_STREAM_CDN_HOST ? "形式を確認してください" : "未設定",
+    },
+    maxMb: Math.round(maxUploadBytes() / 1024 / 1024),
+    chunkMb: Math.round(CHUNK_SIZE / 1024 / 1024 * 10) / 10,
+  };
+}
+
+/** Bunny Stream に実際につないで、鍵が正しいかを確かめる（管理画面から呼ぶ） */
+export async function checkBunny(): Promise<{ ok: boolean; message: string }> {
+  const b = bunnyEnv();
+  if (!b) return { ok: false, message: "BUNNY_STREAM_LIBRARY_ID / API_KEY / CDN_HOST の3つを設定してください。" };
+  try {
+    const res = await fetch(`https://video.bunnycdn.com/library/${b.lib}/videos?page=1&itemsPerPage=1`, {
+      headers: { AccessKey: b.key, accept: "application/json" }, signal: AbortSignal.timeout(10_000),
+    });
+    if (res.status === 401 || res.status === 403) return { ok: false, message: "API Key が違うか、権限がありません（Stream → ライブラリ → API の API Key を確認してください）。" };
+    if (res.status === 404) return { ok: false, message: "Video Library ID が違います。" };
+    if (!res.ok) return { ok: false, message: `Bunny Stream が ${res.status} を返しました。少し待ってからもう一度お試しください。` };
+    const j = (await res.json()) as { totalItems?: number };
+    return { ok: true, message: `接続できました（ライブラリ内の動画：${j.totalItems ?? 0}本／配信元：${b.cdn}）。` };
+  } catch (e) {
+    return { ok: false, message: `つながりませんでした：${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
 export const mediaDir = () => path.resolve(process.env.MEDIA_DIR || path.join(/* turbopackIgnore: true */ process.cwd(), ".data", "media"));
 const partPath = (id: string) => path.join(mediaDir(), "_parts", `${id}.part`);
 /** ローカル保存の公開URL。前段にCDNを置く場合は MEDIA_CDN_URL を指定 */

@@ -204,3 +204,10 @@ export async function runJobAction(form: FormData) {
   await audit(conn, a.id, `job.manual.${job}`, "job", job);
   revalidatePath("/admin/settings");
 }
+
+/** 動画の保存先（Bunny Stream）につながるか確かめる */
+export async function checkBunnyAction(): Promise<{ ok: boolean; message: string }> {
+  await need(["super_admin"]);
+  const { checkBunny } = await import("./media");
+  return checkBunny();
+}

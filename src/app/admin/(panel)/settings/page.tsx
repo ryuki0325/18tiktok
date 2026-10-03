@@ -1,5 +1,7 @@
 import { requireAdmin } from "@/lib/auth";
 import { bumpAgeGateVersionAction, runJobAction, settingsAction } from "@/lib/admin-actions";
+import { mediaStatus } from "@/lib/media";
+import { MediaCheck } from "./MediaCheck";
 import { getSetting } from "@/lib/settings";
 
 export const metadata = { title: "設定" };
@@ -12,6 +14,7 @@ export default async function Settings() {
     g("comments.auto_hide_threshold"), g("comments.rate_limit_per_hour"), g("clicks.dedupe_window_sec"), g("age_gate.ttl_days"), g("age_gate.version"),
     g("operator.display_mode"), g("operator.contact_email"), g("operator.name"), g("geo.blocked_regions"), g("ng_words"),
   ]);
+  const m = mediaStatus();
   const num = (k: string, label: string, v: number, hint?: string) => (
     <label style={{ display: "flex", flexDirection: "column", gap: 6 }}><span className="label">{label}{hint && <small>{hint}</small>}</span><input className="input num" type="number" min={0} name={k} defaultValue={v} style={{ height: 40 }} /></label>
   );
@@ -51,6 +54,18 @@ export default async function Settings() {
         </section>
         <button className="btn btn-primary" style={{ maxWidth: 240 }}>保存</button>
       </form>
+      <section className="card" style={{ padding: 16, marginTop: 24, maxWidth: 760, display: "flex", flexDirection: "column", gap: 10 }}>
+        <b>動画の保存・配信</b>
+        <span className="cap">
+          いまの保存先：<b>{m.provider === "bunny" ? "Bunny Stream" : m.provider === "local" ? "このサーバー（開発用）" : m.provider}</b>
+          {"　"}1本あたり最大 {m.maxMb >= 1024 ? `${Math.round(m.maxMb / 1024 * 10) / 10}GB` : `${m.maxMb}MB`}・{m.chunkMb}MB ずつ分割して送信
+        </span>
+        <span className="cap">
+          Bunny Stream の設定：ライブラリID <b>{m.bunny.libraryId}</b>／APIキー <b>{m.bunny.apiKey}</b>／配信元 <b>{m.bunny.cdnHost}</b>
+        </span>
+        <MediaCheck />
+        <span className="cap">変換が終わったことをすぐ反映するには、Bunny のライブラリ設定の Webhook URL に <code>/api/v1/webhooks/bunny</code> を入れてください。</span>
+      </section>
       <section className="card" style={{ padding: 16, marginTop: 24, maxWidth: 760, display: "flex", flexDirection: "column", gap: 10 }}>
         <b>定期処理</b>
         <span className="cap">外部のcronサービスから <code>POST /api/cron/link-health</code> と <code>POST /api/cron/purge</code> を呼ぶと自動化できます（環境変数 CRON_SECRET が必要）。ここから今すぐ実行することもできます。</span>
