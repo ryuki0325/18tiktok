@@ -344,3 +344,45 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
 .up-row .cap { display: inline-flex; align-items: center; gap: 6px; }
 .up-change { align-self: flex-start; text-decoration: underline; color: var(--muted); }
 .spinner.dark { width: 14px; height: 14px; border-color: color-mix(in srgb, var(--text) 25%, transparent); border-top-color: var(--text); }
+
+/* ---- ホーム画面に追加（PWA） ---- */
+/* 起動画面：ホーム画面から開いたときだけ出し、準備ができたら消える */
+#splash { display: none; }
+html.standalone #splash { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: var(--bg); transition: opacity .4s ease, visibility .4s; }
+html.standalone #splash.off { opacity: 0; visibility: hidden; pointer-events: none; }
+#splash .brand { font-size: 46px; }
+
+/* おすすめのバナー（下から出る） */
+.a2hs { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 10px); z-index: 45; width: calc(100% - 24px); max-width: 406px;
+  box-sizing: border-box; transform: translateX(-50%); display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border-radius: var(--r-md); background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--border); box-shadow: 0 12px 34px rgba(0,0,0,.42);
+  animation: up .3s cubic-bezier(.2,.8,.2,1); }
+.a2hs.out { animation: down .22s ease forwards; }
+.a2hs img { border-radius: 11px; flex-shrink: 0; }
+.a2hs-b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.a2hs-b b { font-size: 14.5px; }
+.a2hs-b .cap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.a2hs-b .cap { line-height: 1.45; }
+.a2hs .btn-sm { flex-shrink: 0; padding: 0 16px; }
+.a2hs-x { width: 28px; height: 28px; flex-shrink: 0; display: grid; place-items: center; border-radius: 50%; color: var(--muted); margin-right: -4px; }
+@keyframes down { to { opacity: 0; transform: translate(-50%, 16px); } }
+
+/* 手順（1・2・3） */
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.steps li { display: flex; gap: 12px; align-items: flex-start; font-size: 14.5px; line-height: 1.55; }
+.steps .n { width: 26px; height: 26px; flex-shrink: 0; border-radius: 50%; background: var(--fill); color: var(--on); display: grid; place-items: center; font: 700 13px "Inter"; }
+.steps .ic { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--surface-2); color: var(--accent); vertical-align: middle; margin-left: 6px; }
+
+/* ---- ホーム画面から開いたとき（アプリ表示）の調整 ---- */
+/* ブラウザのバーがないぶん、上下の余白をとって時計やホームバーと重ならないようにする */
+html.standalone { overscroll-behavior: none; }
+html.standalone body { overscroll-behavior-y: none; }
+html.standalone .feedtop { height: calc(50px + env(safe-area-inset-top, 0px)); }
+html.standalone .navbar { height: calc(50px + env(safe-area-inset-top, 0px)); }
+/* 下は iPhone のホームバーぶんだけ底上げ（ブラウザのときは 0） */
+html.standalone { --nav-h: calc(52px + env(safe-area-inset-bottom, 0px)); }
+html.standalone .tabbar a { height: 52px; }
+/* 画面の端から始まる横スワイプ（戻るジェスチャー）とページャーがぶつからないように */
+html.standalone .pager { touch-action: none; }

@@ -3,6 +3,7 @@ import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
 import { RegisterSW } from "@/components/RegisterSW";
 import { ClientErrorReporter } from "@/components/ErrorScreen";
+import { Splash } from "@/components/pwa/Splash";
 import { getThemePref, themeCss } from "@/lib/theme-server";
 
 export const metadata: Metadata = {
@@ -28,8 +29,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=Unbounded:wght@800&display=swap" />
         <style id="theme-vars" dangerouslySetInnerHTML={{ __html: themeCss(pref) }} />
+        {/* ホーム画面から開いた場合だけ付くしるし。描画の前に付けて、画面のちらつきを防ぐ */}
+        <script dangerouslySetInnerHTML={{ __html: `try{if(matchMedia('(display-mode: standalone)').matches||matchMedia('(display-mode: fullscreen)').matches||navigator.standalone)document.documentElement.classList.add('standalone')}catch(e){}` }} />
       </head>
       <body>
+        <Splash />
         <ToastProvider>{children}</ToastProvider>
         <RegisterSW />
         <ClientErrorReporter />

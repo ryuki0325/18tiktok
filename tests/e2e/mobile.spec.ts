@@ -155,3 +155,54 @@ test("動画は画面の上端まで埋まっている", async ({ page }) => {
   expect(box.y).toBe(0);
   expect(Math.round(box.height)).toBe(page.viewportSize()!.height);
 });
+
+test("ホーム画面に追加の案内：「あとで」で閉じると出てこない", async ({ page }) => {
+  await passGate(page);
+  await page.goto("/?a2hs=1");
+  const banner = page.getByRole("dialog", { name: "ホーム画面に追加" });
+  await expect(banner).toBeVisible();
+  await banner.getByRole("button", { name: "閉じる" }).click();
+  await expect(banner).toHaveCount(0);
+  // 閉じたあとは、ふつうに開いても出てこない
+  await page.goto("/");
+  await page.waitForTimeout(500);
+  await expect(page.locator(".a2hs")).toHaveCount(0);
+});
+
+test("iPhone では「追加」で手順が出る", async ({ page }) => {
+  await passGate(page);
+  await page.goto("/?a2hs=1");
+  await page.getByRole("button", { name: "追加", exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: "ホーム画面に追加する手順" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByText("共有ボタン")).toBeVisible();
+  // 手順を開いている間はバナーを隠す（重ならないように）
+  await expect(page.locator(".a2hs")).toHaveCount(0);
+});
+
+test.describe("ホーム画面から開いたとき", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+  test.beforeEach(async ({ context }) => {
+    await context.addInitScript(() => {
+      const mm = window.matchMedia.bind(window);
+      Object.defineProperty(window, "matchMedia", {
+        value: (q: string) => (q.includes("display-mode: standalone")
+          ? { matches: true, media: q, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent: () => false }
+          : mm(q)),
+      });
+      Object.defineProperty(navigator, "standalone", { value: true });
+    });
+  });
+
+  test("起動画面が出て、案内は出さず、アプリ用の余白になる", async ({ page }) => {
+    await passGate(page);
+    await page.goto("/?a2hs=1");
+    await expect(page.locator("html")).toHaveClass(/standalone/);
+    // 起動画面は最初のHTMLに入っている（白い画面のちらつきを防ぐ）
+    await expect(page.locator("#splash")).toHaveCount(1);
+    await expect(page.locator("#splash")).toHaveClass(/off/);
+    // すでに追加済みなので案内は出さない
+    await expect(page.locator(".a2hs")).toHaveCount(0);
+    await expect(page.locator(".item.active")).toBeVisible();
+  });
+});
