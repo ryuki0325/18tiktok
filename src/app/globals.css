@@ -199,7 +199,7 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
 .tcard[aria-checked="true"] .sw2 { box-shadow: 0 0 0 2px var(--accent); }
 .seg { display: flex; background: var(--surface); border-radius: var(--r-sm); padding: 4px; gap: 4px; }
 .seg button { flex: 1; height: 38px; border-radius: 9px; font-size: 14px; font-weight: 600; color: var(--muted); }
-.seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.seg button[aria-pressed="true"], .seg button[aria-checked="true"] { background: var(--surface-2); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
 .cf { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 0 16px; }
 .cf + .cf { border-top: 1px solid var(--border); }
 .cf .sq { width: 36px; height: 36px; border-radius: 10px; position: relative; overflow: hidden; box-shadow: inset 0 0 0 1px var(--border); flex-shrink: 0; }
@@ -236,6 +236,31 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
 .tbl td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .tbl-wrap { overflow-x: auto; background: var(--surface); border-radius: var(--r-md); }
 @media (max-width: 760px) { .admin { grid-template-columns: 1fr; } .admin aside { position: static; height: auto; flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--border); } .admin main { padding: 20px 16px; } }
+
+/* ---- はじめに（最初の分岐） ---- */
+.onb { position: relative; overflow: hidden; background: var(--bg); }
+.onb-glow { position: absolute; inset: -20% -30% auto; height: 70%; pointer-events: none;
+  background: radial-gradient(50% 45% at 30% 35%, color-mix(in srgb, var(--accent) 38%, transparent), transparent 70%),
+              radial-gradient(45% 40% at 75% 25%, color-mix(in srgb, var(--accent-2) 30%, transparent), transparent 70%); filter: saturate(120%); }
+.onb-dot { width: 22px; height: 4px; border-radius: 4px; background: color-mix(in srgb, var(--text) 18%, transparent); display: block; }
+.onb-dot[data-on="true"] { background: var(--accent); }
+.onb-kicker { font: 700 11px "Inter"; letter-spacing: .32em; color: var(--accent); margin-top: 4px; }
+.onb-title { font-size: 30px; line-height: 1.25; font-weight: 800; margin: 2px 0 8px; letter-spacing: .01em; text-wrap: balance; }
+.onb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.onb-card { position: relative; aspect-ratio: 5 / 6; max-height: calc((100dvh - 330px) / 2); width: 100%; border-radius: 20px; overflow: hidden; text-align: left; background: #07070B; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); transition: transform .15s, box-shadow .2s; }
+.onb-card:active { transform: scale(.97); }
+.onb-card[aria-checked="true"] { box-shadow: 0 0 0 2px var(--accent), 0 12px 32px color-mix(in srgb, var(--accent) 35%, transparent); }
+.onb-card-scrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.05) 30%, rgba(0,0,0,.75)); }
+.onb-card-body { position: absolute; left: 14px; right: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 2px; color: #fff; }
+.onb-card-body b { font-size: 22px; font-weight: 800; letter-spacing: .02em; }
+.onb-card-body span { font-size: 12px; color: rgba(255,255,255,.75); }
+.onb-check { position: absolute; top: 12px; right: 12px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--fill); color: var(--on); opacity: 0; transform: scale(.6); transition: .2s; }
+.onb-card[aria-checked="true"] .onb-check { opacity: 1; transform: none; }
+.onb-group { font-size: 12px; font-weight: 700; letter-spacing: .14em; color: var(--muted); margin: 0; }
+.onb-chip { height: 42px; padding: 0 18px; border-radius: 999px; font-size: 15px; font-weight: 600; background: color-mix(in srgb, var(--surface-2) 80%, transparent); box-shadow: inset 0 0 0 1px var(--border); transition: .15s; }
+.onb-chip::before { content: "#"; opacity: .5; margin-right: 2px; }
+.onb-chip[aria-pressed="true"] { background: linear-gradient(90deg, var(--fill), var(--fill-2)); color: var(--on); box-shadow: 0 6px 18px color-mix(in srgb, var(--fill) 35%, transparent); }
+.onb-chip[aria-pressed="true"]::before { opacity: .8; }
 
 /* ダブルタップのハート */
 .burst { position: absolute; width: 96px; height: 96px; margin: -48px 0 0 -48px; color: var(--accent); pointer-events: none; z-index: 5; animation: burst .7s cubic-bezier(.2,.8,.2,1) forwards; filter: drop-shadow(0 4px 16px rgba(0,0,0,.4)); }

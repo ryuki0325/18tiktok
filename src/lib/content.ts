@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db, type DB } from "@/db";
 import * as s from "@/db/schema";
 import { getSetting } from "./settings";
+import type { Audience, VideoCategory } from "./audience";
 
 export type VideoCard = {
   id: string; title: string; description: string; hue: [number, number, number];
@@ -12,9 +13,10 @@ export type VideoCard = {
   publishedAt: string | null; commentsEnabled: boolean;
   /** 動画ファイルのURL（HLS/MP4）。動画配信の実装までは null で、抽象プレースホルダーを表示 */
   src: string | null;
+  category: VideoCategory;
 };
 
-type Opts = { viewerKey: string; userId?: string | null; preferredTags?: string[] };
+type Opts = { viewerKey: string; userId?: string | null; preferredTags?: string[]; audience?: Audience };
 
 /** 動画IDの一覧から表示用データを組み立てる（公開中のものだけ） */
 export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublished = false): Promise<VideoCard[]> {
@@ -47,7 +49,7 @@ export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublis
       likes: v.baseLikes + (lc.get(v.id) ?? 0), comments: cc.get(v.id) ?? 0, views: vc.get(v.id) ?? 0, clicks: kc.get(v.id) ?? 0,
       link: link ? { id: link.id, domain: link.domain } : null,
       liked: liked.has(v.id), saved: saved.has(v.id), following: fol.has(v.creatorId),
-      publishedAt: v.publishedAt?.toISOString() ?? null, commentsEnabled: v.commentsEnabled, src: null,
+      publishedAt: v.publishedAt?.toISOString() ?? null, commentsEnabled: v.commentsEnabled, src: null, category: v.category,
     };
     return [v.id, card];
   }));
@@ -62,8 +64,10 @@ export type FeedTab = "recommended" | "popular" | "following";
  */
 export async function feed(tab: FeedTab, o: Opts, limit = 20, offset = 0): Promise<VideoCard[]> {
   const d = await db();
+  // 最初の分岐（女性・男性・カップル）で絞る。フォロー中は分岐に関係なく全部見せる
+  const byAudience = tab !== "following" && o.audience && o.audience !== "all" ? eq(s.videos.category, o.audience) : undefined;
   let idRows = await d.select({ id: s.videos.id, creatorId: s.videos.creatorId, publishedAt: s.videos.publishedAt, baseLikes: s.videos.baseLikes })
-    .from(s.videos).where(eq(s.videos.status, "published")).orderBy(desc(s.videos.publishedAt)).limit(300);
+    .from(s.videos).where(and(eq(s.videos.status, "published"), byAudience)).orderBy(desc(s.videos.publishedAt)).limit(300);
   if (tab === "following") {
     if (!o.userId) return [];
     const f = new Set((await d.select({ id: s.follows.creatorId }).from(s.follows).where(eq(s.follows.followerId, o.userId))).map((r) => r.id));

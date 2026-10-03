@@ -31,13 +31,14 @@ const Post = z.object({
   description: z.string().trim().max(300, "説明は300文字までです"),
   tags: z.array(z.string()).min(1, "タグを1つ以上選んでください").max(5, "タグは5つまでです"),
   link: z.string().trim().max(2048).optional(),
+  category: z.enum(["women", "men", "couple"], { message: "ジャンル（出演者）を選んでください" }),
 });
 
 export async function createVideoAction(_: FormState, form: FormData): Promise<FormState> {
   const u = await currentUser();
   if (!u) redirect("/login?next=/creator/new");
   if (!(await rateLimit(`post:${u.id}`, 20, 86400))) return { error: "1日の投稿上限に達しました" };
-  const parsed = Post.safeParse({ title: form.get("title"), description: form.get("description") ?? "", tags: form.getAll("tags"), link: form.get("link") || undefined });
+  const parsed = Post.safeParse({ title: form.get("title"), description: form.get("description") ?? "", tags: form.getAll("tags"), link: form.get("link") || undefined, category: form.get("category") });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const consents = (["c1", "c2", "c3"] as const).map((k) => form.get(k) === "on") as [boolean, boolean, boolean];
   const r = await createVideo(await db(), {

@@ -9,6 +9,7 @@ import { authenticate, createSession, currentUser, destroySession, DEVICE_COOKIE
 import { randomToken, sha256 } from "./crypto";
 import { clientIpHash, rateLimit } from "./http";
 import { parsePref } from "./theme";
+import { isAudience } from "./audience";
 import { THEME_COOKIE } from "./theme-server";
 
 export type FormState = { error?: string; info?: string; devLink?: string } | undefined;
@@ -34,7 +35,8 @@ async function afterLogin(userId: string) {
     const cookiePref = parsePref(jar.get(THEME_COOKIE)?.value ?? null);
     let tags: string[] = [];
     try { tags = JSON.parse(decodeURIComponent(jar.get("ptags")?.value ?? "[]")); } catch {}
-    await conn.insert(userPreferences).values({ userId, theme: cookiePref, preferredTags: tags }).onConflictDoNothing();
+    const aud = jar.get("aud")?.value;
+    await conn.insert(userPreferences).values({ userId, theme: cookiePref, preferredTags: tags, audience: isAudience(aud) ? aud : "all" }).onConflictDoNothing();
   }
 }
 

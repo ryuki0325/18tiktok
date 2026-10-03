@@ -43,6 +43,7 @@ export const userPreferences = pgTable("user_preferences", {
   userId: uuid().primaryKey().references(() => users.id, { onDelete: "cascade" }),
   theme: jsonb().notNull(),
   preferredTags: jsonb().$type<string[]>().notNull().default([]),
+  audience: text().$type<"women" | "men" | "couple" | "all">().notNull().default("all"),
   updatedAt: now(),
 });
 
@@ -95,11 +96,13 @@ export const videos = pgTable("videos", {
   statusReason: text(),
   hue: jsonb().$type<[number, number, number]>().notNull(),
   baseLikes: integer().notNull().default(0),
+  /** 最初の分岐（女性・男性・カップル）。フィードの絞り込みに使う */
+  category: text().$type<"women" | "men" | "couple">().notNull().default("women"),
   reviewRequired: boolean().notNull().default(true),
   commentsEnabled: boolean().notNull().default(true),
   publishedAt: ts(),
   createdAt: now(),
-}, (t) => [index("videos_status_idx").on(t.status, t.publishedAt)]);
+}, (t) => [index("videos_status_idx").on(t.status, t.publishedAt), index("videos_category_idx").on(t.category, t.status)]);
 
 export const tags = pgTable("tags", {
   id: serial().primaryKey(),

@@ -1,7 +1,7 @@
-import { cookies } from "next/headers";
 import { contentGuard, fail, json, rateLimit } from "@/lib/http";
 import { feed, type FeedTab } from "@/lib/content";
 import { currentUser, viewerKey } from "@/lib/auth";
+import { readTaste } from "@/lib/viewer";
 
 export async function GET(req: Request) {
   const blocked = await contentGuard();
@@ -14,8 +14,7 @@ export async function GET(req: Request) {
   const user = await currentUser();
   const key = await viewerKey();
   if (!(await rateLimit(`feed:${key}`, 300, 3600))) return fail("RATE_LIMITED", "しばらくしてからお試しください", 429);
-  let preferredTags: string[] = [];
-  try { preferredTags = JSON.parse(decodeURIComponent((await cookies()).get("ptags")?.value ?? "[]")); } catch {}
-  const videos = await feed(tab, { viewerKey: key, userId: user?.id ?? null, preferredTags }, limit, offset);
+  const taste = await readTaste(user?.id ?? null);
+  const videos = await feed(tab, { viewerKey: key, userId: user?.id ?? null, ...taste }, limit, offset);
   return json({ videos, nextOffset: videos.length === limit ? offset + limit : null });
 }

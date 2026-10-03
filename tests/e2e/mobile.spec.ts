@@ -69,3 +69,20 @@ test("入力欄は16px以上（iPhoneでフォーカス時に拡大されない�
   const size = await page.locator("#email").evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
   expect(size).toBeGreaterThanOrEqual(16);
 });
+
+test("はじめに：ジャンルを選ぶ → タグ3つ → そのジャンルのフィード", async ({ page }) => {
+  await page.goto("/age-gate");
+  await page.getByRole("button", { name: "はい、18歳以上です" }).click();
+  await page.waitForURL(/welcome\/tags/);
+  await page.getByRole("radio", { name: /男性/ }).click();
+  await expect(page.getByRole("heading", { name: /好みを/ })).toBeVisible();
+  const start = page.getByRole("button", { name: /あと3つ|はじめる/ });
+  await expect(start).toBeDisabled();
+  for (const t of ["セクシー", "ホテル", "ボディライン"]) await page.locator(".onb-chip", { hasText: new RegExp(`^${t}$`) }).click();
+  await page.getByRole("button", { name: /はじめる/ }).click();
+  await page.waitForURL(/\/$/);
+  const r = await page.request.get("/api/v1/feed?tab=recommended");
+  const j = await r.json();
+  expect(j.videos.length).toBeGreaterThan(0);
+  expect(j.videos.every((v: { category: string }) => v.category === "men")).toBe(true);
+});

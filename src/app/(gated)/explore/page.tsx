@@ -5,6 +5,7 @@ import { Icon } from "@/components/Icon";
 import { Avatar, VideoBackdrop } from "@/components/VideoBackdrop";
 import { TabBar } from "@/components/TabBar";
 import { fmt } from "@/components/format";
+import { audienceLabel } from "@/lib/audience";
 
 export const metadata = { title: "探す" };
 
@@ -21,6 +22,9 @@ export default async function Explore() {
         </div>
       </form>
       <div className="sec" style={{ gap: 24, paddingBottom: 12 }}>
+        <Link href="/welcome/tags" className="card" style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+          <span className="cap">見ているジャンル</span><b style={{ flex: 1 }}>{audienceLabel(ctx.audience)}</b><span className="cap" style={{ color: "var(--accent)" }}>変更</span><Icon name="chev" size={18} />
+        </Link>
         <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <h2 className="label">人気のタグ</h2>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{tags.map((t) => <Link key={t.name} className="chip" href={`/tags/${encodeURIComponent(t.name)}`}>#{t.name}</Link>)}</div>

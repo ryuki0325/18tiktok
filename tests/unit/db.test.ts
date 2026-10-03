@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import { createDb, type DB } from "@/db";
+import { createDb, setDbForTest, type DB } from "@/db";
+import { feed } from "@/lib/content";
 import * as s from "@/db/schema";
 import { createVideo, fileReport, postComment, recordClick, removeDomain, resolveReport, reviewVideo, reportComment } from "@/lib/moderation";
 import { appendChained, audit, verifyChain } from "@/lib/ledger";
@@ -54,11 +55,11 @@ describe("通報と自動非公開", () => {
 
 describe("投稿と審査", () => {
   it("同意が揃わないと投稿できない", async () => {
-    const r = await createVideo(db, { creatorId, title: "t", description: "", tags: [], consents: [true, true, false], ipHash: "x", userAgent: "ua" });
+    const r = await createVideo(db, { creatorId, category: "women", title: "t", description: "", tags: [], consents: [true, true, false], ipHash: "x", userAgent: "ua" });
     expect(r.ok).toBe(false);
   });
   it("投稿は審査待ちになり、同意が追記型ログに残り、承認で公開される", async () => {
-    const r = await createVideo(db, { creatorId, title: "新作", description: "説明", tags: ["夜景"], link: "https://example.com/x", consents: [true, true, true], ipHash: "iphash", userAgent: "ua" });
+    const r = await createVideo(db, { creatorId, category: "women", title: "新作", description: "説明", tags: ["夜景"], link: "https://example.com/x", consents: [true, true, true], ipHash: "iphash", userAgent: "ua" });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.video.status).toBe("pending_review");
@@ -69,11 +70,11 @@ describe("投稿と審査", () => {
     expect(v.status).toBe("published");
   });
   it("許可リスト外のドメインは審査待ちリンクになる", async () => {
-    const r = await createVideo(db, { creatorId, title: "外部", description: "", tags: [], link: "https://unknown-partner.net/p", consents: [true, true, true], ipHash: "x", userAgent: "ua" });
+    const r = await createVideo(db, { creatorId, category: "women", title: "外部", description: "", tags: [], link: "https://unknown-partner.net/p", consents: [true, true, true], ipHash: "x", userAgent: "ua" });
     expect(r.ok && r.linkPending).toBe(true);
   });
   it("短縮URLは拒否", async () => {
-    const r = await createVideo(db, { creatorId, title: "短縮", description: "", tags: [], link: "https://bit.ly/x", consents: [true, true, true], ipHash: "x", userAgent: "ua" });
+    const r = await createVideo(db, { creatorId, category: "women", title: "短縮", description: "", tags: [], link: "https://bit.ly/x", consents: [true, true, true], ipHash: "x", userAgent: "ua" });
     expect(r.ok).toBe(false);
   });
 });
@@ -122,5 +123,18 @@ describe("追記型ログ", () => {
     await expect(db.execute(sql`delete from video_consents`)).rejects.toSatisfy(appendOnly);
     await appendChained(db, s.adminAuditLogs, { adminId, action: "c", targetType: "x", targetId: null, detail: null });
     expect(await verifyChain(db, s.adminAuditLogs)).toBeNull();
+  });
+});
+
+describe("最初の分岐（ジャンル）", () => {
+  it("選んだジャンルの動画だけがおすすめ・人気に並び、「すべて」なら全部", async () => {
+    setDbForTest(Promise.resolve(db));
+    const men = await feed("recommended", { viewerKey: "d:x", audience: "men" }, 50);
+    expect(men.length).toBeGreaterThan(0);
+    expect(men.every((v) => v.category === "men")).toBe(true);
+    const couple = await feed("popular", { viewerKey: "d:x", audience: "couple" }, 50);
+    expect(couple.every((v) => v.category === "couple")).toBe(true);
+    const all = await feed("recommended", { viewerKey: "d:x", audience: "all" }, 50);
+    expect(new Set(all.map((v) => v.category)).size).toBeGreaterThan(1);
   });
 });

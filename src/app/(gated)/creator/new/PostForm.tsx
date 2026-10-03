@@ -3,13 +3,15 @@ import { useActionState, useState } from "react";
 import { createVideoAction } from "@/lib/creator-actions";
 import { Check, Field, FormMessage } from "@/components/forms/Field";
 import { Icon } from "@/components/Icon";
+import { VIDEO_CATEGORIES } from "@/lib/audience";
 
 export function PostForm({ tags, domains }: { tags: string[]; domains: { domain: string; name: string }[] }) {
   const [state, action, pending] = useActionState(createVideoAction, undefined);
   const [sel, setSel] = useState<string[]>([]);
   const [checks, setChecks] = useState({ c1: false, c2: false, c3: false });
   const [title, setTitle] = useState("");
-  const ready = title.trim() && sel.length > 0 && checks.c1 && checks.c2 && checks.c3;
+  const [cat, setCat] = useState<string | null>(null);
+  const ready = !!cat && title.trim() && sel.length > 0 && checks.c1 && checks.c2 && checks.c3;
   return (
     <form action={action} style={{ display: "flex", flexDirection: "column", flex: 1 }}>
       <div className="sec" style={{ gap: 18, paddingBottom: 16 }}>
@@ -17,6 +19,13 @@ export function PostForm({ tags, domains }: { tags: string[]; domains: { domain:
           <span style={{ width: 52, height: 52, borderRadius: 16, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", color: "var(--accent)" }}><Icon name="video" size={28} /></span>
           <b>動画ファイルのアップロードは準備中です</b>
           <span className="cap">今はタイトル・タグ・リンク・同意だけを先に登録できます。審査と公開の流れはそのまま使えます（動画は抽象的なプレースホルダーで表示されます）。</span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span className="label">ジャンル（出演者）<small>必須・視聴者の最初の分岐に使われます</small></span>
+          <div className="seg" role="radiogroup" aria-label="ジャンル">
+            {VIDEO_CATEGORIES.map((c) => <button type="button" key={c.id} role="radio" aria-checked={cat === c.id} onClick={() => setCat(c.id)}>{c.label}</button>)}
+          </div>
+          {cat && <input type="hidden" name="category" value={cat} />}
         </div>
         <Field label="タイトル" hint="必須・60文字まで" htmlFor="title"><input className="input" id="title" name="title" maxLength={60} placeholder="例）最高の時間でした…" value={title} onChange={(e) => setTitle(e.target.value)} required /></Field>
         <Field label="説明" hint="300文字まで" htmlFor="description"><textarea className="input" id="description" name="description" maxLength={300} placeholder="動画の雰囲気を短く" /></Field>

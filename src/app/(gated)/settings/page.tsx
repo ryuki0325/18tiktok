@@ -14,7 +14,7 @@ export default async function Settings() {
   const u = await currentUser();
   const t = tokensFor(pref.id, pref.mode === "light" ? "light" : "dark", pref.custom);
   const items: [IconName, string, string][] = [
-    ["user", "アカウント", u ? "/me" : "/login"], ["bell", "通知", "/notifications"], ["shield", "年齢確認", "/legal/terms#age"],
+    ["sliders", "見たいジャンル・好み", "/welcome/tags"], ["user", "アカウント", u ? "/me" : "/login"], ["bell", "通知", "/notifications"], ["shield", "年齢確認", "/legal/terms#age"],
     ["eye", "プライバシー", "/legal/privacy"], ["flag", "削除・権利侵害の申告", "/takedown"],
     ["file", "利用規約", "/legal/terms"], ["file", "プライバシーポリシー", "/legal/privacy"], ["file", "投稿ガイドライン", "/legal/guidelines"], ["file", "運営者情報", "/legal/operator"],
   ];
