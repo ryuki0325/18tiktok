@@ -119,8 +119,8 @@ export async function weeklyRanking(o: Opts, limit = 10) {
   const since = new Date(Date.now() - 7 * 86400_000);
   const rows = await d.select({
     id: s.videos.id,
-    score: sql<number>`(select count(*) from views vw where vw.video_id = "videos"."id" and vw.is_valid and vw.created_at >= ${since})
-      + 3 * (select count(*) from link_clicks lc where lc.video_id = "videos"."id" and lc.is_valid and lc.created_at >= ${since})
+    score: sql<number>`(select count(*) from views vw where vw.video_id = "videos"."id" and vw.is_valid and vw.created_at >= ${since.toISOString()}::timestamptz)
+      + 3 * (select count(*) from link_clicks lc where lc.video_id = "videos"."id" and lc.is_valid and lc.created_at >= ${since.toISOString()}::timestamptz)
       + "videos"."base_likes" / 1000`.as("score"),
   })
     .from(s.videos).where(eq(s.videos.status, "published")).orderBy(desc(sql`score`)).limit(limit);

@@ -20,7 +20,8 @@ export async function createDb(opts: { memory?: boolean; seedDemo?: boolean } = 
     const { drizzle } = await import("drizzle-orm/postgres-js");
     const { migrate } = await import("drizzle-orm/postgres-js/migrator");
     const postgres = (await import("postgres")).default;
-    const d = drizzle(postgres(url, { max: 10 }), { schema, casing: "snake_case" });
+    // prepare:false は Supabase などの接続プーラー（PgBouncer のトランザクションモード）でも動かすため
+    const d = drizzle(postgres(url, { max: 10, prepare: false, onnotice: () => {} }), { schema, casing: "snake_case" });
     await migrate(d, { migrationsFolder: MIGRATIONS });
     db = d as unknown as DB;
   } else {

@@ -1,7 +1,7 @@
 import { requestTime } from "@/lib/settings";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { follows, linkClicks, likes, favorites, videos, views } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
@@ -33,9 +33,9 @@ export default async function Dashboard() {
     ids.length ? count(conn.select({ n: sql<number>`count(*)::int` }).from(likes).where(inArray(likes.videoId, ids))) : 0,
     count(conn.select({ n: sql<number>`count(*)::int` }).from(follows).where(eq(follows.creatorId, u.id))),
     count(conn.select({ n: sql<number>`count(*)::int` }).from(views).where(and(vIn, eq(views.isValid, true), gte(views.createdAt, since7)))),
-    count(conn.select({ n: sql<number>`count(*)::int` }).from(views).where(and(vIn, eq(views.isValid, true), gte(views.createdAt, prev7), sql`${views.createdAt} < ${since7}`))),
+    count(conn.select({ n: sql<number>`count(*)::int` }).from(views).where(and(vIn, eq(views.isValid, true), gte(views.createdAt, prev7), lt(views.createdAt, since7)))),
     count(conn.select({ n: sql<number>`count(*)::int` }).from(linkClicks).where(and(cIn, eq(linkClicks.isValid, true), gte(linkClicks.createdAt, since7)))),
-    count(conn.select({ n: sql<number>`count(*)::int` }).from(linkClicks).where(and(cIn, eq(linkClicks.isValid, true), gte(linkClicks.createdAt, prev7), sql`${linkClicks.createdAt} < ${since7}`))),
+    count(conn.select({ n: sql<number>`count(*)::int` }).from(linkClicks).where(and(cIn, eq(linkClicks.isValid, true), gte(linkClicks.createdAt, prev7), lt(linkClicks.createdAt, since7)))),
     conn.select({ d: sql<string>`to_char(${views.createdAt} at time zone 'Asia/Tokyo', 'MM/DD')`, n: sql<number>`count(*)::int` }).from(views)
       .where(and(vIn, eq(views.isValid, true), gte(views.createdAt, since14))).groupBy(sql`1`).orderBy(sql`1`),
   ]);

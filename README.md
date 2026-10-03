@@ -6,6 +6,20 @@ TikTok と同じ「縦スワイプ・自動再生・次の動画の先読み・�
 - 設計書：[docs/README.md](./docs/README.md)
 - 画面デザインの試作（単体HTML）：[prototype/](./prototype/)
 
+## 公開する（Render）
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ryuki0325/18tiktok)
+
+1. 上のボタンを押す（または Render → **New → Blueprint** → このリポジトリを選ぶ）。初回は Render に GitHub の接続を許可する
+2. `ADMIN_EMAIL`（運営のメールアドレス）と `ADMIN_PASSWORD`（運営のパスワード）を入力して **Apply**
+3. Webサービスと PostgreSQL が作られ、数分で `https://glow-xxxx.onrender.com` が発行される
+4. スマホでそのURLを開き、「ホーム画面に追加」
+
+- `render.yaml` に設定が入っています（無料プラン・シンガポール）。`AUTH_SECRET` は自動で作られます。
+- 以後、`main` にプッシュするたびに自動で更新されます。
+- 無料プランは、しばらくアクセスがないと止まり、次のアクセスで起動するまで数十秒かかります。無料の PostgreSQL には利用期限があります。本番運用では有料プランにしてください。
+- **公開前に**：Render の利用規約が成人向けコンテンツを認めているかを必ず確認してください（今は動画が抽象的なプレースホルダーのみ）。
+
 ## 動かし方
 
 ```bash
