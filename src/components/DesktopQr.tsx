@@ -13,7 +13,7 @@ export async function DesktopQr() {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={qr} alt="このサイトを開くQRコード" />
       <b style={{ fontSize: 15 }}>スマホで開いてください</b>
-      <span className="cap" style={{ lineHeight: 1.6 }}>Glow はスマートフォン向けのサイトです。カメラでQRコードを読み取ると、スマホで開けます。</span>
+      <span className="cap" style={{ lineHeight: 1.6 }}>VYBE はスマートフォン向けのサイトです。カメラでQRコードを読み取ると、スマホで開けます。</span>
     </aside>
   );
 }

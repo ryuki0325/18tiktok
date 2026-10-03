@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/auth";
 import { logoutAction } from "@/lib/account-actions";
 import { AdminNav } from "./AdminNav";
 
-export const metadata = { title: { default: "管理画面", template: "%s | Glow 管理" } };
+export const metadata = { title: { default: "管理画面", template: "%s | VYBE 管理" } };
 
 const ROLE: Record<string, string> = { super_admin: "スーパー管理者", reviewer: "審査担当", report_handler: "通報対応担当" };
 
@@ -25,7 +25,7 @@ export default async function PanelLayout({ children }: { children: React.ReactN
   return (
     <div className="admin">
       <aside>
-        <div style={{ padding: "0 12px 14px" }}><div className="brand" style={{ fontSize: 30, padding: 0 }}>Glow</div><span className="cap">{ROLE[a.role]}・@{a.handle}</span></div>
+        <div style={{ padding: "0 12px 14px" }}><div className="brand" style={{ fontSize: 30, padding: 0 }}>VYBE</div><span className="cap">{ROLE[a.role]}・@{a.handle}</span></div>
         <AdminNav counts={{ reviews, reports, creators, links, takedowns, comments: cmts }} />
         <form action={logoutAction} style={{ marginTop: "auto" }}><button className="btn btn-sm btn-secondary" style={{ width: "100%" }}>ログアウト</button></form>
       </aside>

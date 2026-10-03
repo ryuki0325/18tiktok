@@ -49,4 +49,4 @@ export function verifyTotp(secret: string, code: string, now = Date.now()): bool
 }
 
 export const otpauthUri = (secret: string, account: string) =>
-  `otpauth://totp/${encodeURIComponent("Glow Admin")}:${encodeURIComponent(account)}?secret=${secret}&issuer=${encodeURIComponent("Glow Admin")}&algorithm=SHA1&digits=6&period=30`;
+  `otpauth://totp/${encodeURIComponent("VYBE Admin")}:${encodeURIComponent(account)}?secret=${secret}&issuer=${encodeURIComponent("VYBE Admin")}&algorithm=SHA1&digits=6&period=30`;

@@ -45,7 +45,7 @@ async function probe(url: string): Promise<{ kind: "ok"; status: number; finalHo
     try { u = new URL(current); } catch { return { kind: "fail", reason: "URLが不正" }; }
     if (u.protocol !== "https:" || PRIVATE.test(u.hostname) || /^\d+(\.\d+){3}$/.test(u.hostname)) return { kind: "fail", reason: `安全でない転送先：${u.hostname}` };
     try {
-      const res = await fetch(u, { method: "GET", redirect: "manual", signal: AbortSignal.timeout(8000), headers: { "user-agent": "GlowLinkChecker/1.0" } });
+      const res = await fetch(u, { method: "GET", redirect: "manual", signal: AbortSignal.timeout(8000), headers: { "user-agent": "VYBELinkChecker/1.0" } });
       if (res.status >= 300 && res.status < 400) {
         const loc = res.headers.get("location");
         if (!loc) return { kind: "fail", reason: `転送先なし ${res.status}` };

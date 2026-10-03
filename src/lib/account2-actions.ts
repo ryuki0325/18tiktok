@@ -20,7 +20,7 @@ export async function forgotAction(_: FormState, form: FormData): Promise<FormSt
   if (u && u.status === "active") {
     const token = randomToken(24);
     await conn.insert(emailTokens).values({ id: sha256(token), userId: u.id, purpose: "reset", expiresAt: new Date(Date.now() + 3600_000) });
-    await sendMail({ to: email, subject: "【Glow】パスワードの再設定", text: `次のリンクから新しいパスワードを設定してください（1時間有効）。\n${await absoluteUrl(`/reset-password?token=${token}`)}\n\n心当たりがない場合は、このメールを破棄してください。` });
+    await sendMail({ to: email, subject: "【VYBE】パスワードの再設定", text: `次のリンクから新しいパスワードを設定してください（1時間有効）。\n${await absoluteUrl(`/reset-password?token=${token}`)}\n\n心当たりがない場合は、このメールを破棄してください。` });
   }
   // 登録の有無は答えない（他人のメールアドレスが登録されているか調べられないように）
   return { info: mailConfigured() ? "登録があれば、パスワード再設定のメールを送りました。届かない場合は迷惑メールフォルダもご確認ください。" : "メール送信の準備中のため、現在メールでの再設定はできません。お手数ですが運営窓口（運営者情報のページ）までご連絡ください。" };

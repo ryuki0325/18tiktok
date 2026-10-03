@@ -3,8 +3,8 @@ import type { MetadataRoute } from "next";
 /** ホーム画面に追加したとき、アプリのように全画面で開く（PWA） */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Glow",
-    short_name: "Glow",
+    name: "VYBE",
+    short_name: "VYBE",
     description: "大人のための、特別なショート動画（18歳以上限定）",
     start_url: "/",
     scope: "/",

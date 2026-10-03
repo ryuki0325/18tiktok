@@ -50,7 +50,7 @@ async function issueVerifyLink(userId: string) {
   await (await db()).insert(emailTokens).values({ id: sha256(token), userId, purpose: "verify", expiresAt: new Date(Date.now() + 24 * 3600_000) });
   const link = `/verify-email?token=${token}`;
   const [u] = await (await db()).select({ email: users.email }).from(users).where(eq(users.id, userId));
-  const { delivered } = await sendMail({ to: u.email, subject: "【Glow】メールアドレスの確認", text: `次のリンクを開いて、メールアドレスの確認を完了してください（24時間有効）。\n${await absoluteUrl(link)}\n\n心当たりがない場合は、このメールを破棄してください。` });
+  const { delivered } = await sendMail({ to: u.email, subject: "【VYBE】メールアドレスの確認", text: `次のリンクを開いて、メールアドレスの確認を完了してください（24時間有効）。\n${await absoluteUrl(link)}\n\n心当たりがない場合は、このメールを破棄してください。` });
   // メールが送れない間は、登録した本人の画面に確認リンクを表示する（登録直後・ログイン中の本人だけが見る画面）
   return delivered ? null : link;
 }
