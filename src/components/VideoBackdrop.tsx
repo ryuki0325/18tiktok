@@ -5,7 +5,7 @@ export function VideoBackdrop({ hue, live = false }: { hue: [number, number, num
   const [a, b, c] = hue;
   return (
     <>
-      <div className={`vid${live ? " live" : ""}`} style={{ background: `radial-gradient(70% 50% at 50% 40%, hsl(${a} 40% 16%), #050508)` }} aria-hidden="true">
+      <div className={`vid${live ? " live" : ""}`} style={{ background: `radial-gradient(120% 80% at 50% 30%, hsl(${a} 42% 20%), hsl(${a} 30% 7%))` }} aria-hidden="true">
         <i style={{ width: "95%", height: "65%", left: "-5%", top: "10%", background: blob(a, 80, 50, 0.8) }} />
         <i style={{ width: "85%", height: "60%", right: "-10%", top: "35%", background: blob(b, 85, 52, 0.7) }} />
         <i style={{ width: "70%", height: "45%", left: "22%", top: "0%", background: blob(c, 70, 62, 0.5) }} />
@@ -17,4 +17,11 @@ export function VideoBackdrop({ hue, live = false }: { hue: [number, number, num
 
 export function Avatar({ hue, size = 40 }: { hue: number; size?: number }) {
   return <span className="pav" style={{ width: size, height: size, background: `linear-gradient(135deg, hsl(${hue} 55% 55%), hsl(${(hue + 40) % 360} 60% 35%))` }} />;
+}
+
+/** 一覧のサムネイル：サムネイル画像（CDN）があれば画像、なければ抽象プレースホルダー */
+export function Thumb({ card }: { card: { hue: [number, number, number]; poster: string | null } }) {
+  // eslint-disable-next-line @next/next/no-img-element
+  if (card.poster) return <img className="timg" src={card.poster} alt="" loading="lazy" decoding="async" />;
+  return <VideoBackdrop hue={card.hue} still soft />;
 }

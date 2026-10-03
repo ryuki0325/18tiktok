@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { and, eq, gt, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { blocks, comments, creatorProfiles, emailTokens, favorites, follows, likes, sessions, userPreferences, users, videos } from "@/db/schema";
+import { blocks, comments, creatorProfiles, emailTokens, favorites, follows, likes, notInterested, sessions, userPreferences, users, videos } from "@/db/schema";
 import { currentUser, destroySession } from "./auth";
 import { hashPassword, randomToken, sha256, verifyPassword } from "./crypto";
 import { clientIpHash, rateLimit } from "./http";
@@ -67,6 +67,7 @@ export async function deleteAccountAction(_: FormState, form: FormData): Promise
     await tx.delete(likes).where(eq(likes.viewerKey, key));
     await tx.delete(favorites).where(eq(favorites.viewerKey, key));
     await tx.delete(blocks).where(eq(blocks.viewerKey, key));
+    await tx.delete(notInterested).where(eq(notInterested.viewerKey, key));
     await tx.delete(userPreferences).where(eq(userPreferences.userId, u.id));
     await tx.delete(emailTokens).where(eq(emailTokens.userId, u.id));
     await tx.update(creatorProfiles).set({ status: "rejected", bio: "" }).where(eq(creatorProfiles.userId, u.id));

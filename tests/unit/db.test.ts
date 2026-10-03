@@ -189,3 +189,40 @@ describe("刺激の強さの絞り込み", () => {
     }
   });
 });
+
+describe("動画の軽い情報（いいね数・再生数・場所）", () => {
+  it("いいね・再生はトリガーで videos の数に反映され、取り消しで減る", async () => {
+    const [v] = await published();
+    const before = (await db.select().from(s.videos).where(eq(s.videos.id, v.id)))[0];
+    await db.insert(s.likes).values({ viewerKey: "d:cnt1", videoId: v.id });
+    await db.insert(s.views).values([{ videoId: v.id, viewerKey: "d:cnt1", isValid: true }, { videoId: v.id, viewerKey: "d:bot", isValid: false }]);
+    let [after] = await db.select().from(s.videos).where(eq(s.videos.id, v.id));
+    expect(after.likeCount).toBe(before.likeCount + 1);
+    expect(after.viewCount).toBe(before.viewCount + 1); // 無効な再生は数えない
+    await db.delete(s.likes).where(eq(s.likes.viewerKey, "d:cnt1"));
+    [after] = await db.select().from(s.videos).where(eq(s.videos.id, v.id));
+    expect(after.likeCount).toBe(before.likeCount);
+  });
+
+  it("「興味がない」にした動画はフィードに出ない", async () => {
+    setDbForTest(Promise.resolve(db));
+    const o = { viewerKey: "d:ni-test" };
+    const first = (await feed("recommended", o, 50))[0];
+    await db.insert(s.notInterested).values({ viewerKey: o.viewerKey, videoId: first.id });
+    expect((await feed("recommended", o, 50)).map((c) => c.id)).not.toContain(first.id);
+    expect((await feed("recommended", { viewerKey: "d:other" }, 50)).map((c) => c.id)).toContain(first.id);
+  });
+
+  it("アップロードが完了すると、動画の行に再生URL・サムネイル・縦横が入り、変換が終わるまでは再生URLを出さない", async () => {
+    setDbForTest(Promise.resolve(db));
+    const { applyUploadToVideo, markUpload } = await import("@/lib/media");
+    const [v] = await published();
+    const [u] = await db.insert(s.uploads).values({ userId: v.creatorId, videoId: v.id, provider: "local", filename: "a.mp4", mime: "video/mp4", size: 10, status: "processing", expiresAt: new Date(Date.now() + 3600_000) }).returning();
+    await applyUploadToVideo(db, u);
+    const { hydrate } = await import("@/lib/content");
+    expect((await hydrate([v.id], { viewerKey: "d:x" }, db))[0].src).toBeNull();
+    await markUpload(db, u.id, { status: "ready", playbackUrl: "/media/x/master.m3u8", thumbnailUrl: "/media/x/poster.jpg", width: 1920, height: 1080 });
+    const [card] = await hydrate([v.id], { viewerKey: "d:x" }, db);
+    expect(card).toMatchObject({ src: "/media/x/master.m3u8", poster: "/media/x/poster.jpg", width: 1920, height: 1080 });
+  });
+});

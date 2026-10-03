@@ -3,6 +3,7 @@ import { and, eq, isNotNull, lt, sql } from "drizzle-orm";
 import type { DB } from "@/db";
 import * as s from "@/db/schema";
 import { audit } from "./ledger";
+import { purgeStaleUploads } from "./media";
 import { getSetting } from "./settings";
 import { registrableDomain } from "./url";
 
@@ -73,6 +74,7 @@ export async function purgeExpired(conn: DB) {
     emailTokens: await del(conn.delete(s.emailTokens).where(lt(s.emailTokens.expiresAt, new Date())).returning({ id: s.emailTokens.id })),
     ageGateSessions: await del(conn.delete(s.ageGateSessions).where(lt(s.ageGateSessions.expiresAt, new Date(now - 7 * day))).returning({ id: s.ageGateSessions.id })),
     rateLimits: await del(conn.delete(s.rateLimits).where(lt(s.rateLimits.windowStart, new Date(now - day))).returning({ k: s.rateLimits.key })),
+    staleUploads: await purgeStaleUploads(conn),
     notifications: await del(conn.delete(s.notifications).where(and(isNotNull(s.notifications.readAt), lt(s.notifications.createdAt, new Date(now - notifDays * day)))).returning({ id: s.notifications.id })),
   };
   await audit(conn, null, "job.purge_expired", "retention", null, result);

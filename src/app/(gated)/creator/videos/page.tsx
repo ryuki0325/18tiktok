@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { myVideoAction } from "@/lib/creator-actions";
 import { NavBar } from "@/components/NavBar";
 import { Icon } from "@/components/Icon";
-import { VideoBackdrop } from "@/components/VideoBackdrop";
+import { Thumb } from "@/components/VideoBackdrop";
 import { ago } from "@/components/format";
 import { VIDEO_STATUS_LABEL as STATUS } from "@/components/status";
 
@@ -30,10 +30,10 @@ export default async function MyVideos({ searchParams }: { searchParams: Promise
               const [label, cls] = STATUS[v.status];
               return (
                 <div key={v.id} className="row" style={{ alignItems: "flex-start", padding: "14px 16px", gap: 12 }}>
-                  <span className="sth"><VideoBackdrop hue={v.hue} /></span>
+                  <span className="sth"><Thumb card={{ hue: v.hue, poster: v.thumbnailUrl }} /></span>
                   <div className="grow" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between" }}><b style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.title}</b><span className={`badge ${cls}`}>{label}</span></div>
-                    <span className="cap">{ago(v.createdAt)}{link === "pending_domain_review" && "・リンク審査中"}{!v.commentsEnabled && "・コメントオフ"}</span>
+                    <span className="cap">{ago(v.createdAt)}{v.mediaStatus === "processing" && "・動画を変換中"}{v.mediaStatus === "failed" && "・動画の変換に失敗"}{link === "pending_domain_review" && "・リンク審査中"}{!v.commentsEnabled && "・コメントオフ"}</span>
                     {v.statusReason && v.status !== "published" && <span className="cap" style={{ color: v.status === "pending_review" ? undefined : "var(--bad)" }}>{v.status === "pending_review" ? "" : "理由："}{v.statusReason}</span>}
                     <form action={myVideoAction} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
                       <input type="hidden" name="id" value={v.id} />

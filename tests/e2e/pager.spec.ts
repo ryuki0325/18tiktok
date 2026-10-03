@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 const passGate = async (page: Page) => {
   await page.goto("/age-gate");
   await page.getByRole("button", { name: "はい、18歳以上です" }).click();
-  await page.waitForURL(/welcome\/tags|\/$/);
+  await page.waitForURL(/\/$/);
   await page.goto("/");
   await expect(page.locator(".item.active")).toBeVisible();
 };
@@ -96,7 +96,8 @@ test("この投稿者を表示しない → フィードから消え、設定か
   await passGate(page);
   const handle = (await page.locator(".item.active .vinfo .h").textContent())!.replace("@", "");
   await page.locator(".item.active").getByRole("button", { name: "その他" }).click();
-  await page.getByRole("button", { name: "この投稿者を表示しない" }).click();
+  await page.locator(".sheet").getByRole("button", { name: "興味がない" }).click();
+  await page.getByRole("button", { name: /の動画を表示しない/ }).click();
   await expect(page.getByRole("status")).toContainText("表示しません");
   await page.reload();
   await expect(page.locator(".item.active")).toBeVisible();

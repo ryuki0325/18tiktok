@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 const passGate = async (page: Page) => {
   await page.goto("/age-gate");
   await page.getByRole("button", { name: "はい、18歳以上です" }).click();
-  await page.waitForURL(/welcome\/tags|\/$/);
+  await page.waitForURL(/\/$/);
   await page.goto("/");
   await expect(page.locator(".item.active")).toBeVisible();
 };
@@ -51,7 +51,7 @@ test("左スワイプで投稿者ページへ", async ({ page }) => {
 
 test("シートは下にスワイプして閉じられる", async ({ page }) => {
   await passGate(page);
-  await page.locator(".item.active").getByRole("button", { name: "シェア" }).click();
+  await page.locator(".item.active").getByRole("button", { name: "その他" }).click();
   const grab = page.locator(".sheet .grab");
   const b = (await grab.boundingBox())!;
   await page.mouse.move(b.x + b.width / 2, b.y + 2);
@@ -64,16 +64,22 @@ test("シートは下にスワイプして閉じられる", async ({ page }) => 
 test("入力欄は16px以上（iPhoneでフォーカス時に拡大されない）", async ({ page }) => {
   await page.goto("/age-gate");
   await page.getByRole("button", { name: "はい、18歳以上です" }).click();
-  await page.waitForURL(/welcome\/tags|\/$/);
+  await page.waitForURL(/\/$/);
   await page.goto("/login");
   const size = await page.locator("#email").evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
   expect(size).toBeGreaterThanOrEqual(16);
 });
 
-test("はじめに：5つの質問 → ジャンルと刺激の強さで絞られたフィード", async ({ page }) => {
+test("年齢確認の「はい」で、好みの質問を挟まずにすぐフィードへ", async ({ page }) => {
   await page.goto("/age-gate");
   await page.getByRole("button", { name: "はい、18歳以上です" }).click();
-  await page.waitForURL(/welcome\/tags/);
+  await page.waitForURL(/\/$/);
+  await expect(page.locator(".item.active")).toBeVisible();
+});
+
+test("（今は非表示）好みの質問ページは直接開けば使える", async ({ page }) => {
+  await passGate(page);
+  await page.goto("/welcome/tags");
   await page.getByRole("radio", { name: /男性/ }).click();
   await expect(page.getByRole("heading", { name: "今夜の気分は？" })).toBeVisible();
   await page.getByRole("radio", { name: /大人の色気/ }).click();
@@ -91,4 +97,61 @@ test("はじめに：5つの質問 → ジャンルと刺激の強さで絞ら�
   const j = await (await page.request.get("/api/v1/feed?tab=recommended")).json();
   expect(j.videos.length).toBeGreaterThan(0);
   expect(j.videos.every((v: { category: string; intensity: number }) => v.category === "men" && v.intensity <= 1)).toBe(true);
+});
+
+test("「…」に共有・興味がない・通報・動画速度がまとまっている。速度は覚えておく", async ({ page }) => {
+  await passGate(page);
+  const item = page.locator(".item.active");
+  await expect(item.getByRole("button", { name: "シェア" })).toHaveCount(0);
+  await expect(item.getByRole("button", { name: "通報" })).toHaveCount(0);
+  await item.getByRole("button", { name: "その他" }).click();
+  const sheet = page.locator(".sheet");
+  for (const n of ["共有", "興味がない", "通報", /動画速度/]) await expect(sheet.getByRole("button", { name: n })).toBeVisible();
+  await sheet.getByRole("button", { name: /動画速度/ }).click();
+  await sheet.getByRole("radio", { name: "1.5x" }).click();
+  await expect(page.locator(".sheet")).toHaveCount(0);
+  await page.reload();
+  await page.locator(".item.active").getByRole("button", { name: "その他" }).click();
+  await expect(page.locator(".sheet").getByRole("button", { name: /動画速度/ })).toContainText("1.5x");
+});
+
+test("興味がない：その動画はフィードから消え、次からも出ない", async ({ page }) => {
+  await passGate(page);
+  const id = await page.locator(".item.active").getAttribute("data-vid");
+  await page.locator(".item.active").getByRole("button", { name: "その他" }).click();
+  await page.locator(".sheet").getByRole("button", { name: "興味がない" }).click();
+  await page.locator(".sheet").getByRole("button", { name: /この動画に興味がない/ }).click();
+  await expect(page.locator(`.item[data-vid="${id}"]`)).toHaveCount(0);
+  const j = await (await page.request.get("/api/v1/feed?tab=recommended")).json();
+  expect(j.videos.map((v: { id: string }) => v.id)).not.toContain(id);
+});
+
+test("全画面ボタン：戻るボタンだけの全画面表示になり、戻るで元に戻る", async ({ page }) => {
+  await passGate(page);
+  await page.locator(".item.active").getByRole("button", { name: "全画面で見る" }).click();
+  const fs = page.locator(".fs");
+  await expect(fs).toBeVisible();
+  await expect(fs.getByRole("button")).toHaveCount(1);
+  const box = (await fs.boundingBox())!;
+  const vp = page.viewportSize()!;
+  expect(Math.round(box.width)).toBe(vp.width);
+  expect(Math.round(box.height)).toBe(vp.height);
+  await fs.getByRole("button", { name: "全画面表示を終了" }).click();
+  await expect(page.locator(".fs")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.locator(".item.active")).toBeVisible();
+});
+
+test("右上の検索 → 「探す」に移動し、キーワード入力欄にフォーカス", async ({ page }) => {
+  await passGate(page);
+  await page.locator(".feedtop").getByRole("button", { name: "検索" }).click();
+  await page.waitForURL(/\/explore/);
+  await expect(page.getByRole("searchbox", { name: "キーワードを入力" })).toBeFocused();
+});
+
+test("動画は画面の上端まで埋まっている", async ({ page }) => {
+  await passGate(page);
+  const box = (await page.locator(".item.active").boundingBox())!;
+  expect(box.y).toBe(0);
+  expect(Math.round(box.height)).toBe(page.viewportSize()!.height);
 });

@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { affiliateDomains, creatorProfiles, outboundLinks, tags, videoTags, videos } from "@/db/schema";
+import { affiliateDomains, creatorProfiles, outboundLinks, tags, uploads, videoTags, videos } from "@/db/schema";
+import { applyUploadToVideo, isUuid, mediaProvider } from "./media";
 import { checkAffiliateUrl } from "./url";
 import { getSetting } from "./settings";
 import { currentUser } from "./auth";
@@ -44,10 +45,25 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
   const parsed = Post.safeParse({ title: form.get("title"), description: form.get("description") ?? "", tags: form.getAll("tags"), link: form.get("link") || undefined, category: form.get("category"), intensity: form.get("intensity") ?? 0 });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const consents = (["c1", "c2", "c3"] as const).map((k) => form.get(k) === "on") as [boolean, boolean, boolean];
-  const r = await createVideo(await db(), {
+  const conn = await db();
+  // 動画ファイル（チャンクアップロード済み）。保存先が設定されている場合は必須
+  const uploadId = String(form.get("uploadId") ?? "");
+  let upload: typeof uploads.$inferSelect | undefined;
+  if (uploadId) {
+    if (!isUuid(uploadId)) return { error: "動画ファイルが見つかりません" };
+    [upload] = await conn.select().from(uploads).where(and(eq(uploads.id, uploadId), eq(uploads.userId, u.id)));
+    if (!upload || upload.videoId) return { error: "動画ファイルが見つかりません。もう一度アップロードしてください" };
+    if (upload.status === "uploading") return { error: "動画のアップロードがまだ終わっていません" };
+    if (upload.status === "failed") return { error: "動画の変換に失敗しました。別のファイルでお試しください" };
+  } else if (mediaProvider()) return { error: "動画ファイルを選んでください" };
+  const r = await createVideo(conn, {
     creatorId: u.id, ...parsed.data, consents, ipHash: await clientIpHash(), userAgent: (await headers()).get("user-agent") ?? "",
   });
   if (!r.ok) return { error: r.error };
+  if (upload) {
+    const [linked] = await conn.update(uploads).set({ videoId: r.video.id }).where(eq(uploads.id, upload.id)).returning();
+    await applyUploadToVideo(conn, linked);
+  }
   redirect(`/creator/videos?submitted=1${r.linkPending ? "&linkPending=1" : ""}`);
 }
 

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { blocks, emailTokens, favorites, likes, userPreferences, users } from "@/db/schema";
+import { blocks, emailTokens, favorites, likes, notInterested, userPreferences, users } from "@/db/schema";
 import { absoluteUrl, sendMail } from "./mail";
 import { authenticate, createSession, currentUser, destroySession, DEVICE_COOKIE, isAdminRole, registerUser } from "./auth";
 import { randomToken, sha256 } from "./crypto";
@@ -27,6 +27,8 @@ async function afterLogin(userId: string) {
     await conn.execute(sql`insert into favorites (viewer_key, video_id, created_at) select ${u}, video_id, created_at from favorites where viewer_key = ${d} on conflict do nothing`);
     await conn.execute(sql`insert into likes (viewer_key, video_id, created_at) select ${u}, video_id, created_at from likes where viewer_key = ${d} on conflict do nothing`);
     await conn.execute(sql`insert into blocks (viewer_key, creator_id, created_at) select ${u}, creator_id, created_at from blocks where viewer_key = ${d} on conflict do nothing`);
+    await conn.execute(sql`insert into not_interested (viewer_key, video_id, created_at) select ${u}, video_id, created_at from not_interested where viewer_key = ${d} on conflict do nothing`);
+    await conn.delete(notInterested).where(eq(notInterested.viewerKey, d));
     await conn.delete(blocks).where(eq(blocks.viewerKey, d));
     await conn.delete(favorites).where(eq(favorites.viewerKey, d));
     await conn.delete(likes).where(eq(likes.viewerKey, d));

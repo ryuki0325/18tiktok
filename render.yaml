@@ -27,6 +27,13 @@ services:
         value: "true"
       - key: CRON_SECRET
         generateValue: true
+      # 動画の保存・配信（Bunny Stream）。3つとも入れると投稿画面で動画をアップロードできるようになる
+      - key: BUNNY_STREAM_LIBRARY_ID
+        sync: false
+      - key: BUNNY_STREAM_API_KEY
+        sync: false
+      - key: BUNNY_STREAM_CDN_HOST
+        sync: false
 
 databases:
   - name: glow-db

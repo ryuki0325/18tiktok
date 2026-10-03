@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 const passGate = async (page: Page) => {
   await page.goto("/age-gate");
   await page.getByRole("button", { name: "はい、18歳以上です" }).click();
-  await page.waitForURL(/welcome\/tags|\/$/);
+  await page.waitForURL(/\/$/);
 };
 
 async function signup(page: Page, handle: string) {

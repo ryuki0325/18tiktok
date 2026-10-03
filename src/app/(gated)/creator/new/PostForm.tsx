@@ -3,24 +3,34 @@ import { useActionState, useState } from "react";
 import { createVideoAction } from "@/lib/creator-actions";
 import { Check, Field, FormMessage } from "@/components/forms/Field";
 import { Icon } from "@/components/Icon";
+import { VideoUploader } from "@/components/upload/VideoUploader";
 import { INTENSITIES, VIDEO_CATEGORIES } from "@/lib/audience";
 
-export function PostForm({ tags, domains }: { tags: string[]; domains: { domain: string; name: string }[] }) {
+export function PostForm({ tags, domains, upload }: { tags: string[]; domains: { domain: string; name: string }[]; upload: { maxMb: number } | null }) {
+  const [uploadId, setUploadId] = useState<string | null>(null);
   const [state, action, pending] = useActionState(createVideoAction, undefined);
   const [sel, setSel] = useState<string[]>([]);
   const [checks, setChecks] = useState({ c1: false, c2: false, c3: false });
   const [title, setTitle] = useState("");
   const [cat, setCat] = useState<string | null>(null);
   const [lv, setLv] = useState<number | null>(null);
-  const ready = !!cat && !!lv && title.trim() && sel.length > 0 && checks.c1 && checks.c2 && checks.c3;
+  const ready = (!upload || !!uploadId) && !!cat && !!lv && title.trim() && sel.length > 0 && checks.c1 && checks.c2 && checks.c3;
   return (
     <form action={action} style={{ display: "flex", flexDirection: "column", flex: 1 }}>
       <div className="sec" style={{ gap: 18, paddingBottom: 16 }}>
-        <div className="card" style={{ padding: "22px 16px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, textAlign: "center", border: "1.5px dashed color-mix(in srgb, var(--text) 22%, transparent)" }}>
-          <span style={{ width: 52, height: 52, borderRadius: 16, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", color: "var(--accent)" }}><Icon name="video" size={28} /></span>
-          <b>動画ファイルのアップロードは準備中です</b>
-          <span className="cap">今はタイトル・タグ・リンク・同意だけを先に登録できます。審査と公開の流れはそのまま使えます（動画は抽象的なプレースホルダーで表示されます）。</span>
-        </div>
+        {upload ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <span className="label">動画<small>必須</small></span>
+            <VideoUploader maxMb={upload.maxMb} onChange={setUploadId} />
+            {uploadId && <input type="hidden" name="uploadId" value={uploadId} />}
+          </div>
+        ) : (
+          <div className="card" style={{ padding: "22px 16px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, textAlign: "center", border: "1.5px dashed color-mix(in srgb, var(--text) 22%, transparent)" }}>
+            <span style={{ width: 52, height: 52, borderRadius: 16, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", color: "var(--accent)" }}><Icon name="video" size={28} /></span>
+            <b>動画ファイルのアップロードは準備中です</b>
+            <span className="cap">今はタイトル・タグ・リンク・同意だけを先に登録できます（動画は抽象的なプレースホルダーで表示されます）。</span>
+          </div>
+        )}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span className="label">ジャンル（出演者）<small>必須・視聴者の最初の分岐に使われます</small></span>
           <div className="seg" role="radiogroup" aria-label="ジャンル">

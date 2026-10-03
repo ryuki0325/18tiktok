@@ -11,8 +11,12 @@ export type VideoCard = {
   tags: string[]; likes: number; comments: number; views: number; clicks: number;
   link: { id: string; domain: string } | null; liked: boolean; saved: boolean; following: boolean;
   publishedAt: string | null; commentsEnabled: boolean;
-  /** 動画ファイルのURL（HLS/MP4）。動画配信の実装までは null で、抽象プレースホルダーを表示 */
+  /** 動画ファイルのURL（CDN上の HLS .m3u8 または MP4）。未アップロードなら null で、抽象プレースホルダーを表示 */
   src: string | null;
+  poster: string | null;
+  /** 縦横のピクセル数。横長（width > height）は切らずに全体を表示する */
+  width: number | null;
+  height: number | null;
   category: VideoCategory;
   intensity: number;
 };
@@ -26,11 +30,10 @@ export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublis
   const rows = await d.select({ v: s.videos, handle: s.users.handle, avatarHue: s.users.avatarHue })
     .from(s.videos).innerJoin(s.users, eq(s.users.id, s.videos.creatorId))
     .where(includeUnpublished ? inArray(s.videos.id, ids) : and(inArray(s.videos.id, ids), eq(s.videos.status, "published")));
-  const [tagRows, likeRows, commentRows, viewRows, clickRows, linkRows, myLikes, mySaves, myFollows, myBlocks] = await Promise.all([
+  // いいね数・再生数は videos の列（トリガーで増減）から読む。コメント・クリックは件数が少ないので集計
+  const [tagRows, commentRows, clickRows, linkRows, myLikes, mySaves, myFollows, myBlocks] = await Promise.all([
     d.select({ videoId: s.videoTags.videoId, name: s.tags.name }).from(s.videoTags).innerJoin(s.tags, eq(s.tags.id, s.videoTags.tagId)).where(inArray(s.videoTags.videoId, ids)),
-    d.select({ videoId: s.likes.videoId, n: sql<number>`count(*)::int` }).from(s.likes).where(inArray(s.likes.videoId, ids)).groupBy(s.likes.videoId),
     d.select({ videoId: s.comments.videoId, n: sql<number>`count(*)::int` }).from(s.comments).where(and(inArray(s.comments.videoId, ids), eq(s.comments.status, "visible"))).groupBy(s.comments.videoId),
-    d.select({ videoId: s.views.videoId, n: sql<number>`count(*)::int` }).from(s.views).where(and(inArray(s.views.videoId, ids), eq(s.views.isValid, true))).groupBy(s.views.videoId),
     d.select({ videoId: s.linkClicks.videoId, n: sql<number>`count(*)::int` }).from(s.linkClicks).where(and(inArray(s.linkClicks.videoId, ids), eq(s.linkClicks.isValid, true))).groupBy(s.linkClicks.videoId),
     d.select().from(s.outboundLinks).where(and(inArray(s.outboundLinks.videoId, ids), eq(s.outboundLinks.status, "active"))),
     d.select({ id: s.likes.videoId }).from(s.likes).where(and(inArray(s.likes.videoId, ids), eq(s.likes.viewerKey, o.viewerKey))),
@@ -40,7 +43,7 @@ export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublis
   ]);
   const blocked = new Set(myBlocks.map((r) => r.id));
   const count = (arr: { videoId: string; n: number }[]) => new Map(arr.map((r) => [r.videoId, r.n]));
-  const lc = count(likeRows), cc = count(commentRows), vc = count(viewRows), kc = count(clickRows);
+  const cc = count(commentRows), kc = count(clickRows);
   const liked = new Set(myLikes.map((r) => r.id)), saved = new Set(mySaves.map((r) => r.id)), fol = new Set(myFollows.map((r) => r.id));
   const byId = new Map(rows.map((r) => {
     const v = r.v;
@@ -49,10 +52,11 @@ export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublis
       id: v.id, title: v.title, description: v.description, hue: v.hue,
       creator: { id: v.creatorId, handle: r.handle, avatarHue: r.avatarHue },
       tags: tagRows.filter((t) => t.videoId === v.id).map((t) => t.name),
-      likes: v.baseLikes + (lc.get(v.id) ?? 0), comments: cc.get(v.id) ?? 0, views: vc.get(v.id) ?? 0, clicks: kc.get(v.id) ?? 0,
+      likes: v.baseLikes + v.likeCount, comments: cc.get(v.id) ?? 0, views: v.viewCount, clicks: kc.get(v.id) ?? 0,
       link: link ? { id: link.id, domain: link.domain } : null,
       liked: liked.has(v.id), saved: saved.has(v.id), following: fol.has(v.creatorId),
-      publishedAt: v.publishedAt?.toISOString() ?? null, commentsEnabled: v.commentsEnabled, src: null, category: v.category, intensity: v.intensity,
+      publishedAt: v.publishedAt?.toISOString() ?? null, commentsEnabled: v.commentsEnabled,
+      src: v.mediaStatus === "ready" ? v.playbackUrl : null, poster: v.thumbnailUrl, width: v.width, height: v.height, category: v.category, intensity: v.intensity,
     };
     return [v.id, card];
   }));
@@ -74,6 +78,11 @@ export async function feed(tab: FeedTab, o: Opts, limit = 20, offset = 0): Promi
   const byIntensity = o.maxIntensity && o.maxIntensity < 3 ? lte(s.videos.intensity, o.maxIntensity) : undefined;
   let idRows = await d.select({ id: s.videos.id, creatorId: s.videos.creatorId, publishedAt: s.videos.publishedAt, baseLikes: s.videos.baseLikes })
     .from(s.videos).where(and(eq(s.videos.status, "published"), byAudience, byIntensity)).orderBy(desc(s.videos.publishedAt)).limit(300);
+  // 「興味がない」にした動画は出さない
+  if (o.viewerKey) {
+    const ni = new Set((await d.select({ id: s.notInterested.videoId }).from(s.notInterested).where(eq(s.notInterested.viewerKey, o.viewerKey))).map((r) => r.id));
+    if (ni.size) idRows = idRows.filter((r) => !ni.has(r.id));
+  }
   if (tab === "following") {
     if (!o.userId) return [];
     const f = new Set((await d.select({ id: s.follows.creatorId }).from(s.follows).where(eq(s.follows.followerId, o.userId))).map((r) => r.id));

@@ -8,7 +8,9 @@ import { VideoBackdrop } from "../VideoBackdrop";
 import { fmt } from "../format";
 import { useToast } from "../Toast";
 import { api } from "./api";
-import { CommentSheet, MoreSheet, ReportSheet, ShareSheet } from "./Sheets";
+import { CommentSheet, MoreSheet, RATES, ReportSheet, ShareSheet } from "./Sheets";
+import { FeedVideo, loadHls } from "./FeedVideo";
+import { FullscreenView } from "./FullscreenView";
 import { usePager } from "./usePager";
 
 type Sheet = { kind: "report" | "comment" | "share" | "more"; card: VideoCard } | null;
@@ -16,12 +18,19 @@ const TABS = [["recommended", "おすすめ"], ["popular", "人気"], ["followin
 
 const noopSubscribe = () => () => {};
 const readMuted = () => { try { return localStorage.getItem("glow.muted") !== "0"; } catch { return true; } };
+const readRate = () => { try { const r = Number(localStorage.getItem("glow.rate")); return (RATES as readonly number[]).includes(r) ? r : 1; } catch { return 1; } };
 
 /** 描画するのは今の1本と前後1本だけ（次の動画を先読みしつつ、メモリと描画負荷を一定に保つ） */
 const WINDOW = 1;
 /** 残り何本になったら次を読み込むか */
 const PREFETCH_AT = 3;
 const DOUBLE_TAP_MS = 280;
+
+/** 全画面から戻った時、フィードの動画を同じ位置から続ける */
+function seekVideo(root: HTMLElement | null, id: string, t: number) {
+  const v = root?.querySelector<HTMLVideoElement>(`.item[data-vid="${id}"] video`);
+  if (v && t > 0) v.currentTime = t;
+}
 
 export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initialHasMore }: { cards: VideoCard[]; tab: string; loggedIn: boolean; myId: string | null; hasMore: boolean }) {
   const [cards, setCards] = useState(initial);
@@ -32,7 +41,12 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
   const storedMuted = useSyncExternalStore(noopSubscribe, readMuted, () => true);
   const [mutedOverride, setMuted] = useState<boolean | null>(null);
   const muted = mutedOverride ?? storedMuted;
+  const storedRate = useSyncExternalStore(noopSubscribe, readRate, () => 1);
+  const [rateOverride, setRate] = useState<number | null>(null);
+  const rate = rateOverride ?? storedRate;
   const [paused, setPaused] = useState<Record<string, boolean>>({});
+  const [fs, setFs] = useState<{ card: VideoCard; t: number } | null>(null);
+  const searchFocus = useRef<HTMLInputElement>(null);
   const [uiHidden, setUiHidden] = useState(false);
   const [bursts, setBursts] = useState<{ key: number; id: string; x: number; y: number }[]>([]);
   const lastTap = useRef<{ t: number; x: number; y: number; timer: ReturnType<typeof setTimeout> | null }>({ t: 0, x: 0, y: 0, timer: null });
@@ -78,7 +92,7 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
     onLongPress: (down) => setUiHidden(down),
     onSwipeLeft: (i) => { const c = cardsRef.current[i]; if (c) router.push(`/u/${encodeURIComponent(c.creator.handle)}`); },
     onRefresh: refresh,
-  }, { disabled: !!sheet });
+  }, { disabled: !!sheet || !!fs });
 
   // 残りが少なくなったら次のページを先に読み込む（無限スクロール）
   useEffect(() => {
@@ -94,15 +108,15 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
     });
   }, [index, cards.length, hasMore, tab]);
 
-  // 動画がある場合：表示中の1本だけ再生し、ほかは止める（前後は preload 済み）
+  // HLS の動画があれば、プレイヤー（hls.js）を手の空いた時に先に読み込んでおく。2本先のサムネイルも先読み
   useEffect(() => {
-    trackRef.current?.querySelectorAll<HTMLVideoElement>("video").forEach((v) => {
-      const i = Number(v.dataset.index);
-      if (i === index && !paused[cards[i]?.id]) void v.play().catch(() => {});
-      else { v.pause(); if (i !== index) v.currentTime = 0; }
-      v.muted = muted;
-    });
-  }, [index, paused, muted, cards, trackRef]);
+    if (cards.some((c) => c.src?.includes(".m3u8"))) {
+      const idle = window.requestIdleCallback ?? ((f: () => void) => setTimeout(f, 300));
+      idle(() => void loadHls());
+    }
+    const far = cards[index + 2];
+    if (far?.poster) new Image().src = far.poster;
+  }, [cards, index]);
 
   // 2秒以上表示されたら再生として記録（サーバー側で重複・bot・本人を除外）
   const viewed = useRef(new Set<string>());
@@ -133,6 +147,34 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
     const r = await api(`/api/v1/me/blocks/${c.creator.id}`, { method: "PUT" });
     toast(r.ok ? `@${c.creator.handle} の動画を表示しません（設定から戻せます）` : "設定できませんでした");
   };
+  const notInterested = async (c: VideoCard) => {
+    setSheet(null);
+    setCards((cs) => cs.filter((x) => x.id !== c.id));
+    const r = await api(`/api/v1/videos/${c.id}/not-interested`, { method: "PUT" });
+    toast(r.ok ? "この動画を今後おすすめしません" : "設定できませんでした");
+  };
+  const share = async (c: VideoCard) => {
+    const url = `${location.origin}/?v=${c.id}`;
+    // スマホは OS の共有メニュー、使えない環境ではリンクのコピー画面
+    if (navigator.share) {
+      setSheet(null);
+      try { await navigator.share({ title: c.title, url }); } catch {}
+      return;
+    }
+    setSheet({ kind: "share", card: c });
+  };
+  const changeRate = (r: number) => { setRate(r); try { localStorage.setItem("glow.rate", String(r)); } catch {} setSheet(null); toast(r === 1 ? "標準の速度で再生します" : `${r}倍速で再生します`); };
+  const openFullscreen = (c: VideoCard) => {
+    const v = trackRef.current?.querySelector<HTMLVideoElement>(`.item[data-vid="${c.id}"] video`);
+    setFs({ card: c, t: v?.currentTime ?? 0 });
+  };
+  const closeFullscreen = (t: number) => {
+    const id = fs?.card.id;
+    setFs(null);
+    if (id) seekVideo(trackRef.current, id, t);
+  };
+  // 検索：先に隠し入力欄にフォーカスしてキーボードを出しておき、「探す」の検索欄に引き継ぐ（iPhoneでも自動でキーボードが出る）
+  const goSearch = () => { searchFocus.current?.focus(); router.push("/explore?focus=1"); };
   const toggleMute = () => { const m = !muted; setMuted(m); try { localStorage.setItem("glow.muted", m ? "1" : "0"); } catch {} toast(m ? "音をオフにしました" : "音をオンにしました（設定を記憶します）"); };
 
   return (
@@ -145,11 +187,13 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
               if (Math.abs(i - index) > WINDOW) return null;
               const active = i === index;
               return (
-                <article key={c.id} className={`item${active ? " active" : ""}${paused[c.id] ? " paused" : ""}`} data-vid={c.id} style={{ top: `${i * 100}%` }}
+                <article key={c.id} className={`item${active ? " active" : ""}${paused[c.id] ? " paused" : ""}${c.src ? " real" : ""}`} data-vid={c.id} style={{ top: `${i * 100}%` }}
                   aria-hidden={!active} onContextMenu={(e) => e.preventDefault()}>
                   {c.src
-                    ? <video data-index={i} src={c.src} playsInline loop muted={muted} preload="auto" disablePictureInPicture controlsList="nodownload noplaybackrate" />
-                    : <VideoBackdrop hue={c.hue} live={active && !paused[c.id]} />}
+                    ? <FeedVideo src={c.src} poster={c.poster} width={c.width} height={c.height} active={active} paused={!!paused[c.id] || !!fs} muted={muted} rate={rate}
+                        preload={active ? "active" : i === index + 1 ? "next" : "idle"}
+                        onTime={(t) => { const bar = trackRef.current?.querySelector<HTMLElement>(`.item[data-vid="${c.id}"] .progress i`); if (bar) bar.style.transform = `scaleX(${t})`; }} />
+                    : <VideoBackdrop hue={c.hue} live={active && !paused[c.id] && !fs} />}
                   <div className="scrim" />
                   <div className="center-ind"><Icon name="play" size={30} filled /></div>
                   {bursts.filter((x) => x.id === c.id).map((x) => <span key={x.key} className="burst" style={{ left: x.x, top: x.y }}><Icon name="heart" size={96} filled /></span>)}
@@ -167,8 +211,7 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
                       <button className={c.liked ? "on" : ""} aria-pressed={c.liked} aria-label="いいね" onClick={() => like(c)}><span className="hit"><Icon name="heart" size={30} filled={c.liked} /></span><span className="num">{fmt(c.likes)}</span></button>
                       <button aria-label="コメント" onClick={() => setSheet({ kind: "comment", card: c })}><span className="hit"><Icon name="msg" size={28} /></span><span className="num">{fmt(c.comments)}</span></button>
                       <button className={c.saved ? "on" : ""} aria-pressed={c.saved} aria-label="保存" onClick={() => save(c)}><span className="hit"><Icon name="bookmark" size={28} filled={c.saved} /></span><span>保存</span></button>
-                      <button aria-label="シェア" onClick={() => setSheet({ kind: "share", card: c })}><span className="hit"><Icon name="send" size={27} /></span><span>シェア</span></button>
-                      <button aria-label="通報" onClick={() => setSheet({ kind: "report", card: c })}><span className="hit"><Icon name="flag" size={27} /></span><span>通報</span></button>
+                      <button aria-label="全画面で見る" onClick={() => openFullscreen(c)}><span className="hit"><Icon name="expand" size={26} /></span><span>全画面</span></button>
                       <button aria-label="その他" onClick={() => setSheet({ kind: "more", card: c })}><span className="hit"><Icon name="more" size={28} /></span></button>
                     </div>
                     <div className="vinfo">
@@ -203,12 +246,17 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
         <nav className="tabs" role="tablist">
           {TABS.map(([k, l]) => <Link key={k} role="tab" aria-selected={tab === k} href={k === "recommended" ? "/" : `/?tab=${k}`}>{l}</Link>)}
         </nav>
-        <Link className="r" href="/search" aria-label="検索"><Icon name="search" /></Link>
+        <button className="r" onClick={goSearch} aria-label="検索"><Icon name="search" /></button>
+        <input ref={searchFocus} className="kbd-proxy" aria-hidden="true" tabIndex={-1} inputMode="search" />
       </div>
       {sheet?.kind === "report" && <ReportSheet card={sheet.card} onClose={(hidden) => { setSheet(null); if (hidden) setCards((cs) => cs.filter((x) => x.id !== sheet.card.id)); }} />}
       {sheet?.kind === "comment" && <CommentSheet card={sheet.card} loggedIn={loggedIn} onClose={() => setSheet(null)} onPosted={() => patch(sheet.card.id, (x) => ({ comments: x.comments + 1 }))} />}
       {sheet?.kind === "share" && <ShareSheet card={sheet.card} onClose={() => setSheet(null)} />}
-      {sheet?.kind === "more" && <MoreSheet card={sheet.card} onClose={() => setSheet(null)} onReport={() => setSheet({ kind: "report", card: sheet.card })} onHide={() => block(sheet.card)} />}
+      {sheet?.kind === "more" && (
+        <MoreSheet card={sheet.card} rate={rate} onClose={() => setSheet(null)} onShare={() => share(sheet.card)} onNotInterested={() => notInterested(sheet.card)}
+          onHideCreator={() => block(sheet.card)} onReport={() => setSheet({ kind: "report", card: sheet.card })} onRate={changeRate} />
+      )}
+      {fs && <FullscreenView card={fs.card} startAt={fs.t} muted={muted} rate={rate} onClose={closeFullscreen} />}
     </div>
   );
 }

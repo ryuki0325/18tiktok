@@ -4,6 +4,7 @@ import { creatorProfiles, outboundLinks, tags, users, videoConsents, videoTags, 
 import { requireAdmin } from "@/lib/auth";
 import { reviewAction } from "@/lib/admin-actions";
 import { VideoBackdrop } from "@/components/VideoBackdrop";
+import { ReviewPlayer } from "@/components/ReviewPlayer";
 import { ago } from "@/components/format";
 import { audienceLabel, intensityLabel } from "@/lib/audience";
 
@@ -32,9 +33,12 @@ export default async function Reviews() {
           const c = consents.find((x) => x.videoId === v.id);
           const l = links.find((x) => x.videoId === v.id);
           return (
-            <div key={v.id} className="card" style={{ padding: 16, display: "grid", gridTemplateColumns: "96px 1fr", gap: 16 }}>
-              <div style={{ width: 96, height: 150, borderRadius: 12, position: "relative", overflow: "hidden" }}><VideoBackdrop hue={v.hue} /></div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+            <div key={v.id} className="card" style={{ padding: 16, display: "flex", flexWrap: "wrap", gap: 16 }}>
+              <div style={{ width: 180, height: 320, flexShrink: 0, borderRadius: 12, position: "relative", overflow: "hidden", background: "#000" }}>
+                {v.playbackUrl && v.mediaStatus === "ready" ? <ReviewPlayer src={v.playbackUrl} poster={v.thumbnailUrl} /> : <VideoBackdrop hue={v.hue} />}
+                {v.mediaStatus !== "ready" && <span className="badge" style={{ position: "absolute", left: 8, top: 8 }}>{v.mediaStatus === "processing" ? "変換中" : v.mediaStatus === "failed" ? "変換失敗" : "動画なし"}</span>}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0, flex: "1 1 280px" }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}><b style={{ fontSize: 16 }}>{v.title}</b><span className="cap">@{handle}・承認済み{approved}本・違反{violations}・{ago(v.createdAt)}</span></div>
                 {v.description && <p style={{ margin: 0, fontSize: 14 }}>{v.description}</p>}
                 <div className="cap">ジャンル：{audienceLabel(v.category)}・刺激の強さ：<b style={{ color: v.intensity === 3 ? "var(--bad)" : undefined }}>{intensityLabel(v.intensity)}</b>（投稿者の申告。内容と合っているか確認）</div>

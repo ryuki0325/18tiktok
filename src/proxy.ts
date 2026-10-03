@@ -36,5 +36,6 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icons/|manifest.webmanifest|sw.js).*)"],
+  // /media は動画ファイル（推測できないURL・CDNと同じ扱い）。毎回の判定を省いて速く返す
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icons/|media/|manifest.webmanifest|sw.js).*)"],
 };

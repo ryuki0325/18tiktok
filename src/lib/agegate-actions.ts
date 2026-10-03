@@ -23,7 +23,8 @@ export async function acceptAgeGate(_: { error?: string } | undefined, formData:
       httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", expires: expiresAt,
     });
     const next = safeNext(formData.get("next"));
-    target = jar.get("onb")?.value === "1" || next !== "/" ? next : "/welcome/tags";
+    // 好みの質問は利用者が増えてから復活させる。今は年齢確認の後すぐにフィードへ
+    target = next;
   } catch (e) {
     console.error("[glow] 年齢確認の保存に失敗しました", e);
     if (e instanceof Error && e.name === "DatabaseNotConfiguredError") return { error: "サイトの準備中です（データベースが未接続です）。運営者は /api/health で設定状況を確認してください。" };

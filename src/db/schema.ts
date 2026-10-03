@@ -1,5 +1,5 @@
 import {
-  pgTable, text, uuid, timestamp, boolean, integer, jsonb, primaryKey, serial, bigserial, index, uniqueIndex,
+  pgTable, text, uuid, timestamp, boolean, integer, jsonb, primaryKey, serial, bigserial, bigint, index, uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 const now = () => timestamp({ withTimezone: true }).notNull().defaultNow();
@@ -104,9 +104,61 @@ export const videos = pgTable("videos", {
   intensity: integer().notNull().default(1),
   reviewRequired: boolean().notNull().default(true),
   commentsEnabled: boolean().notNull().default(true),
+  /*
+   * 動画本体はDBに入れない。DBには「場所」と軽い情報だけを持ち、実ファイルはオブジェクトストレージ、配信はCDN。
+   * 一覧：スマホ → API → DB（このテーブル）／ 本体：スマホ → CDN（playbackUrl）
+   */
+  /** 再生URL（HLSのマスタープレイリスト .m3u8、または MP4）。未アップロードなら null */
+  playbackUrl: text(),
+  /** サムネイル画像のURL */
+  thumbnailUrl: text(),
+  /** 縦横のピクセル数（横長の動画は切らずに全体を表示するため） */
+  width: integer(),
+  height: integer(),
+  durationMs: integer(),
+  /** 動画ファイルの状態 none=未登録 / processing=変換中 / ready=再生可能 / failed=失敗 */
+  mediaStatus: text().$type<"none" | "processing" | "ready" | "failed">().notNull().default("none"),
+  /** いいね数・再生数（likes / views への追加・削除時にDBトリガーで増減する。一覧で数え直さないため） */
+  likeCount: integer().notNull().default(0),
+  viewCount: integer().notNull().default(0),
   publishedAt: ts(),
   createdAt: now(),
-}, (t) => [index("videos_status_idx").on(t.status, t.publishedAt), index("videos_category_idx").on(t.category, t.status)]);
+}, (t) => [
+  // 最新の動画
+  index("videos_status_idx").on(t.status, t.publishedAt),
+  index("videos_category_idx").on(t.category, t.status),
+  // 特定ユーザーの動画
+  index("videos_creator_idx").on(t.creatorId, t.publishedAt),
+]);
+
+/**
+ * 大きな動画のチャンク（分割）アップロード。tus 方式で、途中で切れても続きから再開できる。
+ * provider=local：このサーバーが受け取り、ffmpeg があれば HLS（複数画質）に変換
+ * provider=bunny：Bunny Stream に直接アップロード（変換・CDN配信は Bunny 側）
+ */
+export const uploads = pgTable("uploads", {
+  id: uuid().primaryKey().defaultRandom(),
+  userId: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+  videoId: uuid().references(() => videos.id, { onDelete: "set null" }),
+  provider: text().$type<"local" | "bunny">().notNull(),
+  /** 外部サービス側のID（Bunny の動画GUIDなど） */
+  providerRef: text(),
+  filename: text().notNull(),
+  mime: text().notNull(),
+  size: bigint({ mode: "number" }).notNull(),
+  /** 受け取り済みのバイト数（local のみ。再開位置） */
+  received: bigint({ mode: "number" }).notNull().default(0),
+  status: text().$type<"uploading" | "processing" | "ready" | "failed">().notNull().default("uploading"),
+  playbackUrl: text(),
+  thumbnailUrl: text(),
+  width: integer(),
+  height: integer(),
+  durationMs: integer(),
+  error: text(),
+  createdAt: now(),
+  updatedAt: now(),
+  expiresAt: timestamp({ withTimezone: true }).notNull(),
+}, (t) => [index("uploads_user_idx").on(t.userId, t.createdAt), index("uploads_video_idx").on(t.videoId)]);
 
 export const tags = pgTable("tags", {
   id: serial().primaryKey(),
@@ -165,6 +217,13 @@ export const blocks = pgTable("blocks", {
   creatorId: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
   createdAt: now(),
 }, (t) => [primaryKey({ columns: [t.viewerKey, t.creatorId] })]);
+
+/** 「興味がない」にした動画（フィードに出さない） */
+export const notInterested = pgTable("not_interested", {
+  viewerKey: text().notNull(),
+  videoId: uuid().notNull().references(() => videos.id, { onDelete: "cascade" }),
+  createdAt: now(),
+}, (t) => [primaryKey({ columns: [t.viewerKey, t.videoId] })]);
 
 export const follows = pgTable("follows", {
   followerId: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),

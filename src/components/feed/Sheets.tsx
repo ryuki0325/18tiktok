@@ -146,14 +146,36 @@ export function ShareSheet({ card, onClose }: { card: VideoCard; onClose: () => 
   );
 }
 
-export function MoreSheet({ card, onClose, onReport, onHide }: { card: VideoCard; onClose: () => void; onReport: () => void; onHide: () => void }) {
+export const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+
+/**
+ * 「…」メニュー：共有・興味がない・通報・動画速度設定をここにまとめる
+ */
+export function MoreSheet({ card, rate, onClose, onShare, onNotInterested, onHideCreator, onReport, onRate }: {
+  card: VideoCard; rate: number; onClose: () => void; onShare: () => void; onNotInterested: () => void; onHideCreator: () => void; onReport: () => void; onRate: (r: number) => void;
+}) {
+  const [view, setView] = useState<"main" | "ni" | "speed">("main");
   return (
-    <Sheet title="その他" onClose={onClose}>
-      <div className="list" style={{ background: "var(--surface-2)" }}>
-        <Link className="row" href={`/u/${encodeURIComponent(card.creator.handle)}`}><Icon name="user" size={20} /><span className="grow">@{card.creator.handle} のページ</span></Link>
-        <button className="row" onClick={onHide}><Icon name="eyeoff" size={20} /><span className="grow">この投稿者を表示しない</span></button>
-        <button className="row" onClick={onReport} style={{ color: "var(--bad)" }}><Icon name="flag" size={20} /><span className="grow">通報する</span></button>
-      </div>
+    <Sheet title={view === "speed" ? "動画速度" : view === "ni" ? "興味がない" : "その他"} onClose={onClose}>
+      {view === "main" && (
+        <div className="acts" role="group" aria-label="操作">
+          <button onClick={onShare}><span className="ic"><Icon name="share" size={24} /></span>共有</button>
+          <button onClick={() => setView("ni")}><span className="ic"><Icon name="eyeoff" size={24} /></span>興味がない</button>
+          <button onClick={onReport}><span className="ic bad"><Icon name="flag" size={24} /></span>通報</button>
+          <button onClick={() => setView("speed")}><span className="ic"><Icon name="gauge" size={24} /></span>動画速度<small className="num">{rate}x</small></button>
+        </div>
+      )}
+      {view === "ni" && (
+        <div className="list" style={{ background: "var(--surface-2)" }}>
+          <button className="row" onClick={onNotInterested}><Icon name="eyeoff" size={20} /><span className="grow">この動画に興味がない<span className="cap" style={{ display: "block" }}>おすすめに表示されなくなります</span></span></button>
+          <button className="row" onClick={onHideCreator}><Icon name="user" size={20} /><span className="grow">@{card.creator.handle} の動画を表示しない<span className="cap" style={{ display: "block" }}>設定 › 表示しない投稿者 から戻せます</span></span></button>
+        </div>
+      )}
+      {view === "speed" && (
+        <div className="seg" role="radiogroup" aria-label="動画速度">
+          {RATES.map((r) => <button key={r} role="radio" aria-checked={rate === r} className="num" onClick={() => onRate(r)}>{r === 1 ? "標準" : `${r}x`}</button>)}
+        </div>
+      )}
     </Sheet>
   );
 }
