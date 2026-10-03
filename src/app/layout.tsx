@@ -1,15 +1,21 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
+import { RegisterSW } from "@/components/RegisterSW";
 import { getThemePref, themeCss } from "@/lib/theme-server";
 
 export const metadata: Metadata = {
   title: { default: "Glow", template: "%s | Glow" },
   description: "大人のための、特別なショート動画プラットフォーム（18歳以上限定）",
   robots: { index: false, follow: false },
+  applicationName: "Glow",
+  appleWebApp: { capable: true, title: "Glow", statusBarStyle: "black-translucent" },
+  formatDetection: { telephone: false, email: false, address: false },
+  icons: { icon: [{ url: "/icons/icon.svg", type: "image/svg+xml" }, { url: "/icons/icon-192.png", sizes: "192x192" }], apple: "/icons/apple-touch-icon.png" },
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#090A0F" };
+// スマホ専用：ピンチで拡大はできるようにしつつ（アクセシビリティ）、入力欄のフォーカスで勝手に拡大しないよう文字は16px以上にしている
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#090A0F", colorScheme: "dark light", interactiveWidget: "resizes-content" };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const pref = await getThemePref();
@@ -24,6 +30,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body>
         <ToastProvider>{children}</ToastProvider>
+        <RegisterSW />
       </body>
     </html>
   );

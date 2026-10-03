@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { VideoCard } from "@/lib/content";
 import { Icon } from "../Icon";
 import { Avatar } from "../VideoBackdrop";
@@ -9,17 +9,26 @@ import { useToast } from "../Toast";
 import { api } from "./api";
 
 function Sheet({ title, onClose, children, sub }: { title: React.ReactNode; onClose: () => void; children: React.ReactNode; sub?: React.ReactNode }) {
+  const [dy, setDy] = useState(0);
+  const start = useRef<number | null>(null);
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, [onClose]);
+  // つまみ（上部）を下にスワイプして閉じる
+  const down = (e: React.PointerEvent) => { if ((e.target as HTMLElement).closest("button")) return; start.current = e.clientY; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); };
+  const move = (e: React.PointerEvent) => { if (start.current !== null) setDy(Math.max(0, e.clientY - start.current)); };
+  const up = () => { if (start.current === null) return; start.current = null; if (dy > 90) onClose(); else setDy(0); };
   return (
     <>
-      <div className="sheet-bg" onClick={onClose} />
-      <div className="sheet" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}>
-        <span className="grab" />
-        <div className="hd"><b style={{ fontSize: 20 }}>{title}</b><button className="iconbtn" style={{ marginRight: -8 }} onClick={onClose} aria-label="閉じる"><Icon name="x" size={22} /></button></div>
+      <div className="sheet-bg" onClick={onClose} style={{ opacity: Math.max(0.2, 1 - dy / 300) }} />
+      <div className="sheet" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}
+        style={dy ? { transform: `translate(-50%, ${dy}px)`, transition: "none" } : undefined}>
+        <div className="drag" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
+          <span className="grab" />
+          <div className="hd"><b style={{ fontSize: 20 }}>{title}</b><button className="iconbtn" style={{ marginRight: -8 }} onClick={onClose} aria-label="閉じる"><Icon name="x" size={22} /></button></div>
+        </div>
         {sub}
         {children}
       </div>

@@ -12,6 +12,7 @@ import { Avatar } from "@/components/VideoBackdrop";
 import { TabBar } from "@/components/TabBar";
 import { fmt } from "@/components/format";
 import { ResendVerify } from "./ResendVerify";
+import { InstallPrompt } from "@/components/InstallPrompt";
 
 export const metadata = { title: "マイページ" };
 
@@ -74,6 +75,7 @@ export default async function Me() {
           ))}
         </div>
         <ThemeCard name={themeName(pref.id)} mode={pref.mode} />
+        <InstallPrompt />
         <form action={logoutAction}><button className="btn btn-secondary" style={{ color: "var(--bad)" }}><Icon name="logout" size={20} />ログアウト</button></form>
       </div>
       <TabBar />

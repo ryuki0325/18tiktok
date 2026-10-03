@@ -102,22 +102,44 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
     return () => { window.removeEventListener("keydown", onKey); f?.removeEventListener("wheel", onWheel); };
   }, [sheet, step]);
 
-  // タップで停止/再生、長押しでUIを隠す
-  const press = useRef<{ t: ReturnType<typeof setTimeout> | null; long: boolean; moved: boolean }>({ t: null, long: false, moved: false });
+  // スマホの操作：タップ＝停止/再生、ダブルタップ＝いいね（ハート）、長押し＝UIを隠す、左スワイプ＝投稿者ページ
+  const press = useRef<{ t: ReturnType<typeof setTimeout> | null; long: boolean; x: number; y: number; at: number; lastTap: number; tapTimer: ReturnType<typeof setTimeout> | null }>(
+    { t: null, long: false, x: 0, y: 0, at: 0, lastTap: 0, tapTimer: null });
+  const [bursts, setBursts] = useState<{ key: number; id: string; x: number; y: number }[]>([]);
   const onDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest("a,button")) return;
-    press.current.moved = false; press.current.long = false;
-    press.current.t = setTimeout(() => { press.current.long = true; setUiHidden(true); }, 450);
+    const p = press.current;
+    p.long = false; p.x = e.clientX; p.y = e.clientY; p.at = e.timeStamp;
+    p.t = setTimeout(() => { p.long = true; setUiHidden(true); }, 450);
   };
-  const onUp = (id: string) => (e: React.PointerEvent) => {
-    if (press.current.t) clearTimeout(press.current.t);
-    if (press.current.long) { setUiHidden(false); return; }
-    if (!press.current.moved && !(e.target as HTMLElement).closest("a,button")) setPaused((p) => ({ ...p, [id]: !p[id] }));
+  const onUp = (c: VideoCard) => (e: React.PointerEvent) => {
+    const p = press.current;
+    if (p.t) clearTimeout(p.t);
+    if (p.long) { setUiHidden(false); return; }
+    if ((e.target as HTMLElement).closest("a,button")) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    if (dx < -70 && Math.abs(dy) < 50) { router.push(`/u/${encodeURIComponent(c.creator.handle)}`); return; }
+    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) return;
+    const now = e.timeStamp;
+    if (now - p.lastTap < 300) {
+      if (p.tapTimer) clearTimeout(p.tapTimer);
+      p.lastTap = 0;
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const key = now;
+      setBursts((b) => [...b, { key, id: c.id, x: e.clientX - rect.left, y: e.clientY - rect.top }]);
+      setTimeout(() => setBursts((b) => b.filter((x) => x.key !== key)), 750);
+      if (!c.liked) void like(c);
+      return;
+    }
+    p.lastTap = now;
+    p.tapTimer = setTimeout(() => setPaused((x) => ({ ...x, [c.id]: !x[c.id] })), 300);
   };
+  const onCancel = () => { const p = press.current; if (p.t) clearTimeout(p.t); if (p.long) setUiHidden(false); };
 
   const patch = (id: string, f: (c: VideoCard) => Partial<VideoCard>) => setCards((cs) => cs.map((c) => (c.id === id ? { ...c, ...f(c) } : c)));
 
   const like = async (c: VideoCard) => {
+    if (!c.liked) try { navigator.vibrate?.(12); } catch {}
     patch(c.id, (x) => ({ liked: !x.liked, likes: x.likes + (x.liked ? -1 : 1) }));
     const r = await api(`/api/v1/videos/${c.id}/like`, { method: c.liked ? "DELETE" : "PUT" });
     if (!r.ok) patch(c.id, (x) => ({ liked: !x.liked, likes: x.likes + (x.liked ? -1 : 1) }));
@@ -141,17 +163,18 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
   return (
     <div className={`vt${uiHidden ? " ui-hidden" : ""}`}>
       {cards.length ? (
-        <div className="feed" ref={feedRef} onPointerMove={() => (press.current.moved = true)}>
+        <div className="feed" ref={feedRef}>
           {cards.map((c, i) => {
             const near = Math.abs(i - active) <= WINDOW;
             if (!near) return <article key={c.id} className="item far" data-vid={c.id} aria-hidden="true" />;
             return (
-            <article key={c.id} className={`item${i === active ? " active" : ""}${paused[c.id] ? " paused" : ""}`} data-vid={c.id} onPointerDown={onDown} onPointerUp={onUp(c.id)} onPointerCancel={() => press.current.t && clearTimeout(press.current.t)}>
+            <article key={c.id} className={`item${i === active ? " active" : ""}${paused[c.id] ? " paused" : ""}`} data-vid={c.id} onPointerDown={onDown} onPointerUp={onUp(c)} onPointerCancel={onCancel} onContextMenu={(e) => e.preventDefault()}>
               {c.src
                 ? <video data-index={i} src={c.src} playsInline loop muted={muted} preload={i === active ? "auto" : "metadata"} disablePictureInPicture controlsList="nodownload noplaybackrate" onContextMenu={(e) => e.preventDefault()} />
                 : <VideoBackdrop hue={c.hue} live={i === active && !paused[c.id]} />}
               <div className="scrim" />
               <div className="center-ind"><Icon name="play" size={30} filled /></div>
+              {bursts.filter((x) => x.id === c.id).map((x) => <span key={x.key} className="burst" style={{ left: x.x, top: x.y }}><Icon name="heart" size={96} filled /></span>)}
               <div className="ov">
                 <div className="rail">
                   <span style={{ position: "relative" }}>

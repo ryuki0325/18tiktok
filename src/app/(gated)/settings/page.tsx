@@ -5,6 +5,7 @@ import { currentUser } from "@/lib/auth";
 import { logoutAction } from "@/lib/account-actions";
 import { Icon, type IconName } from "@/components/Icon";
 import { NavBar } from "@/components/NavBar";
+import { InstallPrompt } from "@/components/InstallPrompt";
 
 export const metadata = { title: "設定" };
 
@@ -21,6 +22,7 @@ export default async function Settings() {
     <div className="screen">
       <NavBar title="設定" back="/me" />
       <div className="sec" style={{ gap: 16, paddingBottom: 24 }}>
+        <InstallPrompt />
         <Link className="feature-card" href="/settings/theme">
           <span className="ic"><Icon name="palette" /></span>
           <span style={{ flex: 1 }}>
