@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
 import { RegisterSW } from "@/components/RegisterSW";
+import { ClientErrorReporter } from "@/components/ErrorScreen";
 import { getThemePref, themeCss } from "@/lib/theme-server";
 
 export const metadata: Metadata = {
@@ -31,6 +32,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body>
         <ToastProvider>{children}</ToastProvider>
         <RegisterSW />
+        <ClientErrorReporter />
       </body>
     </html>
   );
