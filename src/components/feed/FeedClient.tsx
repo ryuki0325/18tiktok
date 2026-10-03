@@ -9,6 +9,7 @@ import { fmt } from "../format";
 import { useToast } from "../Toast";
 import { api } from "./api";
 import { CommentSheet, MoreSheet, ReportSheet, ShareSheet } from "./Sheets";
+import { usePager } from "./usePager";
 
 type Sheet = { kind: "report" | "comment" | "share" | "more"; card: VideoCard } | null;
 const TABS = [["recommended", "おすすめ"], ["popular", "人気"], ["following", "フォロー中"]] as const;
@@ -16,15 +17,16 @@ const TABS = [["recommended", "おすすめ"], ["popular", "人気"], ["followin
 const noopSubscribe = () => () => {};
 const readMuted = () => { try { return localStorage.getItem("glow.muted") !== "0"; } catch { return true; } };
 
-/** 何本先まで描画するか（前後1本＝TikTok同様に次の動画を先読み、それ以外は空の箱だけ置く） */
+/** 描画するのは今の1本と前後1本だけ（次の動画を先読みしつつ、メモリと描画負荷を一定に保つ） */
 const WINDOW = 1;
 /** 残り何本になったら次を読み込むか */
 const PREFETCH_AT = 3;
+const DOUBLE_TAP_MS = 280;
 
 export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initialHasMore }: { cards: VideoCard[]; tab: string; loggedIn: boolean; myId: string | null; hasMore: boolean }) {
   const [cards, setCards] = useState(initial);
-  const [active, setActive] = useState(0);
   const [hasMore, setHasMore] = useState(initialHasMore);
+  const [loadingMore, setLoadingMore] = useState(false);
   const loading = useRef(false);
   const [sheet, setSheet] = useState<Sheet>(null);
   const storedMuted = useSyncExternalStore(noopSubscribe, readMuted, () => true);
@@ -32,118 +34,85 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
   const muted = mutedOverride ?? storedMuted;
   const [paused, setPaused] = useState<Record<string, boolean>>({});
   const [uiHidden, setUiHidden] = useState(false);
-  const feedRef = useRef<HTMLDivElement>(null);
+  const [bursts, setBursts] = useState<{ key: number; id: string; x: number; y: number }[]>([]);
+  const lastTap = useRef<{ t: number; x: number; y: number; timer: ReturnType<typeof setTimeout> | null }>({ t: 0, x: 0, y: 0, timer: null });
   const toast = useToast();
   const router = useRouter();
 
+  const patch = (id: string, f: (c: VideoCard) => Partial<VideoCard>) => setCards((cs) => cs.map((c) => (c.id === id ? { ...c, ...f(c) } : c)));
 
-  // 今どの動画が画面にあるか（スクロール位置から計算。rAFで間引き）
-  useEffect(() => {
-    const f = feedRef.current;
-    if (!f) return;
-    let raf = 0;
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => setActive(Math.round(f.scrollTop / Math.max(1, f.clientHeight))));
-    };
-    f.addEventListener("scroll", onScroll, { passive: true });
-    return () => { f.removeEventListener("scroll", onScroll); cancelAnimationFrame(raf); };
-  }, [cards.length]);
+  const like = useCallback(async (c: VideoCard) => {
+    if (!c.liked) try { navigator.vibrate?.(12); } catch {}
+    setCards((cs) => cs.map((x) => (x.id === c.id ? { ...x, liked: !x.liked, likes: x.likes + (x.liked ? -1 : 1) } : x)));
+    const r = await api(`/api/v1/videos/${c.id}/like`, { method: c.liked ? "DELETE" : "PUT" });
+    if (!r.ok) setCards((cs) => cs.map((x) => (x.id === c.id ? { ...x, liked: c.liked, likes: c.likes } : x)));
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const r = await api<{ videos: VideoCard[]; nextOffset: number | null }>(`/api/v1/feed?tab=${tab}&offset=0`);
+    if (r.ok) { setCards(r.data.videos); setHasMore(r.data.nextOffset !== null); setPaused({}); toast("新しい動画を読み込みました"); }
+  }, [tab, toast]);
+
+  const cardsRef = useRef(cards);
+  useEffect(() => { cardsRef.current = cards; }, [cards]);
+
+  const { viewportRef, trackRef, pullRef, index, refreshing } = usePager(cards.length, {
+    onTap: (x, y, i) => {
+      const c = cardsRef.current[i];
+      if (!c) return;
+      const lt = lastTap.current;
+      const now = performance.now();
+      if (now - lt.t < DOUBLE_TAP_MS && Math.hypot(x - lt.x, y - lt.y) < 48) {
+        // ダブルタップ：その場所にハート、まだならいいね
+        if (lt.timer) clearTimeout(lt.timer);
+        lt.t = 0;
+        const key = now;
+        setBursts((b) => [...b, { key, id: c.id, x, y }]);
+        setTimeout(() => setBursts((b) => b.filter((z) => z.key !== key)), 750);
+        if (!c.liked) void like(c);
+        return;
+      }
+      lt.t = now; lt.x = x; lt.y = y;
+      lt.timer = setTimeout(() => setPaused((p) => ({ ...p, [c.id]: !p[c.id] })), DOUBLE_TAP_MS);
+    },
+    onLongPress: (down) => setUiHidden(down),
+    onSwipeLeft: (i) => { const c = cardsRef.current[i]; if (c) router.push(`/u/${encodeURIComponent(c.creator.handle)}`); },
+    onRefresh: refresh,
+  }, { disabled: !!sheet });
 
   // 残りが少なくなったら次のページを先に読み込む（無限スクロール）
   useEffect(() => {
-    if (!hasMore || loading.current || cards.length - active > PREFETCH_AT) return;
+    if (!hasMore || loading.current || cards.length - index > PREFETCH_AT) return;
     loading.current = true;
+    setLoadingMore(true);
     api<{ videos: VideoCard[]; nextOffset: number | null }>(`/api/v1/feed?tab=${tab}&offset=${cards.length}`).then((r) => {
       loading.current = false;
+      setLoadingMore(false);
       if (!r.ok) return;
       setCards((cs) => { const seen = new Set(cs.map((c) => c.id)); return [...cs, ...r.data.videos.filter((v) => !seen.has(v.id))]; });
       setHasMore(r.data.nextOffset !== null);
     });
-  }, [active, cards.length, hasMore, tab]);
+  }, [index, cards.length, hasMore, tab]);
 
-  // 動画がある場合：表示中の1本だけ再生し、ほかは止める（次の1本は preload 済み）
+  // 動画がある場合：表示中の1本だけ再生し、ほかは止める（前後は preload 済み）
   useEffect(() => {
-    feedRef.current?.querySelectorAll<HTMLVideoElement>("video").forEach((v) => {
+    trackRef.current?.querySelectorAll<HTMLVideoElement>("video").forEach((v) => {
       const i = Number(v.dataset.index);
-      if (i === active && !paused[cards[i]?.id]) void v.play().catch(() => {});
-      else v.pause();
+      if (i === index && !paused[cards[i]?.id]) void v.play().catch(() => {});
+      else { v.pause(); if (i !== index) v.currentTime = 0; }
       v.muted = muted;
     });
-  }, [active, paused, muted, cards]);
+  }, [index, paused, muted, cards, trackRef]);
 
   // 2秒以上表示されたら再生として記録（サーバー側で重複・bot・本人を除外）
   const viewed = useRef(new Set<string>());
   useEffect(() => {
-    const c = cards[active];
+    const c = cards[index];
     if (!c || viewed.current.has(c.id)) return;
     const t = setTimeout(() => { viewed.current.add(c.id); void api(`/api/v1/videos/${c.id}/view`, { method: "POST", body: {} }); }, 2000);
     return () => clearTimeout(t);
-  }, [active, cards]);
+  }, [index, cards]);
 
-  const step = useCallback((d: number) => {
-    const f = feedRef.current;
-    if (!f) return;
-    const i = Math.max(0, Math.min(f.children.length - 1, Math.round(f.scrollTop / f.clientHeight) + d));
-    f.scrollTo({ top: i * f.clientHeight, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-  }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (sheet || /INPUT|TEXTAREA|SELECT/.test((document.activeElement?.tagName ?? ""))) return;
-      if (e.key === "ArrowDown" || e.key === "j") { e.preventDefault(); step(1); }
-      if (e.key === "ArrowUp" || e.key === "k") { e.preventDefault(); step(-1); }
-    };
-    window.addEventListener("keydown", onKey);
-    const f = feedRef.current;
-    let lock = false;
-    const onWheel = (e: WheelEvent) => { e.preventDefault(); if (lock || Math.abs(e.deltaY) < 8) return; lock = true; step(e.deltaY > 0 ? 1 : -1); setTimeout(() => (lock = false), 550); };
-    f?.addEventListener("wheel", onWheel, { passive: false });
-    return () => { window.removeEventListener("keydown", onKey); f?.removeEventListener("wheel", onWheel); };
-  }, [sheet, step]);
-
-  // スマホの操作：タップ＝停止/再生、ダブルタップ＝いいね（ハート）、長押し＝UIを隠す、左スワイプ＝投稿者ページ
-  const press = useRef<{ t: ReturnType<typeof setTimeout> | null; long: boolean; x: number; y: number; at: number; lastTap: number; tapTimer: ReturnType<typeof setTimeout> | null }>(
-    { t: null, long: false, x: 0, y: 0, at: 0, lastTap: 0, tapTimer: null });
-  const [bursts, setBursts] = useState<{ key: number; id: string; x: number; y: number }[]>([]);
-  const onDown = (e: React.PointerEvent) => {
-    if ((e.target as HTMLElement).closest("a,button")) return;
-    const p = press.current;
-    p.long = false; p.x = e.clientX; p.y = e.clientY; p.at = e.timeStamp;
-    p.t = setTimeout(() => { p.long = true; setUiHidden(true); }, 450);
-  };
-  const onUp = (c: VideoCard) => (e: React.PointerEvent) => {
-    const p = press.current;
-    if (p.t) clearTimeout(p.t);
-    if (p.long) { setUiHidden(false); return; }
-    if ((e.target as HTMLElement).closest("a,button")) return;
-    const dx = e.clientX - p.x, dy = e.clientY - p.y;
-    if (dx < -70 && Math.abs(dy) < 50) { router.push(`/u/${encodeURIComponent(c.creator.handle)}`); return; }
-    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) return;
-    const now = e.timeStamp;
-    if (now - p.lastTap < 300) {
-      if (p.tapTimer) clearTimeout(p.tapTimer);
-      p.lastTap = 0;
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      const key = now;
-      setBursts((b) => [...b, { key, id: c.id, x: e.clientX - rect.left, y: e.clientY - rect.top }]);
-      setTimeout(() => setBursts((b) => b.filter((x) => x.key !== key)), 750);
-      if (!c.liked) void like(c);
-      return;
-    }
-    p.lastTap = now;
-    p.tapTimer = setTimeout(() => setPaused((x) => ({ ...x, [c.id]: !x[c.id] })), 300);
-  };
-  const onCancel = () => { const p = press.current; if (p.t) clearTimeout(p.t); if (p.long) setUiHidden(false); };
-
-  const patch = (id: string, f: (c: VideoCard) => Partial<VideoCard>) => setCards((cs) => cs.map((c) => (c.id === id ? { ...c, ...f(c) } : c)));
-
-  const like = async (c: VideoCard) => {
-    if (!c.liked) try { navigator.vibrate?.(12); } catch {}
-    patch(c.id, (x) => ({ liked: !x.liked, likes: x.likes + (x.liked ? -1 : 1) }));
-    const r = await api(`/api/v1/videos/${c.id}/like`, { method: c.liked ? "DELETE" : "PUT" });
-    if (!r.ok) patch(c.id, (x) => ({ liked: !x.liked, likes: x.likes + (x.liked ? -1 : 1) }));
-  };
   const save = async (c: VideoCard) => {
     patch(c.id, (x) => ({ saved: !x.saved }));
     const r = await api(`/api/v1/videos/${c.id}/favorite`, { method: c.saved ? "DELETE" : "PUT" });
@@ -158,56 +127,67 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
     const r = await api(`/api/v1/creators/${c.creator.id}/follow`, { method: on ? "PUT" : "DELETE" });
     if (r.ok) toast(on ? `@${c.creator.handle} をフォローしました` : "フォローを解除しました");
   };
+  const block = async (c: VideoCard) => {
+    setSheet(null);
+    setCards((cs) => cs.filter((x) => x.creator.id !== c.creator.id));
+    const r = await api(`/api/v1/me/blocks/${c.creator.id}`, { method: "PUT" });
+    toast(r.ok ? `@${c.creator.handle} の動画を表示しません（設定から戻せます）` : "設定できませんでした");
+  };
   const toggleMute = () => { const m = !muted; setMuted(m); try { localStorage.setItem("glow.muted", m ? "1" : "0"); } catch {} toast(m ? "音をオフにしました" : "音をオンにしました（設定を記憶します）"); };
 
   return (
     <div className={`vt${uiHidden ? " ui-hidden" : ""}`}>
       {cards.length ? (
-        <div className="feed" ref={feedRef}>
-          {cards.map((c, i) => {
-            const near = Math.abs(i - active) <= WINDOW;
-            if (!near) return <article key={c.id} className="item far" data-vid={c.id} aria-hidden="true" />;
-            return (
-            <article key={c.id} className={`item${i === active ? " active" : ""}${paused[c.id] ? " paused" : ""}`} data-vid={c.id} onPointerDown={onDown} onPointerUp={onUp(c)} onPointerCancel={onCancel} onContextMenu={(e) => e.preventDefault()}>
-              {c.src
-                ? <video data-index={i} src={c.src} playsInline loop muted={muted} preload={i === active ? "auto" : "metadata"} disablePictureInPicture controlsList="nodownload noplaybackrate" onContextMenu={(e) => e.preventDefault()} />
-                : <VideoBackdrop hue={c.hue} live={i === active && !paused[c.id]} />}
-              <div className="scrim" />
-              <div className="center-ind"><Icon name="play" size={30} filled /></div>
-              {bursts.filter((x) => x.id === c.id).map((x) => <span key={x.key} className="burst" style={{ left: x.x, top: x.y }}><Icon name="heart" size={96} filled /></span>)}
-              <div className="ov">
-                <div className="rail">
-                  <span style={{ position: "relative" }}>
-                    <Link href={`/u/${encodeURIComponent(c.creator.handle)}`} aria-label={`@${c.creator.handle} のページ`} className="av" style={{ background: `linear-gradient(135deg, hsl(${c.creator.avatarHue} 55% 55%), hsl(${(c.creator.avatarHue + 40) % 360} 60% 35%))` }} />
-                    {c.creator.id !== myId && (
-                      <button className={`f${c.following ? " done" : ""}`} onClick={() => follow(c)} aria-label={c.following ? "フォロー中" : "フォローする"} aria-pressed={c.following}
-                        style={{ position: "absolute", left: "50%", bottom: 1, transform: "translateX(-50%)", width: 20, height: 20, borderRadius: "50%", display: "grid", placeItems: "center", background: c.following ? "#fff" : "var(--fill)", color: c.following ? "#111" : "var(--on)" }}>
-                        <Icon name={c.following ? "check" : "plus"} size={13} stroke={2.6} />
-                      </button>
+        <div className="pager" ref={viewportRef} aria-roledescription="縦スワイプで動画を切り替え">
+          <div className="pull" ref={pullRef} aria-hidden="true"><span className={`spinner${refreshing ? " spin" : ""}`} /></div>
+          <div className="track" ref={trackRef}>
+            {cards.map((c, i) => {
+              if (Math.abs(i - index) > WINDOW) return null;
+              const active = i === index;
+              return (
+                <article key={c.id} className={`item${active ? " active" : ""}${paused[c.id] ? " paused" : ""}`} data-vid={c.id} style={{ top: `${i * 100}%` }}
+                  aria-hidden={!active} onContextMenu={(e) => e.preventDefault()}>
+                  {c.src
+                    ? <video data-index={i} src={c.src} playsInline loop muted={muted} preload="auto" disablePictureInPicture controlsList="nodownload noplaybackrate" />
+                    : <VideoBackdrop hue={c.hue} live={active && !paused[c.id]} />}
+                  <div className="scrim" />
+                  <div className="center-ind"><Icon name="play" size={30} filled /></div>
+                  {bursts.filter((x) => x.id === c.id).map((x) => <span key={x.key} className="burst" style={{ left: x.x, top: x.y }}><Icon name="heart" size={96} filled /></span>)}
+                  <div className="ov">
+                    <div className="rail">
+                      <span style={{ position: "relative" }}>
+                        <Link href={`/u/${encodeURIComponent(c.creator.handle)}`} aria-label={`@${c.creator.handle} のページ`} className="av" style={{ background: `linear-gradient(135deg, hsl(${c.creator.avatarHue} 55% 55%), hsl(${(c.creator.avatarHue + 40) % 360} 60% 35%))` }} />
+                        {c.creator.id !== myId && (
+                          <button className={`f${c.following ? " done" : ""}`} onClick={() => follow(c)} aria-label={c.following ? "フォロー中" : "フォローする"} aria-pressed={c.following}
+                            style={{ position: "absolute", left: "50%", bottom: 1, transform: "translateX(-50%)", width: 20, height: 20, borderRadius: "50%", display: "grid", placeItems: "center", background: c.following ? "#fff" : "var(--fill)", color: c.following ? "#111" : "var(--on)" }}>
+                            <Icon name={c.following ? "check" : "plus"} size={13} stroke={2.6} />
+                          </button>
+                        )}
+                      </span>
+                      <button className={c.liked ? "on" : ""} aria-pressed={c.liked} aria-label="いいね" onClick={() => like(c)}><span className="hit"><Icon name="heart" size={30} filled={c.liked} /></span><span className="num">{fmt(c.likes)}</span></button>
+                      <button aria-label="コメント" onClick={() => setSheet({ kind: "comment", card: c })}><span className="hit"><Icon name="msg" size={28} /></span><span className="num">{fmt(c.comments)}</span></button>
+                      <button className={c.saved ? "on" : ""} aria-pressed={c.saved} aria-label="保存" onClick={() => save(c)}><span className="hit"><Icon name="bookmark" size={28} filled={c.saved} /></span><span>保存</span></button>
+                      <button aria-label="シェア" onClick={() => setSheet({ kind: "share", card: c })}><span className="hit"><Icon name="send" size={27} /></span><span>シェア</span></button>
+                      <button aria-label="通報" onClick={() => setSheet({ kind: "report", card: c })}><span className="hit"><Icon name="flag" size={27} /></span><span>通報</span></button>
+                      <button aria-label="その他" onClick={() => setSheet({ kind: "more", card: c })}><span className="hit"><Icon name="more" size={28} /></span></button>
+                    </div>
+                    <div className="vinfo">
+                      <Link className="h" href={`/u/${encodeURIComponent(c.creator.handle)}`}>@{c.creator.handle}</Link>
+                      <p>{c.description || c.title}</p>
+                      <div className="tags">{c.tags.slice(0, 3).map((t) => <Link key={t} href={`/tags/${encodeURIComponent(t)}`}>#{t}</Link>)}</div>
+                    </div>
+                    {c.link && (
+                      <div className="ctawrap">
+                        <Link className="cta" href={`/out/${c.link.id}`}>本編を見る <Icon name="arrowR" size={20} stroke={2.2} /><span className="pr">PR</span></Link>
+                      </div>
                     )}
-                  </span>
-                  <button className={c.liked ? "on" : ""} aria-pressed={c.liked} aria-label="いいね" onClick={() => like(c)}><span className="hit"><Icon name="heart" size={30} filled={c.liked} /></span><span className="num">{fmt(c.likes)}</span></button>
-                  <button aria-label="コメント" onClick={() => setSheet({ kind: "comment", card: c })}><span className="hit"><Icon name="msg" size={28} /></span><span className="num">{fmt(c.comments)}</span></button>
-                  <button className={c.saved ? "on" : ""} aria-pressed={c.saved} aria-label="保存" onClick={() => save(c)}><span className="hit"><Icon name="bookmark" size={28} filled={c.saved} /></span><span>保存</span></button>
-                  <button aria-label="シェア" onClick={() => setSheet({ kind: "share", card: c })}><span className="hit"><Icon name="send" size={27} /></span><span>シェア</span></button>
-                  <button aria-label="通報" onClick={() => setSheet({ kind: "report", card: c })}><span className="hit"><Icon name="flag" size={27} /></span><span>通報</span></button>
-                  <button aria-label="その他" onClick={() => setSheet({ kind: "more", card: c })}><span className="hit"><Icon name="more" size={28} /></span></button>
-                </div>
-                <div className="vinfo">
-                  <Link className="h" href={`/u/${encodeURIComponent(c.creator.handle)}`}>@{c.creator.handle}</Link>
-                  <p>{c.description || c.title}</p>
-                  <div className="tags">{c.tags.slice(0, 3).map((t) => <Link key={t} href={`/tags/${encodeURIComponent(t)}`}>#{t}</Link>)}</div>
-                </div>
-                {c.link && (
-                  <div className="ctawrap">
-                    <Link className="cta" href={`/out/${c.link.id}`}>本編を見る <Icon name="arrowR" size={20} stroke={2.2} /><span className="pr">PR</span></Link>
                   </div>
-                )}
-              </div>
-              <div className="progress"><i /></div>
-            </article>
-            );
-          })}
+                  <div className="progress"><i /></div>
+                </article>
+              );
+            })}
+            {loadingMore && <div className="feed-end" style={{ top: `${cards.length * 100}%` }}><span className="spinner spin" /></div>}
+          </div>
         </div>
       ) : (
         <div className="empty-feed" style={{ background: "#07070B" }}>
@@ -228,7 +208,7 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
       {sheet?.kind === "report" && <ReportSheet card={sheet.card} onClose={(hidden) => { setSheet(null); if (hidden) setCards((cs) => cs.filter((x) => x.id !== sheet.card.id)); }} />}
       {sheet?.kind === "comment" && <CommentSheet card={sheet.card} loggedIn={loggedIn} onClose={() => setSheet(null)} onPosted={() => patch(sheet.card.id, (x) => ({ comments: x.comments + 1 }))} />}
       {sheet?.kind === "share" && <ShareSheet card={sheet.card} onClose={() => setSheet(null)} />}
-      {sheet?.kind === "more" && <MoreSheet card={sheet.card} onClose={() => setSheet(null)} onReport={() => setSheet({ kind: "report", card: sheet.card })} onHide={() => { setCards((cs) => cs.filter((x) => x.creator.id !== sheet.card.creator.id)); setSheet(null); toast(`@${sheet.card.creator.handle} の動画を表示しません`); }} />}
+      {sheet?.kind === "more" && <MoreSheet card={sheet.card} onClose={() => setSheet(null)} onReport={() => setSheet({ kind: "report", card: sheet.card })} onHide={() => block(sheet.card)} />}
     </div>
   );
 }

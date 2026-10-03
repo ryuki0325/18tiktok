@@ -7,7 +7,7 @@ export function AdminNav({ counts }: { counts: Record<string, number> }) {
   const items: [string, string, number?][] = [
     ["/admin", "ダッシュボード"], ["/admin/reviews", "動画審査", counts.reviews], ["/admin/reports", "通報", counts.reports],
     ["/admin/creators", "投稿者", counts.creators], ["/admin/comments", "コメント", counts.comments], ["/admin/domains", "許可ドメイン", counts.links],
-    ["/admin/takedowns", "削除請求", counts.takedowns], ["/admin/settings", "設定"], ["/admin/audit", "監査ログ"],
+    ["/admin/takedowns", "削除請求", counts.takedowns], ["/admin/featured", "特集枠"], ["/admin/admins", "管理者"], ["/admin/settings", "設定"], ["/admin/audit", "監査ログ"],
   ];
   return (
     <nav style={{ display: "contents" }}>

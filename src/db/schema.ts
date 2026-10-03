@@ -16,7 +16,7 @@ export const users = pgTable("users", {
   handle: text().notNull(),
   displayName: text().notNull(),
   role: text().$type<Role>().notNull().default("user"),
-  status: text().$type<"active" | "suspended" | "banned">().notNull().default("active"),
+  status: text().$type<"active" | "suspended" | "banned" | "deleted">().notNull().default("active"),
   emailVerifiedAt: ts(),
   totpSecret: text(),
   totpEnabled: boolean().notNull().default(false),
@@ -35,7 +35,7 @@ export const sessions = pgTable("sessions", {
 export const emailTokens = pgTable("email_tokens", {
   id: text().primaryKey(),
   userId: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
-  purpose: text().$type<"verify">().notNull(),
+  purpose: text().$type<"verify" | "reset">().notNull(),
   expiresAt: timestamp({ withTimezone: true }).notNull(),
 });
 
@@ -155,6 +155,13 @@ export const favorites = pgTable("favorites", {
   createdAt: now(),
 }, (t) => [primaryKey({ columns: [t.viewerKey, t.videoId] })]);
 
+/** 「この投稿者を表示しない」（ブロックリスト）。未ログインは端末ごと、ログイン中はアカウントごと */
+export const blocks = pgTable("blocks", {
+  viewerKey: text().notNull(),
+  creatorId: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: now(),
+}, (t) => [primaryKey({ columns: [t.viewerKey, t.creatorId] })]);
+
 export const follows = pgTable("follows", {
   followerId: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
   creatorId: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -230,7 +237,10 @@ export const outboundLinks = pgTable("outbound_links", {
   videoId: uuid().notNull().references(() => videos.id, { onDelete: "cascade" }),
   url: text().notNull(),
   domain: text().notNull(),
-  status: text().$type<"active" | "pending_domain_review" | "rejected" | "disabled_domain_removed" | "disabled_by_admin">().notNull(),
+  status: text().$type<"active" | "pending_domain_review" | "rejected" | "disabled_domain_removed" | "disabled_by_admin" | "disabled_healthcheck">().notNull(),
+  lastCheckedAt: ts(),
+  lastCheckStatus: text(),
+  checkFailures: integer().notNull().default(0),
   createdAt: now(),
 }, (t) => [uniqueIndex("outbound_links_video_uq").on(t.videoId)]);
 
@@ -256,6 +266,18 @@ export const adminAuditLogs = pgTable("admin_audit_logs", {
   createdAt: now(),
   prevHash: text().notNull(),
   rowHash: text().notNull(),
+});
+
+/** 運営が手動で選ぶ特集枠（探す画面の上部） */
+export const featuredSlots = pgTable("featured_slots", {
+  id: serial().primaryKey(),
+  videoId: uuid().notNull().references(() => videos.id, { onDelete: "cascade" }),
+  title: text().notNull().default(""),
+  position: integer().notNull().default(0),
+  startsAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  endsAt: ts(),
+  createdBy: uuid(),
+  createdAt: now(),
 });
 
 export const siteSettings = pgTable("site_settings", {

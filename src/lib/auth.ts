@@ -29,7 +29,7 @@ export const currentUser = cache(async (): Promise<CurrentUser | null> => {
     .innerJoin(users, eq(users.id, sessions.userId))
     .leftJoin(creatorProfiles, eq(creatorProfiles.userId, users.id))
     .where(and(eq(sessions.id, sha256(token)), gt(sessions.expiresAt, new Date())));
-  if (!row || row.u.status === "banned") return null;
+  if (!row || row.u.status === "banned" || row.u.status === "deleted") return null;
   return { ...row.u, mfaVerified: row.s.mfaVerified, creatorStatus: row.c ?? null };
 });
 
@@ -74,7 +74,7 @@ export async function authenticate(emailRaw: string, password: string) {
   // 存在しない場合も同じ時間をかける（ユーザー列挙対策）
   const ok = u ? await verifyPassword(password, u.passwordHash) : (await hashPassword(password), false);
   if (!u || !ok) return null;
-  if (u.status === "banned") return null;
+  if (u.status === "banned" || u.status === "deleted") return null;
   return u;
 }
 

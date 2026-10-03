@@ -112,10 +112,16 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
 .scrim { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(0,0,0,.45) 0%, transparent 16%, transparent 52%, rgba(0,0,0,.72) 86%, rgba(0,0,0,.82) 100%); }
 
 /* ---- フィード ---- */
-.feed { position: fixed; inset: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 430px; overflow-y: scroll; scroll-snap-type: y mandatory; scrollbar-width: none; overscroll-behavior: contain; background: #07070B; }
-.feed::-webkit-scrollbar { display: none; }
-.item { touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; position: relative; height: 100dvh; scroll-snap-align: start; scroll-snap-stop: always; overflow: hidden; background: #07070B; contain: layout paint; }
-.item.far .ov, .item.far .scrim, .item.far .progress { display: none; }
+/* 縦スワイプのページャー：ブラウザのスクロールを使わず transform で動かす（usePager） */
+.pager { position: fixed; top: 0; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 430px; overflow: hidden; background: #07070B;
+  touch-action: none; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; contain: strict; }
+.track { position: absolute; inset: 0; will-change: transform; transform: translate3d(0,0,0); backface-visibility: hidden; }
+.item { position: absolute; left: 0; right: 0; height: 100%; overflow: hidden; background: #07070B; contain: layout paint; backface-visibility: hidden; }
+.pull { position: absolute; top: 0; left: 50%; z-index: 30; width: 36px; height: 36px; margin-top: calc(env(safe-area-inset-top, 0px) + 56px); border-radius: 50%; background: rgba(0,0,0,.45); display: grid; place-items: center; opacity: 0; transform: translate3d(-50%, -40px, 0); pointer-events: none; }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,.25); border-top-color: #fff; display: block; }
+.spinner.spin { animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.feed-end { position: absolute; left: 0; right: 0; height: 120px; margin-top: -120px; display: grid; place-items: center; }
 .ov { position: absolute; inset: 0; color: #fff; transition: opacity .2s; }
 .ui-hidden .ov, .ui-hidden .feedtop { opacity: 0; }
 .feedtop { position: fixed; top: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 430px; z-index: 25; height: calc(52px + env(safe-area-inset-top, 0px)); padding-top: env(safe-area-inset-top, 0px); box-sizing: border-box; display: flex; align-items: center; justify-content: center; color: #fff; transition: opacity .2s; background: linear-gradient(180deg, rgba(0,0,0,.35), transparent); }
@@ -176,6 +182,11 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
 .domain { margin: 8px 0 18px; padding: 12px 18px; border-radius: var(--r-sm); background: var(--surface); font: 600 16px "Inter"; width: 100%; box-sizing: border-box; word-break: break-all; }
 
 /* ---- 一覧・サムネ ---- */
+.hscroll { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+.hscroll::-webkit-scrollbar { display: none; }
+.hscroll > * { scroll-snap-align: start; flex-shrink: 0; }
+.feat { width: 86%; height: 150px; }
+.hscroll > .feat:only-child { width: 100%; }
 .thumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
 .thumb { aspect-ratio: 9/14; position: relative; overflow: hidden; border-radius: 6px; background: #0b0b10; display: block; }
 .thumb .meta { position: absolute; left: 6px; bottom: 5px; font: 600 11px "Inter"; color: #fff; display: flex; align-items: center; gap: 3px; text-shadow: 0 1px 2px #000; }
@@ -276,3 +287,9 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
 }
 
 @media (prefers-reduced-motion: reduce) { .vid i, .progress i { animation: none; } .sheet, .sheet-bg, .burst { animation: none; } }
+
+/* ---- 読み込み中 ---- */
+.sk { display: block; border-radius: 8px; background: linear-gradient(90deg, var(--surface) 0%, var(--surface-2) 40%, var(--surface) 80%); background-size: 200% 100%; animation: sk 1.2s ease-in-out infinite; }
+.sk-video { position: absolute; inset: 0; background: radial-gradient(70% 50% at 50% 40%, #1a1424, #050508); }
+@keyframes sk { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; } }

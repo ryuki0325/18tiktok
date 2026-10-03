@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { emailTokens, favorites, likes, userPreferences, users } from "@/db/schema";
+import { blocks, emailTokens, favorites, likes, userPreferences, users } from "@/db/schema";
+import { absoluteUrl, sendMail } from "./mail";
 import { authenticate, createSession, currentUser, destroySession, DEVICE_COOKIE, isAdminRole, registerUser } from "./auth";
 import { randomToken, sha256 } from "./crypto";
 import { clientIpHash, rateLimit } from "./http";
@@ -25,6 +26,8 @@ async function afterLogin(userId: string) {
     const d = `d:${vk}`, u = `u:${userId}`;
     await conn.execute(sql`insert into favorites (viewer_key, video_id, created_at) select ${u}, video_id, created_at from favorites where viewer_key = ${d} on conflict do nothing`);
     await conn.execute(sql`insert into likes (viewer_key, video_id, created_at) select ${u}, video_id, created_at from likes where viewer_key = ${d} on conflict do nothing`);
+    await conn.execute(sql`insert into blocks (viewer_key, creator_id, created_at) select ${u}, creator_id, created_at from blocks where viewer_key = ${d} on conflict do nothing`);
+    await conn.delete(blocks).where(eq(blocks.viewerKey, d));
     await conn.delete(favorites).where(eq(favorites.viewerKey, d));
     await conn.delete(likes).where(eq(likes.viewerKey, d));
   }
@@ -44,9 +47,10 @@ async function issueVerifyLink(userId: string) {
   const token = randomToken(24);
   await (await db()).insert(emailTokens).values({ id: sha256(token), userId, purpose: "verify", expiresAt: new Date(Date.now() + 24 * 3600_000) });
   const link = `/verify-email?token=${token}`;
-  // メール送信サービスは未接続（MAIL_PROVIDER 未設定）。その間は画面とサーバーログに確認リンクを表示する
-  console.info(`[glow] メール確認リンク: ${link}`);
-  return link;
+  const [u] = await (await db()).select({ email: users.email }).from(users).where(eq(users.id, userId));
+  const { delivered } = await sendMail({ to: u.email, subject: "【Glow】メールアドレスの確認", text: `次のリンクを開いて、メールアドレスの確認を完了してください（24時間有効）。\n${await absoluteUrl(link)}\n\n心当たりがない場合は、このメールを破棄してください。` });
+  // メールが送れない間は、登録した本人の画面に確認リンクを表示する（登録直後・ログイン中の本人だけが見る画面）
+  return delivered ? null : link;
 }
 
 const Signup = z.object({
@@ -66,7 +70,7 @@ export async function signupAction(_: FormState, form: FormData): Promise<FormSt
   await createSession(r.user.id, false);
   await afterLogin(r.user.id);
   const link = await issueVerifyLink(r.user.id);
-  return { info: "登録しました。メールアドレスの確認をお願いします。", devLink: process.env.MAIL_PROVIDER ? undefined : link };
+  return { info: "登録しました。メールアドレスの確認をお願いします。", devLink: link ?? undefined };
 }
 
 export async function loginAction(_: FormState, form: FormData): Promise<FormState> {
@@ -90,7 +94,7 @@ export async function resendVerifyAction(): Promise<FormState> {
   if (!u) redirect("/login");
   if (!(await rateLimit(`verify:${u.id}`, 3, 3600))) return { error: "しばらくしてからお試しください" };
   const link = await issueVerifyLink(u.id);
-  return { info: "確認メールを送りました。", devLink: process.env.MAIL_PROVIDER ? undefined : link };
+  return { info: "確認メールを送りました。", devLink: link ?? undefined };
 }
 
 export async function verifyEmailToken(token: string) {

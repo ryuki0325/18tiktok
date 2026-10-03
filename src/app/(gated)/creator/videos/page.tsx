@@ -13,7 +13,7 @@ import { VIDEO_STATUS_LABEL as STATUS } from "@/components/status";
 export const metadata = { title: "自分の投稿" };
 
 
-export default async function MyVideos({ searchParams }: { searchParams: Promise<{ submitted?: string; linkPending?: string }> }) {
+export default async function MyVideos({ searchParams }: { searchParams: Promise<{ submitted?: string; linkPending?: string; edited?: string; rereview?: string }> }) {
   const u = await requireUser("/creator/videos");
   const sp = await searchParams;
   const rows = await (await db()).select({ v: videos, link: outboundLinks.status }).from(videos).leftJoin(outboundLinks, eq(outboundLinks.videoId, videos.id))
@@ -22,6 +22,7 @@ export default async function MyVideos({ searchParams }: { searchParams: Promise
     <div className="screen">
       <NavBar title="自分の投稿" back="/me" right={<Link className="iconbtn" href="/creator/new" aria-label="投稿する"><Icon name="plus" /></Link>} />
       <div className="sec" style={{ gap: 12, paddingBottom: 24 }}>
+        {sp.edited && <div className="notice info" role="status"><Icon name="check" size={18} /><span>保存しました。{sp.rereview && "外部リンクを変更したため、再審査が終わるまで非公開になります。"}</span></div>}
         {sp.submitted && <div className="notice info" role="status"><Icon name="check" size={18} /><span>審査に提出しました。結果は「お知らせ」でお届けします。{sp.linkPending && "外部リンクは、ドメインの審査が通るまで表示されません。"}</span></div>}
         {rows.length === 0 ? <p className="cap" style={{ textAlign: "center", padding: 40 }}>まだ投稿はありません。</p> : (
           <div className="list">
@@ -39,6 +40,7 @@ export default async function MyVideos({ searchParams }: { searchParams: Promise
                       {v.status === "published" && <button className="btn btn-sm btn-secondary" name="op" value="hide">非公開にする</button>}
                       {v.status === "hidden_by_creator" && <button className="btn btn-sm btn-secondary" name="op" value="show">公開に戻す</button>}
                       {v.status === "published" && <button className="btn btn-sm btn-secondary" name="op" value="comments">{v.commentsEnabled ? "コメントをオフ" : "コメントをオン"}</button>}
+                      <Link className="btn btn-sm btn-secondary" href={`/creator/videos/${v.id}/edit`}>編集</Link>
                       <button className="btn btn-sm btn-danger" name="op" value="delete">削除</button>
                     </form>
                   </div>

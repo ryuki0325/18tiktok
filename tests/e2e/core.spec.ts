@@ -66,8 +66,11 @@ test.describe("外部リンク", () => {
   test("本編を見る → 確認画面（移動先ドメインとPR表記）→ クリックが記録されURLが返る", async ({ page }) => {
     await passGate(page);
     await page.goto("/");
-    const cta = page.locator(".item.active a.cta");
-    if (!(await cta.count())) await page.keyboard.press("ArrowDown");
+    // 外部リンクのある動画までめくる
+    for (let i = 0; i < 6 && !(await page.locator(".item.active a.cta").count()); i++) {
+      await page.keyboard.press("ArrowDown");
+      await page.waitForTimeout(600);
+    }
     await page.locator(".item.active a.cta").first().click();
     await expect(page).toHaveURL(/\/out\//);
     await expect(page.locator(".domain")).toHaveText(/example/);

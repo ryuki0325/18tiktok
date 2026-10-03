@@ -138,3 +138,39 @@ describe("最初の分岐（ジャンル）", () => {
     expect(new Set(all.map((v) => v.category)).size).toBeGreaterThan(1);
   });
 });
+
+describe("ブロックリスト", () => {
+  it("表示しないにした投稿者の動画は、フィードにもタグ一覧にも出ない", async () => {
+    setDbForTest(Promise.resolve(db));
+    const before = await feed("recommended", { viewerKey: "d:blocker", audience: "all" }, 50);
+    const target = before[0].creator.id;
+    await db.insert(s.blocks).values({ viewerKey: "d:blocker", creatorId: target });
+    const after = await feed("recommended", { viewerKey: "d:blocker", audience: "all" }, 50);
+    expect(after.some((v) => v.creator.id === target)).toBe(false);
+    const other = await feed("recommended", { viewerKey: "d:someone", audience: "all" }, 50);
+    expect(other.some((v) => v.creator.id === target)).toBe(true);
+  });
+});
+
+describe("定期処理", () => {
+  it("社内IPへ向かうリンクはたどらず、3回失敗で無効化", async () => {
+    const { linkHealthcheck } = await import("@/lib/jobs");
+    const [v] = await db.select().from(s.videos).where(eq(s.videos.status, "published")).limit(1);
+    await db.delete(s.outboundLinks).where(eq(s.outboundLinks.videoId, v.id));
+    await db.insert(s.outboundLinks).values({ id: "healthtest000001", videoId: v.id, url: "https://127.0.0.1/x", domain: "example.com", status: "active" });
+    await db.update(s.outboundLinks).set({ status: "disabled_by_admin" }).where(sql`${s.outboundLinks.id} <> 'healthtest000001'`);
+    for (let i = 0; i < 3; i++) await linkHealthcheck(db);
+    const [l] = await db.select().from(s.outboundLinks).where(eq(s.outboundLinks.id, "healthtest000001"));
+    expect(l.status).toBe("disabled_healthcheck");
+    expect(l.lastCheckStatus).toContain("安全でない転送先");
+  });
+  it("期限切れのセッションなどを削除し、監査ログに残す", async () => {
+    const { purgeExpired } = await import("@/lib/jobs");
+    const [u] = await db.select().from(s.users).limit(1);
+    await db.insert(s.sessions).values({ id: "expired-session", userId: u.id, expiresAt: new Date(Date.now() - 1000) });
+    const r = await purgeExpired(db);
+    expect(r.sessions).toBeGreaterThanOrEqual(1);
+    const logs = await db.select().from(s.adminAuditLogs).where(eq(s.adminAuditLogs.action, "job.purge_expired"));
+    expect(logs.length).toBe(1);
+  });
+});

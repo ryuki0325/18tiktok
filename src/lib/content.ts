@@ -25,7 +25,7 @@ export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublis
   const rows = await d.select({ v: s.videos, handle: s.users.handle, avatarHue: s.users.avatarHue })
     .from(s.videos).innerJoin(s.users, eq(s.users.id, s.videos.creatorId))
     .where(includeUnpublished ? inArray(s.videos.id, ids) : and(inArray(s.videos.id, ids), eq(s.videos.status, "published")));
-  const [tagRows, likeRows, commentRows, viewRows, clickRows, linkRows, myLikes, mySaves, myFollows] = await Promise.all([
+  const [tagRows, likeRows, commentRows, viewRows, clickRows, linkRows, myLikes, mySaves, myFollows, myBlocks] = await Promise.all([
     d.select({ videoId: s.videoTags.videoId, name: s.tags.name }).from(s.videoTags).innerJoin(s.tags, eq(s.tags.id, s.videoTags.tagId)).where(inArray(s.videoTags.videoId, ids)),
     d.select({ videoId: s.likes.videoId, n: sql<number>`count(*)::int` }).from(s.likes).where(inArray(s.likes.videoId, ids)).groupBy(s.likes.videoId),
     d.select({ videoId: s.comments.videoId, n: sql<number>`count(*)::int` }).from(s.comments).where(and(inArray(s.comments.videoId, ids), eq(s.comments.status, "visible"))).groupBy(s.comments.videoId),
@@ -35,7 +35,9 @@ export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublis
     d.select({ id: s.likes.videoId }).from(s.likes).where(and(inArray(s.likes.videoId, ids), eq(s.likes.viewerKey, o.viewerKey))),
     d.select({ id: s.favorites.videoId }).from(s.favorites).where(and(inArray(s.favorites.videoId, ids), eq(s.favorites.viewerKey, o.viewerKey))),
     o.userId ? d.select({ id: s.follows.creatorId }).from(s.follows).where(eq(s.follows.followerId, o.userId)) : Promise.resolve([] as { id: string }[]),
+    d.select({ id: s.blocks.creatorId }).from(s.blocks).where(eq(s.blocks.viewerKey, o.viewerKey)),
   ]);
+  const blocked = new Set(myBlocks.map((r) => r.id));
   const count = (arr: { videoId: string; n: number }[]) => new Map(arr.map((r) => [r.videoId, r.n]));
   const lc = count(likeRows), cc = count(commentRows), vc = count(viewRows), kc = count(clickRows);
   const liked = new Set(myLikes.map((r) => r.id)), saved = new Set(mySaves.map((r) => r.id)), fol = new Set(myFollows.map((r) => r.id));
@@ -53,7 +55,8 @@ export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublis
     };
     return [v.id, card];
   }));
-  return ids.map((id) => byId.get(id)).filter((x): x is VideoCard => !!x);
+  // 「表示しない」にした投稿者の動画はどこにも出さない
+  return ids.map((id) => byId.get(id)).filter((x): x is VideoCard => !!x && !blocked.has(x.creator.id));
 }
 
 export type FeedTab = "recommended" | "popular" | "following";

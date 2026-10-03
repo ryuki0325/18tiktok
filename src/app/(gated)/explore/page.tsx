@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { popularTags, rookies, weeklyRanking } from "@/lib/content";
+import { and, asc, gt, isNull, lte, or } from "drizzle-orm";
+import { db } from "@/db";
+import { featuredSlots } from "@/db/schema";
+import { hydrate, popularTags, rookies, weeklyRanking } from "@/lib/content";
+import { requestTime } from "@/lib/settings";
 import { viewerContext } from "@/lib/viewer";
 import { Icon } from "@/components/Icon";
 import { Avatar, VideoBackdrop } from "@/components/VideoBackdrop";
@@ -12,7 +16,10 @@ export const metadata = { title: "探す" };
 export default async function Explore() {
   const ctx = await viewerContext();
   const [tags, rank, rookieList] = await Promise.all([popularTags(), weeklyRanking(ctx, 10), rookies()]);
-  const featured = rank[0];
+  const now = requestTime();
+  const slots = await (await db()).select().from(featuredSlots).where(and(lte(featuredSlots.startsAt, new Date(now)), or(isNull(featuredSlots.endsAt), gt(featuredSlots.endsAt, new Date(now))))).orderBy(asc(featuredSlots.position)).limit(10);
+  const featuredCards = slots.length ? await hydrate(slots.map((x) => x.videoId), ctx) : rank.slice(0, 1);
+  const featuredTitle = new Map(slots.map((x) => [x.videoId, x.title]));
   return (
     <div className="screen with-nav">
       <form action="/search" style={{ padding: "12px 16px", position: "sticky", top: 0, zIndex: 10, background: "var(--bg)" }}>
@@ -29,13 +36,17 @@ export default async function Explore() {
           <h2 className="label">人気のタグ</h2>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{tags.map((t) => <Link key={t.name} className="chip" href={`/tags/${encodeURIComponent(t.name)}`}>#{t.name}</Link>)}</div>
         </section>
-        {featured && (
+        {featuredCards.length > 0 && (
           <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><h2 className="label">特集</h2><span className="cap">運営ピックアップ</span></div>
-            <Link href={`/?v=${featured.id}`} className="card" style={{ position: "relative", height: 150, overflow: "hidden", display: "block" }}>
-              <VideoBackdrop hue={featured.hue} /><div className="scrim" />
-              <div style={{ position: "absolute", left: 16, bottom: 14, color: "#fff" }}><div className="cap" style={{ color: "rgba(255,255,255,.75)" }}>今週の特集</div><div style={{ fontWeight: 700, fontSize: 18 }}>{featured.title}</div></div>
-            </Link>
+            <div className="hscroll">
+              {featuredCards.map((f) => (
+                <Link key={f.id} href={`/?v=${f.id}`} className="card feat" style={{ position: "relative", overflow: "hidden", display: "block" }}>
+                  <VideoBackdrop hue={f.hue} /><div className="scrim" />
+                  <div style={{ position: "absolute", left: 16, right: 16, bottom: 14, color: "#fff" }}><div className="cap" style={{ color: "rgba(255,255,255,.75)" }}>{featuredTitle.get(f.id) || "今週の特集"}</div><div style={{ fontWeight: 700, fontSize: 18 }}>{f.title}</div></div>
+                </Link>
+              ))}
+            </div>
           </section>
         )}
         <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>

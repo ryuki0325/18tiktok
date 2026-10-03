@@ -1,10 +1,10 @@
 "use server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import QRCode from "qrcode";
 import { db } from "@/db";
-import { comments, creatorProfiles, notifications, takedownRequests, users, type Role } from "@/db/schema";
+import { comments, creatorProfiles, featuredSlots, notifications, sessions, takedownRequests, users, videos, type Role } from "@/db/schema";
 import { adminOrNull, authenticate, createSession, currentUser, isAdminRole, markMfaVerified } from "./auth";
 import { clientIpHash, rateLimit } from "./http";
 import { audit } from "./ledger";
@@ -152,5 +152,55 @@ export async function bumpAgeGateVersionAction() {
   const v = (await getSetting("age_gate.version", conn)) + 1;
   await setSetting("age_gate.version", v, conn);
   await audit(conn, a.id, "age_gate.version_bump", "site_settings", null, { version: v });
+  revalidatePath("/admin/settings");
+}
+
+/* ---------- 特集枠 ---------- */
+export async function addFeaturedAction(form: FormData) {
+  const a = await need(["super_admin"]);
+  const conn = await db();
+  const videoId = str(form, "videoId");
+  const days = Number(form.get("days")) || 7;
+  const [v] = await conn.select({ id: videos.id }).from(videos).where(and(eq(videos.id, videoId), eq(videos.status, "published")));
+  if (!v) return;
+  await conn.insert(featuredSlots).values({ videoId, title: str(form, "title"), position: Number(form.get("position")) || 0, endsAt: new Date(Date.now() + days * 86400_000), createdBy: a.id });
+  await audit(conn, a.id, "featured.add", "video", videoId, { days });
+  revalidatePath("/admin/featured");
+}
+
+export async function removeFeaturedAction(form: FormData) {
+  const a = await need(["super_admin"]);
+  const conn = await db();
+  const id = Number(form.get("id"));
+  await conn.delete(featuredSlots).where(eq(featuredSlots.id, id));
+  await audit(conn, a.id, "featured.remove", "featured_slot", String(id));
+  revalidatePath("/admin/featured");
+}
+
+/* ---------- 管理者 ---------- */
+export async function setAdminRoleAction(form: FormData) {
+  const a = await need(["super_admin"]);
+  const conn = await db();
+  const role = str(form, "role") as Role;
+  if (!["user", "super_admin", "reviewer", "report_handler"].includes(role)) return;
+  const email = str(form, "email").toLowerCase();
+  const id = str(form, "id");
+  const [u] = await conn.select().from(users).where(id ? eq(users.id, id) : eq(users.email, email));
+  if (!u || u.id === a.id || u.status !== "active") return; // 自分自身の権限は変えられない
+  await conn.update(users).set({ role }).where(eq(users.id, u.id));
+  await conn.delete(sessions).where(eq(sessions.userId, u.id)); // 権限が変わったら再ログイン（2段階認証からやり直し）
+  await audit(conn, a.id, "admin.set_role", "user", u.id, { role });
+  revalidatePath("/admin/admins");
+}
+
+/* ---------- 定期処理を今すぐ実行 ---------- */
+export async function runJobAction(form: FormData) {
+  const a = await need(["super_admin"]);
+  const { linkHealthcheck, purgeExpired } = await import("./jobs");
+  const conn = await db();
+  const job = str(form, "job");
+  if (job === "link-health") await linkHealthcheck(conn);
+  if (job === "purge") await purgeExpired(conn);
+  await audit(conn, a.id, `job.manual.${job}`, "job", job);
   revalidatePath("/admin/settings");
 }

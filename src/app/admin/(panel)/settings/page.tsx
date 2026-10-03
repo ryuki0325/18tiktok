@@ -1,5 +1,5 @@
 import { requireAdmin } from "@/lib/auth";
-import { bumpAgeGateVersionAction, settingsAction } from "@/lib/admin-actions";
+import { bumpAgeGateVersionAction, runJobAction, settingsAction } from "@/lib/admin-actions";
 import { getSetting } from "@/lib/settings";
 
 export const metadata = { title: "設定" };
@@ -51,6 +51,14 @@ export default async function Settings() {
         </section>
         <button className="btn btn-primary" style={{ maxWidth: 240 }}>保存</button>
       </form>
+      <section className="card" style={{ padding: 16, marginTop: 24, maxWidth: 760, display: "flex", flexDirection: "column", gap: 10 }}>
+        <b>定期処理</b>
+        <span className="cap">外部のcronサービスから <code>POST /api/cron/link-health</code> と <code>POST /api/cron/purge</code> を呼ぶと自動化できます（環境変数 CRON_SECRET が必要）。ここから今すぐ実行することもできます。</span>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <form action={runJobAction}><input type="hidden" name="job" value="link-health" /><button className="btn btn-sm btn-secondary">外部リンクの死活確認を実行</button></form>
+          <form action={runJobAction}><input type="hidden" name="job" value="purge" /><button className="btn btn-sm btn-secondary">期限切れデータの削除を実行</button></form>
+        </div>
+      </section>
       <form action={bumpAgeGateVersionAction} className="card" style={{ padding: 16, marginTop: 24, maxWidth: 760, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <span style={{ flex: 1, minWidth: 240 }}><b>年齢確認の文言を変えたとき</b><br /><span className="cap">版を上げると、全員にもう一度年齢確認を表示します（現在 v{ver}）。</span></span>
         <button className="btn btn-sm btn-danger">版を上げる</button>

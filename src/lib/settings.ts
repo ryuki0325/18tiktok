@@ -15,6 +15,8 @@ export const DEFAULT_SETTINGS = {
   "comments.auto_hide_threshold": 3,
   "comments.rate_limit_per_hour": 20,
   "clicks.dedupe_window_sec": 1800,
+  "retention.view_events_days": 180,
+  "retention.read_notifications_days": 180,
   "ranking.popular_formula": { wViews: 1, wClicks: 3, wLikes: 2, halfLifeHours: 48 },
   "operator.display_mode": "contact_only",
   "operator.contact_email": "contact@example.com",

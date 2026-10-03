@@ -2,10 +2,12 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { creatorProfiles, outboundLinks, videos } from "@/db/schema";
+import { affiliateDomains, creatorProfiles, outboundLinks, tags, videoTags, videos } from "@/db/schema";
+import { checkAffiliateUrl } from "./url";
+import { getSetting } from "./settings";
 import { currentUser } from "./auth";
 import { clientIpHash, rateLimit } from "./http";
 import { createVideo } from "./moderation";
@@ -65,4 +67,54 @@ export async function myVideoAction(form: FormData) {
   }
   if (op === "comments") await conn.update(videos).set({ commentsEnabled: !v.commentsEnabled }).where(eq(videos.id, id));
   revalidatePath("/creator/videos");
+}
+
+const Edit = z.object({
+  id: z.string().uuid(),
+  title: z.string().trim().min(1, "タイトルを入力してください").max(60, "タイトルは60文字までです"),
+  description: z.string().trim().max(300, "説明は300文字までです"),
+  tags: z.array(z.string()).min(1, "タグを1つ以上選んでください").max(5, "タグは5つまでです"),
+  link: z.string().trim().max(2048),
+});
+
+/** 自分の投稿の編集。タイトル・説明・タグはそのまま反映。外部リンクを変えたときは再審査（差し替え対策） */
+export async function updateVideoAction(_: FormState, form: FormData): Promise<FormState> {
+  const u = await currentUser();
+  if (!u) redirect("/login");
+  const parsed = Edit.safeParse({ id: form.get("id"), title: form.get("title"), description: form.get("description") ?? "", tags: form.getAll("tags"), link: form.get("link") ?? "" });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const d = parsed.data;
+  const conn = await db();
+  const [v] = await conn.select().from(videos).where(and(eq(videos.id, d.id), eq(videos.creatorId, u.id)));
+  if (!v || v.status === "removed") return { error: "動画が見つかりません" };
+  const [old] = await conn.select().from(outboundLinks).where(eq(outboundLinks.videoId, v.id));
+  let linkChange: null | { url: string; domain: string; status: "active" | "pending_domain_review" } | "remove" = null;
+  if ((old?.url ?? "") !== d.link) {
+    if (!d.link) linkChange = "remove";
+    else {
+      const chk = checkAffiliateUrl(d.link, await getSetting("shortener_domains", conn));
+      if (!chk.ok) return { error: chk.reason };
+      if (chk.url !== old?.url) {
+        const [allowed] = await conn.select().from(affiliateDomains).where(and(eq(affiliateDomains.domain, chk.domain), eq(affiliateDomains.isActive, true)));
+        linkChange = { url: chk.url, domain: chk.domain, status: allowed ? "active" : "pending_domain_review" };
+      }
+    }
+  }
+  await conn.transaction(async (tx) => {
+    const rereview = linkChange && linkChange !== "remove" && v.status === "published";
+    await tx.update(videos).set({
+      title: d.title, description: d.description,
+      ...(rereview ? { status: "pending_review" as const, statusReason: "外部リンクの変更による再審査" } : {}),
+    }).where(eq(videos.id, v.id));
+    await tx.delete(videoTags).where(eq(videoTags.videoId, v.id));
+    const tagRows = await tx.select().from(tags).where(inArray(tags.name, d.tags));
+    if (tagRows.length) await tx.insert(videoTags).values(tagRows.map((t) => ({ videoId: v.id, tagId: t.id })));
+    if (linkChange === "remove") await tx.delete(outboundLinks).where(eq(outboundLinks.videoId, v.id));
+    else if (linkChange) {
+      await tx.delete(outboundLinks).where(eq(outboundLinks.videoId, v.id));
+      await tx.insert(outboundLinks).values({ id: crypto.randomUUID().replace(/-/g, "").slice(0, 16), videoId: v.id, ...linkChange });
+    }
+  });
+  revalidatePath("/creator/videos");
+  redirect(`/creator/videos?edited=1${linkChange && linkChange !== "remove" && v.status === "published" ? "&rereview=1" : ""}`);
 }
