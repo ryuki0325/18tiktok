@@ -206,3 +206,121 @@ test.describe("ホーム画面から開いたとき", () => {
     await expect(page.locator(".item.active")).toBeVisible();
   });
 });
+
+const login = async (page: Page, email = "luna_night@demo.example") => {
+  await page.goto("/login");
+  await page.fill("#email", email);
+  await page.fill("#password", "glow-demo-password");
+  await page.getByRole("button", { name: "ログイン" }).click();
+  await page.waitForURL(/\/me$/);
+};
+
+test.describe("マイページ（プロフィール）", () => {
+  test("TikTok と同じ並び：アイコン・@名前・3つの数字・編集ボタン・タブ", async ({ page }) => {
+    await passGate(page);
+    await login(page);
+    await expect(page.getByRole("heading", { name: "@luna_night" })).toBeVisible();
+    for (const k of ["フォロー中", "フォロワー", "いいね"]) await expect(page.getByText(k, { exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "プロフィールを編集" })).toBeVisible();
+    // 投稿タブに自分の動画が並ぶ（再生数つき）
+    await expect(page.locator(".thumbs .thumb")).toHaveCount(2);
+    await expect(page.locator(".thumb .meta").first()).toBeVisible();
+  });
+
+  test("タブを切り替えると、保存・いいね・非公開が見られる", async ({ page }) => {
+    await passGate(page);
+    await login(page);
+    await page.getByRole("tab", { name: "保存した動画" }).click();
+    await expect(page.getByText("保存した動画はまだありません")).toBeVisible();
+    await page.getByRole("tab", { name: "いいねした動画" }).click();
+    await expect(page.getByText("いいねした動画はまだありません")).toBeVisible();
+    // 非公開タブ（審査中・差し戻し・自分で非公開にしたもの）。ほかのテストの影響で中身は変わるので、開けることだけ確かめる
+    await page.getByRole("tab", { name: "非公開" }).click();
+    await expect(page.getByRole("tab", { name: "非公開" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator(".prof-body")).toBeVisible();
+  });
+
+  test("プロフィールを編集して保存できる。ユーザー名の重複は断る", async ({ page }) => {
+    await passGate(page);
+    await login(page);
+    await page.getByRole("link", { name: "プロフィールを編集" }).click();
+    await page.waitForURL(/\/me\/edit/);
+    await page.fill("#bio", "テスト用の自己紹介です");
+    await page.fill("#displayName", "ルナ");
+    await page.getByRole("button", { name: "保存する" }).click();
+    await expect(page.getByText("プロフィールを保存しました")).toBeVisible();
+    await page.goto("/me");
+    await expect(page.getByText("テスト用の自己紹介です")).toBeVisible();
+    // ほかの人が使っているユーザー名には変えられない
+    await page.goto("/me/edit");
+    await page.fill("#handle", "aoi_lounge");
+    await page.getByRole("button", { name: "保存する" }).click();
+    await expect(page.getByText("すでに使われています")).toBeVisible();
+  });
+
+  test("他人のプロフィールからフォローでき、フォロワー一覧に出る", async ({ page }) => {
+    await passGate(page);
+    await login(page, "viewer@demo.example");
+    await page.goto("/u/aoi_lounge");
+    await expect(page.getByRole("heading", { name: "@aoi_lounge" })).toBeVisible();
+    await page.getByRole("button", { name: "フォロー", exact: true }).click();
+    await expect(page.getByRole("button", { name: "フォロー中" })).toBeVisible();
+    await page.goto("/me/people?tab=following");
+    await expect(page.getByRole("link", { name: "@aoi_lounge" }).first()).toBeVisible();
+    // 相手側のフォロワー一覧にも出る
+    await page.goto("/u/aoi_lounge/people");
+    await expect(page.getByRole("link", { name: "@night_owl" }).first()).toBeVisible();
+  });
+
+  test("ログインしていなくても、この端末の保存・いいねは見られる", async ({ page }) => {
+    await passGate(page);
+    await page.locator(".item.active").getByRole("button", { name: "いいね" }).click();
+    await page.goto("/me?tab=liked");
+    await expect(page.getByText("ログインしていません")).toBeVisible();
+    await expect(page.locator(".thumbs .thumb")).toHaveCount(1);
+  });
+});
+
+test.describe("コメント（返信といいね）", () => {
+  test("返信するとぶら下がり、コメントにいいねできる", async ({ page }) => {
+    await passGate(page);
+    await login(page, "viewer@demo.example");
+    await page.goto("/");
+    await page.locator(".item.active").getByRole("button", { name: "コメント" }).click();
+    const first = page.locator(".cmt").first();
+    await expect(first).toBeVisible();
+    // いいね
+    await first.locator(".cmt-like").click();
+    await expect(first.locator(".cmt-like")).toHaveAttribute("aria-pressed", "true");
+    // 返信
+    await first.getByRole("button", { name: "返信" }).click();
+    await expect(page.getByText(/に返信中/)).toBeVisible();
+    await page.fill('[aria-label="コメントを入力"]', "返信のテスト");
+    await page.getByRole("button", { name: "送信" }).click();
+    await expect(page.locator(".cmt.reply").getByText("返信のテスト")).toBeVisible();
+  });
+
+  test("コメントされると、動画の投稿者にお知らせが届く", async ({ page }) => {
+    await passGate(page);
+    await login(page, "viewer@demo.example");
+    await page.goto("/");
+    const handle = (await page.locator(".item.active .vinfo .h").textContent())!.replace("@", "");
+    await page.locator(".item.active").getByRole("button", { name: "コメント" }).click();
+    await page.fill('[aria-label="コメントを入力"]', `お知らせのテスト${Date.now() % 10000}`);
+    await page.getByRole("button", { name: "送信" }).click();
+    await expect(page.locator(".cmt").first()).toContainText("お知らせのテスト");
+    // 投稿者としてログインし直すと、受信箱に届いている
+    await login(page, `${handle.replace(/\W/g, "")}@demo.example`);
+    await page.goto("/notifications");
+    await expect(page.getByText(/さんがコメントしました/).first()).toBeVisible();
+  });
+});
+
+test("検索はタブで絞り込める", async ({ page }) => {
+  await passGate(page);
+  await page.goto("/search?q=luna");
+  await page.getByRole("tab", { name: "ユーザー" }).click();
+  await expect(page.getByRole("link", { name: "@luna_night" }).first()).toBeVisible();
+  await page.getByRole("tab", { name: "タグ" }).click();
+  await expect(page.getByText("一致するものはありません")).toBeVisible();
+});

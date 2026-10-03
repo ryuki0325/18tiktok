@@ -7,7 +7,7 @@ import type { Audience, VideoCategory } from "./audience";
 
 export type VideoCard = {
   id: string; title: string; description: string; hue: [number, number, number];
-  creator: { id: string; handle: string; avatarHue: number };
+  creator: { id: string; handle: string; avatarHue: number; avatarUrl: string | null };
   tags: string[]; likes: number; comments: number; views: number; clicks: number;
   link: { id: string; domain: string } | null; liked: boolean; saved: boolean; following: boolean;
   publishedAt: string | null; commentsEnabled: boolean;
@@ -19,6 +19,8 @@ export type VideoCard = {
   height: number | null;
   category: VideoCategory;
   intensity: number;
+  /** 公開状態（自分の投稿一覧で「審査中」などを出すため） */
+  status: string;
 };
 
 type Opts = { viewerKey: string; userId?: string | null; preferredTags?: string[]; audience?: Audience; maxIntensity?: number };
@@ -27,7 +29,7 @@ type Opts = { viewerKey: string; userId?: string | null; preferredTags?: string[
 export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublished = false): Promise<VideoCard[]> {
   if (!ids.length) return [];
   const d = conn ?? (await db());
-  const rows = await d.select({ v: s.videos, handle: s.users.handle, avatarHue: s.users.avatarHue })
+  const rows = await d.select({ v: s.videos, handle: s.users.handle, avatarHue: s.users.avatarHue, avatarUrl: s.users.avatarUrl })
     .from(s.videos).innerJoin(s.users, eq(s.users.id, s.videos.creatorId))
     .where(includeUnpublished ? inArray(s.videos.id, ids) : and(inArray(s.videos.id, ids), eq(s.videos.status, "published")));
   // いいね数・再生数は videos の列（トリガーで増減）から読む。コメント・クリックは件数が少ないので集計
@@ -50,13 +52,13 @@ export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublis
     const link = linkRows.find((l) => l.videoId === v.id);
     const card: VideoCard = {
       id: v.id, title: v.title, description: v.description, hue: v.hue,
-      creator: { id: v.creatorId, handle: r.handle, avatarHue: r.avatarHue },
+      creator: { id: v.creatorId, handle: r.handle, avatarHue: r.avatarHue, avatarUrl: r.avatarUrl },
       tags: tagRows.filter((t) => t.videoId === v.id).map((t) => t.name),
       likes: v.baseLikes + v.likeCount, comments: cc.get(v.id) ?? 0, views: v.viewCount, clicks: kc.get(v.id) ?? 0,
       link: link ? { id: link.id, domain: link.domain } : null,
       liked: liked.has(v.id), saved: saved.has(v.id), following: fol.has(v.creatorId),
       publishedAt: v.publishedAt?.toISOString() ?? null, commentsEnabled: v.commentsEnabled,
-      src: v.mediaStatus === "ready" ? v.playbackUrl : null, poster: v.thumbnailUrl, width: v.width, height: v.height, category: v.category, intensity: v.intensity,
+      src: v.mediaStatus === "ready" ? v.playbackUrl : null, poster: v.thumbnailUrl, width: v.width, height: v.height, category: v.category, intensity: v.intensity, status: v.status,
     };
     return [v.id, card];
   }));
@@ -120,10 +122,10 @@ export async function search(q: string, o: Opts) {
   const like = `%${q.replace(/[%_\\]/g, (m) => "\\" + m)}%`;
   const [tagHits, creatorHits, videoRows] = await Promise.all([
     d.select().from(s.tags).where(sql`${s.tags.name} ilike ${like}`).limit(10),
-    d.select({ id: s.users.id, handle: s.users.handle, avatarHue: s.users.avatarHue }).from(s.users)
-      .innerJoin(s.creatorProfiles, eq(s.creatorProfiles.userId, s.users.id))
-      .where(and(sql`${s.users.handle} ilike ${like}`, eq(s.creatorProfiles.status, "approved"))).limit(10),
-    d.select({ id: s.videos.id }).from(s.videos).where(and(eq(s.videos.status, "published"), sql`(${s.videos.title} ilike ${like} or ${s.videos.description} ilike ${like})`)).limit(30),
+    d.select({ id: s.users.id, handle: s.users.handle, displayName: s.users.displayName, avatarHue: s.users.avatarHue, avatarUrl: s.users.avatarUrl, bio: s.users.bio })
+      .from(s.users).innerJoin(s.creatorProfiles, eq(s.creatorProfiles.userId, s.users.id))
+      .where(and(sql`(${s.users.handle} ilike ${like} or ${s.users.displayName} ilike ${like})`, eq(s.creatorProfiles.status, "approved"), eq(s.users.status, "active"))).limit(20),
+    d.select({ id: s.videos.id }).from(s.videos).where(and(eq(s.videos.status, "published"), sql`(${s.videos.title} ilike ${like} or ${s.videos.description} ilike ${like})`)).orderBy(desc(s.videos.publishedAt)).limit(60),
   ]);
   return { tags: tagHits, creators: creatorHits, videos: await hydrate(videoRows.map((r) => r.id), o, d) };
 }
@@ -139,6 +141,15 @@ export async function weeklyRanking(o: Opts, limit = 10) {
       + "videos"."base_likes" / 1000`.as("score"),
   })
     .from(s.videos).where(eq(s.videos.status, "published")).orderBy(desc(sql`score`)).limit(limit);
+  return hydrate(rows.map((r) => r.id), o, d);
+}
+
+/** 「探す」の下に並べる、いま見られている動画 */
+export async function trending(o: Opts, limit = 24) {
+  const d = await db();
+  const rows = await d.select({ id: s.videos.id }).from(s.videos)
+    .where(eq(s.videos.status, "published"))
+    .orderBy(desc(sql`${s.videos.viewCount} + ${s.videos.likeCount} * 3`), desc(s.videos.publishedAt)).limit(limit);
   return hydrate(rows.map((r) => r.id), o, d);
 }
 

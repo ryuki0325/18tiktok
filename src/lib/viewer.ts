@@ -7,6 +7,8 @@ import { userPreferences } from "@/db/schema";
 import { currentUser, regionBlocked, requireAgeGate, viewerKey } from "./auth";
 import { isAudience, isIntensity, type Audience } from "./audience";
 
+export type Viewer = Awaited<ReturnType<typeof viewerContext>>;
+
 /** ゲート内のページはすべてここを通す（年齢確認・地域をサーバーで再確認） */
 export async function viewerContext() {
   const path = (await headers()).get("x-pathname") ?? "/";

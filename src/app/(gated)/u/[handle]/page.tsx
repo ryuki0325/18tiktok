@@ -1,44 +1,28 @@
-import { and, eq, sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { db } from "@/db";
-import { creatorProfiles, follows, users } from "@/db/schema";
-import { videosByCreator } from "@/lib/content";
 import { viewerContext } from "@/lib/viewer";
-import { NavBar } from "@/components/NavBar";
-import { Avatar } from "@/components/VideoBackdrop";
-import { VideoGrid } from "@/components/VideoGrid";
-import { TabBar } from "@/components/TabBar";
-import { fmt } from "@/components/format";
-import { FollowButton } from "./FollowButton";
+import { profileOf, profileVideos, type ProfileTab } from "@/lib/profile";
+import type { IconName } from "@/components/Icon";
+import { ProfileBar, ProfilePage } from "@/components/profile/ProfilePage";
+import { UserMenu } from "./UserMenu";
+
+const TABS: [ProfileTab, IconName, string][] = [["posts", "grid", "投稿"]];
+
+export async function generateMetadata({ params }: { params: Promise<{ handle: string }> }) {
+  return { title: `@${decodeURIComponent((await params).handle)}` };
+}
 
 export default async function CreatorPage({ params }: { params: Promise<{ handle: string }> }) {
   const ctx = await viewerContext();
   const handle = decodeURIComponent((await params).handle).toLowerCase();
-  const conn = await db();
-  const [c] = await conn.select({ u: users, p: creatorProfiles }).from(users).innerJoin(creatorProfiles, eq(creatorProfiles.userId, users.id))
-    .where(and(eq(users.handle, handle), eq(creatorProfiles.status, "approved")));
-  if (!c) notFound();
-  const [cards, [{ n }], following] = await Promise.all([
-    videosByCreator(c.u.id, ctx),
-    conn.select({ n: sql<number>`count(*)::int` }).from(follows).where(eq(follows.creatorId, c.u.id)),
-    ctx.userId ? conn.select().from(follows).where(and(eq(follows.followerId, ctx.userId), eq(follows.creatorId, c.u.id))) : Promise.resolve([]),
-  ]);
-  const likes = cards.reduce((s, v) => s + v.likes, 0);
+  const p = await profileOf({ handle }, ctx.userId);
+  if (!p || !p.isCreator) notFound();
+  // 自分のページを開いたらマイページと同じ見た目にする
+  const mine = ctx.userId === p.id;
+  const cards = await profileVideos("posts", p, ctx);
   return (
-    <div className="screen with-nav">
-      <NavBar title={`@${c.u.handle}`} back="/" />
-      <div className="sec" style={{ gap: 16, paddingBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <Avatar hue={c.u.avatarHue} size={72} />
-          <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(3,1fr)", textAlign: "center" }}>
-            {[["投稿", cards.length], ["フォロワー", n], ["いいね", likes]].map(([k, v]) => <div key={k}><div className="num" style={{ fontWeight: 700, fontSize: 18 }}>{fmt(Number(v))}</div><div className="cap">{k}</div></div>)}
-          </div>
-        </div>
-        {c.p.bio && <p style={{ margin: 0, fontSize: 14 }}>{c.p.bio}</p>}
-        {ctx.userId !== c.u.id && <FollowButton creatorId={c.u.id} initial={following.length > 0} loggedIn={!!ctx.user} />}
-      </div>
-      <div style={{ padding: "0 3px" }}><VideoGrid cards={cards} /></div>
-      <TabBar />
-    </div>
+    <ProfilePage
+      p={p} mine={mine} loggedIn={!!ctx.user} tab="posts" cards={cards} tabs={TABS} href={() => `/u/${encodeURIComponent(p.handle)}`}
+      top={<ProfileBar handle={p.handle} back="/" right={<UserMenu creatorId={p.id} handle={p.handle} mine={mine} />} />}
+    />
   );
 }

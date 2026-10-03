@@ -71,7 +71,7 @@ export async function resolveReport(conn: DB, adminId: string, ticketId: string,
 }
 
 /* ================= コメント ================= */
-export async function postComment(conn: DB, input: { videoId: string; userId: string; body: string }) {
+export async function postComment(conn: DB, input: { videoId: string; userId: string; body: string; parentId?: string | null }) {
   const body = input.body.trim();
   if (!body) return { ok: false as const, error: "コメントを入力してください" };
   if (body.length > 300) return { ok: false as const, error: "コメントは300文字までです" };
@@ -79,10 +79,31 @@ export async function postComment(conn: DB, input: { videoId: string; userId: st
   const [video] = await conn.select().from(s.videos).where(eq(s.videos.id, input.videoId));
   if (!video || video.status !== "published") return { ok: false as const, error: "この動画にはコメントできません" };
   if (!video.commentsEnabled) return { ok: false as const, error: "投稿者がコメントをオフにしています" };
+  // 返信は、同じ動画の見えているコメントにだけ付けられる。返信への返信も同じ階層にまとめる（TikTokと同じ）
+  let parentId: string | null = null;
+  if (input.parentId) {
+    const [parent] = await conn.select().from(s.comments).where(eq(s.comments.id, input.parentId));
+    if (!parent || parent.videoId !== input.videoId || parent.status !== "visible") return { ok: false as const, error: "返信先のコメントが見つかりません" };
+    parentId = parent.parentId ?? parent.id;
+  }
   const ng = await getSetting("ng_words", conn);
   const status = ng.some((w) => body.toLowerCase().includes(w.toLowerCase())) ? "pending" : "visible";
-  const [c] = await conn.insert(s.comments).values({ videoId: input.videoId, userId: input.userId, body, status }).returning();
+  const [c] = await conn.insert(s.comments).values({ videoId: input.videoId, userId: input.userId, body, status, parentId }).returning();
+  if (status === "visible") await notifyComment(conn, c, video.creatorId, input.userId);
   return { ok: true as const, comment: c, pending: status === "pending" };
+}
+
+/** コメント・返信を相手に知らせる（自分あてには出さない） */
+async function notifyComment(conn: DB, c: typeof s.comments.$inferSelect, creatorId: string, authorId: string) {
+  const [me] = await conn.select({ handle: s.users.handle }).from(s.users).where(eq(s.users.id, authorId));
+  const short = c.body.length > 30 ? c.body.slice(0, 30) + "…" : c.body;
+  const rows: (typeof s.notifications.$inferInsert)[] = [];
+  if (creatorId !== authorId) rows.push({ userId: creatorId, kind: "comment", body: `@${me.handle} さんがコメントしました：${short}` });
+  if (c.parentId) {
+    const [parent] = await conn.select({ userId: s.comments.userId }).from(s.comments).where(eq(s.comments.id, c.parentId));
+    if (parent && parent.userId !== authorId && parent.userId !== creatorId) rows.push({ userId: parent.userId, kind: "comment", body: `@${me.handle} さんが返信しました：${short}` });
+  }
+  if (rows.length) await conn.insert(s.notifications).values(rows);
 }
 
 export async function reportComment(conn: DB, input: { commentId: string; reason: string; reporterKey: string }) {

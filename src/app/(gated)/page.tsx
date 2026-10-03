@@ -1,7 +1,7 @@
 import { feed, hydrate, type FeedTab } from "@/lib/content";
 import { viewerContext } from "@/lib/viewer";
 import { FeedClient } from "@/components/feed/FeedClient";
-import { TabBar } from "@/components/TabBar";
+import { NavTabs } from "@/components/NavTabs";
 
 export const metadata = { title: "ホーム" };
 
@@ -18,7 +18,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
   return (
     <>
       <FeedClient key={`${tab}:${v ?? ""}`} cards={cards} tab={tab} hasMore={cards.length === 6} loggedIn={!!ctx.user} myId={ctx.user?.id ?? null} />
-      <TabBar onVideo />
+      <NavTabs onVideo />
     </>
   );
 }

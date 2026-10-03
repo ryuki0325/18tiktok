@@ -21,6 +21,10 @@ export const users = pgTable("users", {
   totpSecret: text(),
   totpEnabled: boolean().notNull().default(false),
   avatarHue: integer().notNull().default(280),
+  /** プロフィール写真。小さく縮めた画像を data URL で持つ（オブジェクトストレージに移すのは後） */
+  avatarUrl: text(),
+  /** プロフィールの自己紹介（全員が持てる。投稿者申請の文面とは別） */
+  bio: text().notNull().default(""),
   createdAt: now(),
 }, (t) => [uniqueIndex("users_email_uq").on(t.email), uniqueIndex("users_handle_uq").on(t.handle)]);
 
@@ -245,9 +249,20 @@ export const comments = pgTable("comments", {
   videoId: uuid().notNull().references(() => videos.id, { onDelete: "cascade" }),
   userId: uuid().notNull().references(() => users.id),
   body: text().notNull(),
+  /** 返信のとき、返信先のコメント（1段だけ。TikTokと同じく返信への返信も同じ階層に並べる） */
+  parentId: uuid().$type<string | null>(),
   status: text().$type<"visible" | "pending" | "hidden_by_report" | "hidden_by_creator" | "removed">().notNull().default("visible"),
+  /** コメントへのいいね数（comment_likes の増減をトリガーで反映） */
+  likeCount: integer().notNull().default(0),
   createdAt: now(),
-}, (t) => [index("comments_video_idx").on(t.videoId, t.createdAt)]);
+}, (t) => [index("comments_video_idx").on(t.videoId, t.createdAt), index("comments_parent_idx").on(t.parentId)]);
+
+/** コメントへのいいね */
+export const commentLikes = pgTable("comment_likes", {
+  viewerKey: text().notNull(),
+  commentId: uuid().notNull().references(() => comments.id, { onDelete: "cascade" }),
+  createdAt: now(),
+}, (t) => [primaryKey({ columns: [t.viewerKey, t.commentId] })]);
 
 export const commentReports = pgTable("comment_reports", {
   id: bigserial({ mode: "number" }).primaryKey(),

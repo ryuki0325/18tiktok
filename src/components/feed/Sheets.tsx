@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { VideoCard } from "@/lib/content";
 import { Icon } from "../Icon";
-import { Avatar } from "../VideoBackdrop";
+import { ProfileAvatar } from "../profile/ProfileAvatar";
 import { ago, fmt } from "../format";
 import { useToast } from "../Toast";
 import { api } from "./api";
@@ -75,26 +75,53 @@ export function ReportSheet({ card, onClose }: { card: VideoCard; onClose: (hidd
   );
 }
 
-type C = { id: string; body: string; createdAt: string; handle: string; avatarHue: number; mine: boolean };
+export type C = {
+  id: string; body: string; createdAt: string; handle: string; avatarHue: number; avatarUrl: string | null;
+  mine: boolean; likes: number; liked: boolean; parentId?: string | null;
+  replyCount?: number; replies?: C[];
+};
 
+/**
+ * コメント（TikTokと同じ2段構成）。
+ * 新しいコメントが上、その下に返信が少しだけ並び、「返信をもっと見る」で続きを読む。
+ * 右端のハートでコメントにいいねできる。
+ */
 export function CommentSheet({ card, loggedIn, onClose, onPosted }: { card: VideoCard; loggedIn: boolean; onClose: () => void; onPosted: () => void }) {
   const [list, setList] = useState<C[] | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [replyTo, setReplyTo] = useState<{ id: string; handle: string } | null>(null);
+  const input = useRef<HTMLInputElement>(null);
   const toast = useToast();
+
   useEffect(() => {
     api<{ comments: C[] }>(`/api/v1/videos/${card.id}/comments`).then((r) => setList(r.ok ? r.data.comments : []));
   }, [card.id]);
+
+  /** 1件を書き換える（本体でも返信でも） */
+  const patch = (id: string, f: (c: C) => C) => setList((l) => (l ?? []).map((c) =>
+    c.id === id ? f(c) : c.replies?.some((x) => x.id === id) ? { ...c, replies: c.replies.map((x) => (x.id === id ? f(x) : x)) } : c));
+
   const send = async () => {
     if (!text.trim() || busy) return;
     setBusy(true);
-    const r = await api<{ comment: C; pending: boolean }>(`/api/v1/videos/${card.id}/comments`, { method: "POST", body: { body: text } });
+    const r = await api<{ comment: C; pending: boolean }>(`/api/v1/videos/${card.id}/comments`, { method: "POST", body: { body: text, parentId: replyTo?.id ?? null } });
     setBusy(false);
     if (!r.ok) { toast(r.data.error?.message ?? "送信できませんでした"); return; }
     setText("");
+    const to = replyTo;
+    setReplyTo(null);
     if (r.data.pending) { toast("運営の確認後に表示されます"); return; }
-    setList((l) => [r.data.comment, ...(l ?? [])]);
+    const c = r.data.comment;
+    if (to) setList((l) => (l ?? []).map((x) => (x.id === (c.parentId ?? to.id) ? { ...x, replyCount: (x.replyCount ?? 0) + 1, replies: [...(x.replies ?? []), c] } : x)));
+    else setList((l) => [{ ...c, replies: [], replyCount: 0 }, ...(l ?? [])]);
     onPosted();
+  };
+
+  const like = async (c: C) => {
+    patch(c.id, (x) => ({ ...x, liked: !x.liked, likes: x.likes + (x.liked ? -1 : 1) }));
+    const r = await api(`/api/v1/comments/${c.id}/like`, { method: c.liked ? "DELETE" : "PUT" });
+    if (!r.ok) patch(c.id, (x) => ({ ...x, liked: c.liked, likes: c.likes }));
   };
   const report = async (c: C) => {
     const r = await api(`/api/v1/comments/${c.id}/reports`, { method: "POST", body: { reason: "other" } });
@@ -102,30 +129,71 @@ export function CommentSheet({ card, loggedIn, onClose, onPosted }: { card: Vide
   };
   const remove = async (c: C) => {
     const r = await api(`/api/v1/comments/${c.id}`, { method: "DELETE" });
-    if (r.ok) setList((l) => (l ?? []).filter((x) => x.id !== c.id));
+    if (!r.ok) { toast("削除できませんでした"); return; }
+    setList((l) => (l ?? []).filter((x) => x.id !== c.id).map((x) => (x.replies?.some((y) => y.id === c.id) ? { ...x, replies: x.replies.filter((y) => y.id !== c.id), replyCount: Math.max(0, (x.replyCount ?? 1) - 1) } : x)));
   };
+  const openReply = (c: C) => { setReplyTo({ id: c.id, handle: c.handle }); setTimeout(() => input.current?.focus(), 30); };
+  const more = async (c: C) => {
+    const r = await api<{ replies: C[] }>(`/api/v1/videos/${card.id}/comments?parent=${c.id}`);
+    if (r.ok) patch(c.id, (x) => ({ ...x, replies: r.data.replies }));
+  };
+
+  const total = (list ?? []).reduce((n, c) => n + 1 + (c.replyCount ?? 0), 0);
   return (
-    <Sheet title={<>コメント <span className="muted num" style={{ fontSize: 14, fontWeight: 500 }}>{fmt(card.comments)}</span></>} onClose={onClose}>
-      <div style={{ overflowY: "auto", maxHeight: "42dvh", minHeight: 120 }}>
-        {list === null ? <p className="cap">読み込み中…</p> : list.length === 0 ? <p className="cap" style={{ textAlign: "center", padding: "24px 0" }}>まだコメントはありません。</p> :
-          list.map((c) => (
-            <div key={c.id} className="comment">
-              <Avatar hue={c.avatarHue} size={34} />
-              <div className="b"><div className="n">@{c.handle}・{ago(c.createdAt)}</div>{c.body}</div>
-              {c.mine ? <button className="iconbtn" style={{ width: 32, height: 32 }} onClick={() => remove(c)} aria-label="削除"><Icon name="trash" size={16} /></button>
-                : <button className="iconbtn muted" style={{ width: 32, height: 32 }} onClick={() => report(c)} aria-label="このコメントを通報"><Icon name="flag" size={16} /></button>}
-            </div>
-          ))}
+    <Sheet title={<>コメント <span className="muted num" style={{ fontSize: 14, fontWeight: 500 }}>{fmt(list ? total : card.comments)}</span></>} onClose={onClose}>
+      <div className="cmts">
+        {list === null ? <p className="cap">読み込み中…</p>
+          : list.length === 0 ? <div className="cmt-empty"><b>まだコメントはありません</b><span className="cap">最初のひとことを書いてみませんか。</span></div>
+            : list.map((c) => (
+              <div key={c.id}>
+                <CommentRow c={c} onLike={like} onReply={openReply} onReport={report} onRemove={remove} />
+                {c.replies?.map((r) => <CommentRow key={r.id} c={r} reply onLike={like} onReply={openReply} onReport={report} onRemove={remove} />)}
+                {(c.replyCount ?? 0) > (c.replies?.length ?? 0) && (
+                  <button className="cmt-more" onClick={() => more(c)}>返信をもっと見る（{(c.replyCount ?? 0) - (c.replies?.length ?? 0)}件）</button>
+                )}
+              </div>
+            ))}
       </div>
       {!card.commentsEnabled ? <p className="cap" style={{ textAlign: "center" }}>投稿者がコメントをオフにしています。</p> : loggedIn ? (
-        <form style={{ display: "flex", gap: 8, alignItems: "center" }} onSubmit={(e) => { e.preventDefault(); void send(); }}>
-          <input className="input pill" style={{ height: 44 }} placeholder="コメントを追加（URLは書けません）" maxLength={300} value={text} onChange={(e) => setText(e.target.value)} aria-label="コメントを入力" />
-          <button className="btn-primary" style={{ width: 44, height: 44, borderRadius: "50%", display: "grid", placeItems: "center", flexShrink: 0 }} aria-label="送信" disabled={busy}><Icon name="send" size={18} /></button>
-        </form>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {replyTo && (
+            <div className="cmt-replying">
+              <span className="cap">@{replyTo.handle} に返信中</span>
+              <button className="iconbtn" style={{ width: 28, height: 28 }} onClick={() => setReplyTo(null)} aria-label="返信をやめる"><Icon name="x" size={16} /></button>
+            </div>
+          )}
+          <form style={{ display: "flex", gap: 8, alignItems: "center" }} onSubmit={(e) => { e.preventDefault(); void send(); }}>
+            <input ref={input} className="input pill" style={{ height: 44 }} placeholder={replyTo ? `@${replyTo.handle} に返信…` : "コメントを追加（URLは書けません）"} maxLength={300} value={text} onChange={(e) => setText(e.target.value)} aria-label="コメントを入力" />
+            <button className="btn-primary" style={{ width: 44, height: 44, borderRadius: "50%", display: "grid", placeItems: "center", flexShrink: 0 }} aria-label="送信" disabled={busy}><Icon name="send" size={18} /></button>
+          </form>
+        </div>
       ) : (
         <Link className="btn btn-secondary pill" href={`/login?next=${encodeURIComponent("/?v=" + card.id)}`}>ログインしてコメントする</Link>
       )}
     </Sheet>
+  );
+}
+
+function CommentRow({ c, reply = false, onLike, onReply, onReport, onRemove }: {
+  c: C; reply?: boolean; onLike: (c: C) => void; onReply: (c: C) => void; onReport: (c: C) => void; onRemove: (c: C) => void;
+}) {
+  return (
+    <div className={`cmt${reply ? " reply" : ""}`}>
+      <Link href={`/u/${encodeURIComponent(c.handle)}`} aria-label={`@${c.handle} のページ`}><ProfileAvatar hue={c.avatarHue} url={c.avatarUrl} size={reply ? 28 : 36} /></Link>
+      <div className="b">
+        <div className="n">@{c.handle}</div>
+        <div className="t">{c.body}</div>
+        <div className="f">
+          <span className="cap">{ago(c.createdAt)}</span>
+          <button onClick={() => onReply(c)}>返信</button>
+          {c.mine ? <button onClick={() => onRemove(c)}>削除</button> : <button onClick={() => onReport(c)}>通報</button>}
+        </div>
+      </div>
+      <button className={`cmt-like${c.liked ? " on" : ""}`} onClick={() => onLike(c)} aria-pressed={c.liked} aria-label={c.liked ? "いいねを取り消す" : "いいね"}>
+        <Icon name="heart" size={17} filled={c.liked} />
+        <span className="num">{c.likes || ""}</span>
+      </button>
+    </div>
   );
 }
 

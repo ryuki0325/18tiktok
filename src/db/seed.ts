@@ -7,19 +7,19 @@ import { ALL_QUIZ_TAGS, TAG_GROUPS, type VideoCategory } from "@/lib/audience";
 
 export const SEED_TAGS = [...new Set([...ALL_QUIZ_TAGS, ...TAG_GROUPS.flatMap((g) => g.tags)])];
 
-const DEMO: { handle: string; category: VideoCategory; hue: number[]; videos: { title: string; desc: string; tags: string[]; likes: number; link: string | null; intensity?: number }[] }[] = [
-  { handle: "luna_night", category: "women", hue: [285, 320, 250], videos: [
+const DEMO: { handle: string; category: VideoCategory; bio: string; hue: number[]; videos: { title: string; desc: string; tags: string[]; likes: number; link: string | null; intensity?: number }[] }[] = [
+  { handle: "luna_night", bio: "夜がすこし長くなる時間を。週2〜3本", category: "women", hue: [285, 320, 250], videos: [
     { title: "雨上がりの窓辺", desc: "雨上がりの夜、ネオンが滲む窓辺で。少しだけ特別な時間を。", tags: ["セクシー", "大人の色気", "ベッドルーム", "ランジェリー"], intensity: 2, likes: 123000, link: "https://example.com/luna/1" },
     { title: "紫の時間", desc: "照明を落とした部屋で、ゆっくり流れる夜。", tags: ["ランジェリー", "誘惑", "ホテル"], intensity: 3, likes: 18400, link: null },
   ] },
-  { handle: "aoi_lounge", category: "men", hue: [205, 230, 180], videos: [
+  { handle: "aoi_lounge", bio: "深夜のドライブと、低い声。", category: "men", hue: [205, 230, 180], videos: [
     { title: "深夜のドライブ", desc: "深夜のドライブ。高速の光の帯をゆっくり追いかけて。", tags: ["車内", "細マッチョ", "大人の色気"], intensity: 1, likes: 84500, link: "https://partner-a.example/aoi" },
     { title: "湾岸の灯り", desc: "夜明け前の湾岸。静かな水面に映る街の灯り。", tags: ["バスルーム", "筋肉質", "囁き"], intensity: 2, likes: 32700, link: "https://partner-a.example/aoi/2" },
   ] },
-  { handle: "rin.velvet", category: "couple", hue: [345, 20, 300], videos: [
+  { handle: "rin.velvet", bio: "ふたりの時間を切り取っています", category: "couple", hue: [345, 20, 300], videos: [
     { title: "ベルベットと低いジャズ", desc: "ベルベットの赤と、低いジャズ。今夜のプレイリストと一緒に。", tags: ["ラブラブ", "イチャイチャ", "ホテル", "リアルな関係"], intensity: 3, likes: 56100, link: null },
   ] },
-  { handle: "mio_gold", category: "women", hue: [38, 25, 55], videos: [
+  { handle: "mio_gold", bio: "ホテルのラウンジから、琥珀色の夜を", category: "women", hue: [38, 25, 55], videos: [
     { title: "琥珀色のラウンジ", desc: "ホテルのラウンジ、琥珀色の照明。グラスの音だけが響く。", tags: ["ホテル", "美脚", "年上の女性"], intensity: 1, likes: 211000, link: "https://example.com/mio" },
     { title: "仕事終わりのバー", desc: "仕事終わりのバー。カウンター越しの、短い会話。", tags: ["ナイトプール", "グラマー", "刺激的"], intensity: 2, likes: 47800, link: null },
   ] },
@@ -65,9 +65,9 @@ export async function seed(db: DB, opts: { demo: boolean }) {
   for (const c of DEMO) {
     const [u] = await db.insert(s.users).values({
       email: `${c.handle.replace(/\W/g, "")}@demo.example`, handle: c.handle, displayName: c.handle,
-      passwordHash: demoPw, emailVerifiedAt: new Date(), avatarHue: c.hue[0],
+      passwordHash: demoPw, emailVerifiedAt: new Date(), avatarHue: c.hue[0], bio: c.bio,
     }).returning();
-    await db.insert(s.creatorProfiles).values({ userId: u.id, status: "approved", approvedPosts: c.videos.length, approvedAt: new Date(), bio: "デモ用の投稿者です。" });
+    await db.insert(s.creatorProfiles).values({ userId: u.id, status: "approved", approvedPosts: c.videos.length, approvedAt: new Date(), bio: c.bio });
     for (const v of c.videos) {
       const shift = videoIds.length * 17;
       const [row] = await db.insert(s.videos).values({

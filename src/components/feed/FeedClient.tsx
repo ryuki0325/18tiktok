@@ -48,6 +48,7 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
   const [fs, setFs] = useState<{ card: VideoCard; t: number } | null>(null);
   const searchFocus = useRef<HTMLInputElement>(null);
   const [uiHidden, setUiHidden] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [bursts, setBursts] = useState<{ key: number; id: string; x: number; y: number }[]>([]);
   const lastTap = useRef<{ t: number; x: number; y: number; timer: ReturnType<typeof setTimeout> | null }>({ t: 0, x: 0, y: 0, timer: null });
   const toast = useToast();
@@ -214,9 +215,15 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
                       <button aria-label="全画面で見る" onClick={() => openFullscreen(c)}><span className="hit"><Icon name="expand" size={26} /></span><span>全画面</span></button>
                       <button aria-label="その他" onClick={() => setSheet({ kind: "more", card: c })}><span className="hit"><Icon name="more" size={28} /></span></button>
                     </div>
-                    <div className="vinfo">
+                    <div className={`vinfo${expanded === c.id ? " open" : ""}`}>
                       <Link className="h" href={`/u/${encodeURIComponent(c.creator.handle)}`}>@{c.creator.handle}</Link>
-                      <p>{c.description || c.title}</p>
+                      <p>
+                        {c.description || c.title}
+                        {/* 長い説明は2行で切り、「もっと見る」で開く（TikTokと同じ） */}
+                        {(c.description || c.title).length > 38 && (
+                          <button className="vmore" onClick={() => setExpanded(expanded === c.id ? null : c.id)}>{expanded === c.id ? "とじる" : "もっと見る"}</button>
+                        )}
+                      </p>
                       <div className="tags">{c.tags.slice(0, 3).map((t) => <Link key={t} href={`/tags/${encodeURIComponent(t)}`}>#{t}</Link>)}</div>
                     </div>
                     {c.link && (

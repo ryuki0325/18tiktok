@@ -2,13 +2,14 @@ import Link from "next/link";
 import { and, asc, gt, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/db";
 import { featuredSlots } from "@/db/schema";
-import { hydrate, popularTags, rookies, weeklyRanking } from "@/lib/content";
+import { hydrate, popularTags, rookies, trending, weeklyRanking } from "@/lib/content";
 import { requestTime } from "@/lib/settings";
 import { viewerContext } from "@/lib/viewer";
 import { Icon } from "@/components/Icon";
 import { Avatar, Thumb } from "@/components/VideoBackdrop";
-import { TabBar } from "@/components/TabBar";
+import { NavTabs } from "@/components/NavTabs";
 import { fmt } from "@/components/format";
+import { ProfileGrid } from "@/components/profile/ProfileGrid";
 import { ExploreSearch } from "./ExploreSearch";
 
 export const metadata = { title: "探す" };
@@ -16,7 +17,7 @@ export const metadata = { title: "探す" };
 export default async function Explore({ searchParams }: { searchParams: Promise<{ focus?: string }> }) {
   const { focus } = await searchParams;
   const ctx = await viewerContext();
-  const [tags, rank, rookieList] = await Promise.all([popularTags(), weeklyRanking(ctx, 10), rookies()]);
+  const [tags, rank, rookieList, hot] = await Promise.all([popularTags(), weeklyRanking(ctx, 10), rookies(), trending(ctx, 24)]);
   const now = requestTime();
   const slots = await (await db()).select().from(featuredSlots).where(and(lte(featuredSlots.startsAt, new Date(now)), or(isNull(featuredSlots.endsAt), gt(featuredSlots.endsAt, new Date(now))))).orderBy(asc(featuredSlots.position)).limit(10);
   const featuredCards = slots.length ? await hydrate(slots.map((x) => x.videoId), ctx) : rank.slice(0, 1);
@@ -66,8 +67,12 @@ export default async function Explore({ searchParams }: { searchParams: Promise<
             </div>
           </section>
         )}
+        <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <h2 className="label">いま見られている動画</h2>
+          <div style={{ margin: "0 -13px" }}><ProfileGrid cards={hot} empty={<p className="cap">まだ動画がありません。</p>} /></div>
+        </section>
       </div>
-      <TabBar />
+      <NavTabs />
     </div>
   );
 }
