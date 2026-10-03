@@ -10,6 +10,8 @@ export type VideoCard = {
   tags: string[]; likes: number; comments: number; views: number; clicks: number;
   link: { id: string; domain: string } | null; liked: boolean; saved: boolean; following: boolean;
   publishedAt: string | null; commentsEnabled: boolean;
+  /** 動画ファイルのURL（HLS/MP4）。動画配信の実装までは null で、抽象プレースホルダーを表示 */
+  src: string | null;
 };
 
 type Opts = { viewerKey: string; userId?: string | null; preferredTags?: string[] };
@@ -45,7 +47,7 @@ export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublis
       likes: v.baseLikes + (lc.get(v.id) ?? 0), comments: cc.get(v.id) ?? 0, views: vc.get(v.id) ?? 0, clicks: kc.get(v.id) ?? 0,
       link: link ? { id: link.id, domain: link.domain } : null,
       liked: liked.has(v.id), saved: saved.has(v.id), following: fol.has(v.creatorId),
-      publishedAt: v.publishedAt?.toISOString() ?? null, commentsEnabled: v.commentsEnabled,
+      publishedAt: v.publishedAt?.toISOString() ?? null, commentsEnabled: v.commentsEnabled, src: null,
     };
     return [v.id, card];
   }));
@@ -58,7 +60,7 @@ export type FeedTab = "recommended" | "popular" | "following";
  * フィード。今は公開中の動画を読み込んでアプリ側で並べる（件数が増えたら rankings_cache に移す）。
  * おすすめ：新しさ × 好みのタグ × フォロー、人気：再生・クリック・いいねを時間で減衰させたスコア
  */
-export async function feed(tab: FeedTab, o: Opts, limit = 20): Promise<VideoCard[]> {
+export async function feed(tab: FeedTab, o: Opts, limit = 20, offset = 0): Promise<VideoCard[]> {
   const d = await db();
   let idRows = await d.select({ id: s.videos.id, creatorId: s.videos.creatorId, publishedAt: s.videos.publishedAt, baseLikes: s.videos.baseLikes })
     .from(s.videos).where(eq(s.videos.status, "published")).orderBy(desc(s.videos.publishedAt)).limit(300);
@@ -66,7 +68,7 @@ export async function feed(tab: FeedTab, o: Opts, limit = 20): Promise<VideoCard
     if (!o.userId) return [];
     const f = new Set((await d.select({ id: s.follows.creatorId }).from(s.follows).where(eq(s.follows.followerId, o.userId))).map((r) => r.id));
     idRows = idRows.filter((r) => f.has(r.creatorId));
-    return hydrate(idRows.slice(0, limit).map((r) => r.id), o, d);
+    return hydrate(idRows.slice(offset, offset + limit).map((r) => r.id), o, d);
   }
   const cards = await hydrate(idRows.map((r) => r.id), o, d);
   const formula = await getSetting("ranking.popular_formula", d);
@@ -76,7 +78,7 @@ export async function feed(tab: FeedTab, o: Opts, limit = 20): Promise<VideoCard
   const pref = new Set(o.preferredTags ?? []);
   const rec = (c: VideoCard) => (1 + c.tags.filter((t) => pref.has(t)).length * 0.6 + (c.following ? 0.5 : 0)) * 0.5 ** (age(c) / 72) + pop(c) * 0.02;
   const score = tab === "popular" ? pop : rec;
-  return cards.sort((a, b) => score(b) - score(a)).slice(0, limit);
+  return cards.sort((a, b) => score(b) - score(a)).slice(offset, offset + limit);
 }
 
 export async function videosByTag(tag: string, o: Opts) {
@@ -111,8 +113,13 @@ export async function search(q: string, o: Opts) {
 export async function weeklyRanking(o: Opts, limit = 10) {
   const d = await db();
   const since = new Date(Date.now() - 7 * 86400_000);
-  const rows = await d.select({ id: s.videos.id, score: sql<number>`(select count(*) from ${s.views} vw where vw.video_id = ${s.videos.id} and vw.is_valid and vw.created_at >= ${since}) + 3 * (select count(*) from ${s.linkClicks} lc where lc.video_id = ${s.videos.id} and lc.is_valid and lc.created_at >= ${since}) + ${s.videos.baseLikes} / 1000` })
-    .from(s.videos).where(eq(s.videos.status, "published")).orderBy(desc(sql`2`)).limit(limit);
+  const rows = await d.select({
+    id: s.videos.id,
+    score: sql<number>`(select count(*) from views vw where vw.video_id = "videos"."id" and vw.is_valid and vw.created_at >= ${since})
+      + 3 * (select count(*) from link_clicks lc where lc.video_id = "videos"."id" and lc.is_valid and lc.created_at >= ${since})
+      + "videos"."base_likes" / 1000`.as("score"),
+  })
+    .from(s.videos).where(eq(s.videos.status, "published")).orderBy(desc(sql`score`)).limit(limit);
   return hydrate(rows.map((r) => r.id), o, d);
 }
 

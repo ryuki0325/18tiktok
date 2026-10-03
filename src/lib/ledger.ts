@@ -14,17 +14,20 @@ export async function appendChained<T extends Chained>(
   conn: DB, table: T, values: Omit<T["$inferInsert"], "prevHash" | "rowHash" | "id" | "createdAt">,
 ) {
   return conn.transaction(async (tx) => {
-    const [last] = await tx.select({ h: table.rowHash }).from(table).orderBy(desc(table.id)).limit(1);
+    // 4つの追記型テーブルは id / rowHash を共通に持つ。ジェネリクスでは drizzle の型が解けないため代表型で扱う
+    const t = table as unknown as typeof adminAuditLogs;
+    const [last] = await tx.select({ h: t.rowHash }).from(t).orderBy(desc(t.id)).limit(1);
     const prevHash = last?.h ?? GENESIS;
     const rowHash = chainHash(prevHash, values);
-    const [row] = await tx.insert(table).values({ ...values, prevHash, rowHash } as T["$inferInsert"]).returning();
-    return row;
+    const [row] = await tx.insert(t).values({ ...values, prevHash, rowHash } as never).returning();
+    return row as unknown as T["$inferSelect"];
   });
 }
 
 /** チェーンを先頭から検証し、壊れている行のIDを返す（なければ null） */
 export async function verifyChain(conn: DB, table: Chained): Promise<number | null> {
-  const rows = await conn.select().from(table).orderBy(table.id);
+  const t = table as unknown as typeof adminAuditLogs;
+  const rows = await conn.select().from(t).orderBy(t.id);
   let prev = GENESIS;
   for (const r of rows as Record<string, unknown>[]) {
     const { id, prevHash, rowHash, createdAt, ...rest } = r;

@@ -1,6 +1,57 @@
 # Glow（仮称）
 
 18歳以上限定の縦型ショート動画プラットフォーム（Webファースト / モバイル最優先）。
+TikTok と同じ「縦スワイプ・自動再生・次の動画の先読み・無限スクロール」の操作感を、独自のデザインとテーマ切り替えで提供します。
 
-- 現在：**フェーズ1（設計書）** — 実装はまだありません
 - 設計書：[docs/README.md](./docs/README.md)
+- 画面デザインの試作（単体HTML）：[prototype/](./prototype/)
+
+## 動かし方
+
+```bash
+npm install
+cp .env.example .env.local   # AUTH_SECRET に32文字以上のランダム文字列を入れる（開発中は空でも動く）
+npm run dev                  # http://localhost:3000
+```
+
+- データベースの準備は不要です。`DATABASE_URL` が空なら、組み込みの PostgreSQL（PGlite）を `.data/` に作り、マイグレーションとデモデータを自動で入れます。
+- 本番では `DATABASE_URL` に PostgreSQL の接続文字列を入れるだけで切り替わります。
+- やり直したいときは `npm run db:reset`（`.data/` を消す）。
+
+### デモ用アカウント
+| 用途 | メール | パスワード |
+|---|---|---|
+| 運営（スーパー管理者） | admin@example.com | 開発中は `glow-admin-dev`（`ADMIN_PASSWORD` で変更） |
+| 投稿者 | mio_gold@demo.example など | glow-demo-password |
+| 閲覧者 | viewer@demo.example | glow-demo-password |
+
+管理画面（`/admin`）は初回ログイン時に2段階認証（認証アプリ）の登録が必要です。
+
+## テスト
+
+```bash
+npm test          # ユニットテスト（URL検証・テーマ・TOTP・年齢確認Cookie・通報・審査・クリック計測・追記型ログ）
+npm run build && npm run test:e2e   # ブラウザでのE2E（年齢ゲート・API直叩き・通報→非公開・外部リンク・権限）
+npm run lint && npm run typecheck
+```
+
+## 軽さ・速さのための仕組み
+- フィードは最初の6本だけをサーバーで描画し、残り3本になったら次の8本を読み込む（無限スクロール）
+- 描画するのは「今の1本と前後1本」だけ。それ以外は空の箱を置き、メモリと描画負荷を一定に保つ
+- アニメーションするのは表示中の1本だけ。プレースホルダーは `filter: blur` を使わず、GPU合成だけで動く
+- 動画ファイルが入ったら、表示中の1本だけを再生し、次の1本は `preload` 済みにする仕組みが入っている（`VideoCard.src`）
+- テーマはCookieに保存し、サーバー側で `<head>` に色を埋め込むので、表示のちらつきがない
+
+## 構成
+| 層 | 使っているもの |
+|---|---|
+| 画面 | Next.js 16（App Router）/ React 19 / TypeScript / Tailwind CSS v4 + CSS変数（テーマトークン） |
+| DB | PostgreSQL（開発は PGlite）/ Drizzle ORM / マイグレーションは `drizzle/` |
+| 認証 | 自前（scrypt・HttpOnly Cookie セッション）、管理者は TOTP 2段階認証 |
+| 年齢確認 | 署名付きCookie。`src/proxy.ts` で一次チェック、サーバー側（ページ・API・DB）で再確認 |
+
+## まだ入っていないもの
+- 動画ファイルのアップロード・変換・配信（保存先の事業者が決まってから。今は抽象的なプレースホルダー）
+- 投稿者の本人確認（運用方針の決定待ち）
+- メール送信（`MAIL_PROVIDER` 未設定の間は、確認リンクを画面とサーバーログに表示）
+- 重複動画の検知・違法コンテンツの自動検知（差し込み口のみ設計済み）

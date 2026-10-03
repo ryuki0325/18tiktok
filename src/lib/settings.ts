@@ -25,7 +25,7 @@ export const DEFAULT_SETTINGS = {
 } as const;
 
 export type SettingKey = keyof typeof DEFAULT_SETTINGS;
-type Widen<T> = T extends readonly (infer U)[] ? U[] : T extends number ? number : T extends string ? string : T;
+type Widen<T> = T extends readonly (infer U)[] ? Widen<U>[] : T extends number ? number : T extends string ? string : T;
 export type SettingValue<K extends SettingKey> = Widen<(typeof DEFAULT_SETTINGS)[K]>;
 
 export async function getSetting<K extends SettingKey>(key: K, d?: DB): Promise<SettingValue<K>> {
@@ -40,3 +40,6 @@ export async function setSetting<K extends SettingKey>(key: K, value: SettingVal
     target: siteSettings.key, set: { value, updatedAt: new Date() },
   });
 }
+
+/** リクエスト時点の時刻（サーバーコンポーネントで期限や経過時間を計算するため） */
+export const requestTime = () => Date.now();

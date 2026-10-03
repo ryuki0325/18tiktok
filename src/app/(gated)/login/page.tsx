@@ -1,0 +1,18 @@
+import Link from "next/link";
+import { NavBar } from "@/components/NavBar";
+import { LoginForm } from "./LoginForm";
+
+export const metadata = { title: "ログイン" };
+
+export default async function Login({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  const { next } = await searchParams;
+  return (
+    <div className="screen">
+      <NavBar title="ログイン" back="/me" />
+      <div className="sec" style={{ gap: 18, paddingTop: 12 }}>
+        <LoginForm next={next ?? "/me"} />
+        <p className="cap" style={{ textAlign: "center" }}>アカウントをお持ちでない方は <Link href={`/signup${next ? `?next=${encodeURIComponent(next)}` : ""}`} style={{ color: "var(--accent)", fontWeight: 600 }}>新規登録</Link></p>
+      </div>
+    </div>
+  );
+}
