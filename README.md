@@ -25,6 +25,13 @@ TikTok と同じ「縦スワイプ・自動再生・次の動画の先読み・�
 - 無料プランは、しばらくアクセスがないと止まり、次のアクセスで起動するまで数十秒かかります。無料の PostgreSQL には利用期限があります。本番運用では有料プランにしてください。
 - **公開前に**：Render の利用規約が成人向けコンテンツを認めているかを必ず確認してください（今は動画が抽象的なプレースホルダーのみ）。
 
+## Supabase を使う場合
+1. Supabase の **Project Settings → Database → Connection string** を開き、**Session pooler**（ポート 5432）の接続文字列をコピーする
+   （`postgresql://postgres.xxxx:[YOUR-PASSWORD]@aws-0-….pooler.supabase.com:5432/postgres`。`[YOUR-PASSWORD]` はデータベースのパスワードに置き換える）
+2. Render の Environment の `DATABASE_URL` に貼る
+- Supabase のときは自動で **SSL を使い、テーブルを専用スキーマ `glow` に作ります**。`public` スキーマは Supabase のAPI（anon key）から読めるため、そこにはユーザー情報を置きません。
+- 「Direct connection」（db.xxxx.supabase.co）は IPv6 専用のため、Render からはつながらないことがあります。Session pooler を使ってください。
+
 ## 動かし方
 
 ```bash

@@ -104,3 +104,16 @@ describe("パスワード", () => {
     expect(await verifyPassword("wrong", h)).toBe(false);
   });
 });
+
+describe("データベース接続の設定", () => {
+  it("Supabase は専用スキーマ glow と SSL 必須になる", async () => {
+    const { connectionOptions } = await import("@/db");
+    expect(connectionOptions("postgresql://postgres.abc:pw@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres")).toEqual({ schemaName: "glow", ssl: "require" });
+    expect(connectionOptions("postgresql://postgres:pw@db.abcdef.supabase.co:5432/postgres")).toEqual({ schemaName: "glow", ssl: "require" });
+  });
+  it("Render などはそのまま（sslmode を尊重）", async () => {
+    const { connectionOptions } = await import("@/db");
+    expect(connectionOptions("postgres://u:p@dpg-xxx-a/glow")).toEqual({ schemaName: null, ssl: undefined });
+    expect(connectionOptions("postgres://u:p@host/db?sslmode=require").ssl).toBe("require");
+  });
+});

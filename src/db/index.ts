@@ -20,9 +20,15 @@ export async function createDb(opts: { memory?: boolean; seedDemo?: boolean } = 
     const { drizzle } = await import("drizzle-orm/postgres-js");
     const { migrate } = await import("drizzle-orm/postgres-js/migrator");
     const postgres = (await import("postgres")).default;
+    const { schemaName, ssl } = connectionOptions(url);
     // prepare:false は Supabase などの接続プーラー（PgBouncer のトランザクションモード）でも動かすため
-    const d = drizzle(postgres(url, { max: 10, prepare: false, onnotice: () => {} }), { schema, casing: "snake_case" });
-    await migrate(d, { migrationsFolder: MIGRATIONS });
+    const client = postgres(url, {
+      max: 10, prepare: false, onnotice: () => {}, ssl,
+      ...(schemaName ? { connection: { search_path: schemaName } } : {}),
+    });
+    if (schemaName) await client.unsafe(`create schema if not exists "${schemaName}"`);
+    const d = drizzle(client, { schema, casing: "snake_case" });
+    await migrate(d, { migrationsFolder: MIGRATIONS, ...(schemaName ? { migrationsSchema: `${schemaName}_migrations` } : {}) });
     db = d as unknown as DB;
   } else {
     // 組み込みDB（PGlite）は約500MBのメモリを使うため、Render無料プラン（512MB）などでは落ちる。
@@ -46,6 +52,24 @@ export async function createDb(opts: { memory?: boolean; seedDemo?: boolean } = 
   }
   await seed(db, { demo: opts.seedDemo ?? process.env.SEED_DEMO !== "false" });
   return db;
+}
+
+/**
+ * 接続先ごとの設定
+ * - Supabase：テーブルを専用スキーマ "glow" に作る。public スキーマは Supabase の API（anon key）から読めてしまうため、
+ *   そこにユーザー情報などを置かない。既存のプロジェクト（MoodGo など）のテーブルとも名前がぶつからない。
+ *   また Supabase は SSL 必須。
+ * - DB_SCHEMA を指定すれば、ほかの接続先でもスキーマを分けられる
+ */
+export function connectionOptions(url: string): { schemaName: string | null; ssl: "require" | false | undefined } {
+  let host = "";
+  try { host = new URL(url).hostname; } catch {}
+  const isSupabase = /(^|\.)supabase\.(co|com)$/.test(host);
+  const schemaName = process.env.DB_SCHEMA || (isSupabase ? "glow" : null);
+  if (schemaName && !/^[a-z_][a-z0-9_]{0,40}$/.test(schemaName)) throw new Error("DB_SCHEMA は半角英小文字・数字・_ で指定してください");
+  const sslmode = (() => { try { return new URL(url).searchParams.get("sslmode"); } catch { return null; } })();
+  const ssl = sslmode === "disable" ? false : isSupabase || sslmode === "require" ? "require" as const : undefined;
+  return { schemaName, ssl };
 }
 
 export class DatabaseNotConfiguredError extends Error {

@@ -12,4 +12,4 @@ CREATE TABLE "featured_slots" (
 ALTER TABLE "outbound_links" ADD COLUMN "last_checked_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "outbound_links" ADD COLUMN "last_check_status" text;--> statement-breakpoint
 ALTER TABLE "outbound_links" ADD COLUMN "check_failures" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
-ALTER TABLE "featured_slots" ADD CONSTRAINT "featured_slots_video_id_videos_id_fk" FOREIGN KEY ("video_id") REFERENCES "public"."videos"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "featured_slots" ADD CONSTRAINT "featured_slots_video_id_videos_id_fk" FOREIGN KEY ("video_id") REFERENCES "videos"("id") ON DELETE cascade ON UPDATE no action;

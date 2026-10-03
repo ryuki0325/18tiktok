@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "drizzle-kit generate && node scripts/unqualify-migrations.mjs",
     "db:reset": "rm -rf .data"
   },
   "dependencies": {

@@ -12,6 +12,6 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 120_000,
     // E2E_DATABASE_URL を指定すると本物の PostgreSQL で試せる（未指定なら組み込みの PGlite）
-    env: { AUTH_SECRET: "e2e-secret-0123456789abcdef0123456789abcdef", ADMIN_PASSWORD: "glow-admin-e2e", DATABASE_URL: process.env.E2E_DATABASE_URL ?? "", ALLOW_EMBEDDED_DB: "true" },
+    env: { AUTH_SECRET: "e2e-secret-0123456789abcdef0123456789abcdef", ADMIN_PASSWORD: "glow-admin-e2e", DATABASE_URL: process.env.E2E_DATABASE_URL ?? "", ALLOW_EMBEDDED_DB: "true", DB_SCHEMA: process.env.E2E_DB_SCHEMA ?? "" },
   },
 });

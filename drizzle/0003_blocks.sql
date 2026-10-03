@@ -5,4 +5,4 @@ CREATE TABLE "blocks" (
 	CONSTRAINT "blocks_viewer_key_creator_id_pk" PRIMARY KEY("viewer_key","creator_id")
 );
 --> statement-breakpoint
-ALTER TABLE "blocks" ADD CONSTRAINT "blocks_creator_id_users_id_fk" FOREIGN KEY ("creator_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "blocks" ADD CONSTRAINT "blocks_creator_id_users_id_fk" FOREIGN KEY ("creator_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
