@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import type { DB } from "./index";
 import * as s from "./schema";
+import { randomBytes } from "node:crypto";
 import { hashPassword } from "@/lib/crypto";
 import { TAG_GROUPS, type VideoCategory } from "@/lib/audience";
 
@@ -38,8 +39,13 @@ export async function seed(db: DB, opts: { demo: boolean }) {
   const adminEmail = (process.env.ADMIN_EMAIL || "admin@example.com").toLowerCase();
   const [admin] = await db.select().from(s.users).where(eq(s.users.email, adminEmail));
   if (!admin) {
-    const pw = process.env.ADMIN_PASSWORD || (process.env.NODE_ENV === "production" ? null : "glow-admin-dev");
-    if (pw) {
+    let pw = process.env.ADMIN_PASSWORD || (process.env.NODE_ENV === "production" ? null : "glow-admin-dev");
+    if (!pw) {
+      // 本番で ADMIN_PASSWORD を入れ忘れた場合：ランダムな初期パスワードを作り、サーバーのログに一度だけ表示する
+      pw = randomBytes(12).toString("base64url");
+      console.warn(`[glow] ADMIN_PASSWORD が未設定のため、管理者の初期パスワードを自動で作りました：${adminEmail} / ${pw} （ログイン後、ADMIN_PASSWORD の設定を推奨）`);
+    }
+    {
       await db.insert(s.users).values({
         email: adminEmail, handle: "admin", displayName: "運営", role: "super_admin",
         passwordHash: await hashPassword(pw), emailVerifiedAt: new Date(),
