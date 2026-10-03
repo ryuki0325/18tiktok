@@ -30,8 +30,20 @@ const preferNativeHls = () => {
   return /iP(hone|ad|od)/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) || (/Safari/.test(ua) && !/Chrome|Chromium|Edg|Firefox|Android/.test(ua));
 };
 
-/** 再生中・先読みの読み込み量（秒） */
-const BUFFER = { active: 30, next: 4, idle: 0 } as const;
+/**
+ * 読み込む量（秒）。通信量＝そのままCDNの料金なので、先読みしすぎないようにする。
+ * スワイプで次へ行く人が多いほど、読み込んだのに見ない動画が増える。
+ */
+const BUFFER = { active: 12, next: 2, idle: 0 } as const;
+/** 通信量の節約がオンの端末、または回線が遅いときはさらに控えめに */
+const saveData = () => {
+  const c = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+  return !!c?.saveData || c?.effectiveType === "2g" || c?.effectiveType === "slow-2g";
+};
+/** 1本あたりに貯める最大の量（バイト）。既定の60MBは短い動画には多すぎる */
+const MAX_BUFFER_BYTES = 12 * 1024 * 1024;
+/** スマホの画面で十分な高さ。これより大きい画質は使わない（通信量と電池の節約） */
+const MAX_HEIGHT = 720;
 
 export function FeedVideo({ src, poster, width, height, active, paused, muted, rate, preload, contain, startAt, onTime }: Props) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -51,15 +63,22 @@ export function FeedVideo({ src, poster, width, height, active, paused, muted, r
         if (cancelled) return;
         if (!Hls.isSupported()) { v.src = src; return; }
         const p = preloadRef.current;
+        const slow = saveData();
         const h = new Hls({
           // 画面の大きさ以上の画質は取らない（通信量と負荷を抑える）
           capLevelToPlayerSize: true, startLevel: -1, autoStartLoad: p !== "idle",
-          maxBufferLength: BUFFER[p] || 4, maxMaxBufferLength: 60, backBufferLength: 10,
-          // 最初の1本目は回線速度の推定値から（約2Mbps）。以降は実測で切り替え
-          abrEwmaDefaultEstimate: 2_000_000, startFragPrefetch: true,
+          maxBufferLength: slow ? 6 : BUFFER[p] || 4, maxMaxBufferLength: slow ? 12 : 24,
+          maxBufferSize: MAX_BUFFER_BYTES, backBufferLength: 6,
+          // 最初の1本目は回線速度の推定値から。以降は実測で切り替え
+          abrEwmaDefaultEstimate: slow ? 600_000 : 2_000_000, startFragPrefetch: true,
         });
         h.loadSource(src);
         h.attachMedia(v);
+        // スマホの画面には 720p で十分。それ以上の画質があっても使わない
+        h.on(Hls.Events.MANIFEST_PARSED, () => {
+          const max = h.levels.reduce((best, lv, i) => (lv.height <= MAX_HEIGHT && lv.height >= (h.levels[best]?.height ?? 0) ? i : best), 0);
+          h.autoLevelCapping = max;
+        });
         hls.current = h;
       });
     } else {
@@ -80,7 +99,7 @@ export function FeedVideo({ src, poster, width, height, active, paused, muted, r
     if (v) v.preload = preload === "idle" ? "metadata" : "auto";
     if (!h) return;
     if (preload === "idle") { h.stopLoad(); return; }
-    h.config.maxBufferLength = BUFFER[preload];
+    h.config.maxBufferLength = saveData() ? 6 : BUFFER[preload];
     h.startLoad(-1);
   }, [preload]);
 
@@ -98,6 +117,18 @@ export function FeedVideo({ src, poster, width, height, active, paused, muted, r
       if (!active && v.currentTime > 0) v.currentTime = 0;
     }
   }, [active, paused, startAt]);
+
+  // 画面を閉じている・別のアプリを見ている間は読み込みを止める（気づかないうちに通信しない）
+  useEffect(() => {
+    const vis = () => {
+      const h = hls.current;
+      if (!h) return;
+      if (document.hidden) h.stopLoad();
+      else if (preloadRef.current !== "idle") h.startLoad(-1);
+    };
+    document.addEventListener("visibilitychange", vis);
+    return () => document.removeEventListener("visibilitychange", vis);
+  }, []);
 
   useEffect(() => { if (ref.current) ref.current.muted = muted; }, [muted]);
   useEffect(() => { if (ref.current) ref.current.playbackRate = rate; }, [rate]);

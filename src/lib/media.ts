@@ -19,6 +19,8 @@ export type Upload = typeof s.uploads.$inferSelect;
 /** 1チャンクの大きさ。スマホ回線で1回の送信が数秒で終わる程度 */
 export const CHUNK_SIZE = Number(process.env.UPLOAD_CHUNK_KB || 8192) * 1024;
 export const maxUploadBytes = () => Number(process.env.UPLOAD_MAX_MB || 2048) * 1024 * 1024;
+/** 長い動画は保存も配信も高くつくので上限を決める（既定5分） */
+export const maxUploadSec = () => Number(process.env.UPLOAD_MAX_SEC || 300);
 export const UPLOAD_TTL_MS = 24 * 3600_000;
 
 const bunnyEnv = () => {
@@ -162,6 +164,11 @@ export async function refreshUpload(conn: DB, id: string): Promise<Upload> {
   const v = (await res.json()) as { status: number; width: number; height: number; length: number };
   // Bunny の status：4=変換完了 / 5=エラー / 6=アップロード失敗。それ以外は処理中
   if (v.status === 4) {
+    // 長すぎる動画は保存も配信も高くつくので受け付けない（アップロード後に実際の長さで判定）
+    if (v.length && v.length > maxUploadSec()) {
+      await deleteFromProvider(u);
+      return markUpload(conn, id, { status: "failed", error: `動画が長すぎます（${Math.floor(maxUploadSec() / 60)}分までです）` });
+    }
     return markUpload(conn, id, {
       status: "ready", width: v.width || u.width, height: v.height || u.height, durationMs: v.length ? Math.round(v.length * 1000) : u.durationMs,
       playbackUrl: `https://${b.cdn}/${u.providerRef}/playlist.m3u8`, thumbnailUrl: `https://${b.cdn}/${u.providerRef}/thumbnail.jpg`,
@@ -187,15 +194,49 @@ export async function applyUploadToVideo(conn: DB, u: Upload) {
   }).where(eq(s.videos.id, u.videoId));
 }
 
+/** 保存先から実ファイルを消す（保存料は置いてあるだけでかかるため） */
+export async function deleteFromProvider(u: Upload) {
+  try {
+    if (u.provider === "local") {
+      await rm(partPath(u.id), { force: true });
+      await rm(path.join(mediaDir(), u.id), { recursive: true, force: true });
+      return;
+    }
+    const b = bunnyEnv();
+    if (b && u.providerRef) await fetch(`https://video.bunnycdn.com/library/${b.lib}/videos/${u.providerRef}`, { method: "DELETE", headers: { AccessKey: b.key }, signal: AbortSignal.timeout(10_000) });
+  } catch (e) {
+    console.error("[glow] 動画ファイルを削除できませんでした", u.id, e);
+  }
+}
+
 /** 中断されたまま期限が切れたアップロードを片付ける（cron の purge から呼ぶ） */
 export async function purgeStaleUploads(conn: DB) {
   const { and, lt, eq: eqq } = await import("drizzle-orm");
   const stale = await conn.select().from(s.uploads).where(and(eqq(s.uploads.status, "uploading"), lt(s.uploads.expiresAt, new Date())));
   for (const u of stale) {
-    if (u.provider === "local") await rm(partPath(u.id), { force: true });
+    await deleteFromProvider(u);
     await conn.delete(s.uploads).where(eqq(s.uploads.id, u.id));
   }
   return stale.length;
+}
+
+/**
+ * 削除された動画のファイルを保存先から消す（cron の purge から呼ぶ）。
+ * すぐには消さず少し待つのは、誤操作や異議申し立てに備えるため。
+ */
+export async function purgeRemovedMedia(conn: DB, graceDays = 7) {
+  const { and, lt, eq: eqq, isNotNull, inArray } = await import("drizzle-orm");
+  const dead = await conn.select({ id: s.videos.id }).from(s.videos)
+    .where(and(eqq(s.videos.status, "removed"), isNotNull(s.videos.playbackUrl), lt(s.videos.createdAt, new Date(Date.now() - graceDays * 86400_000))));
+  if (!dead.length) return 0;
+  const ids = dead.map((d) => d.id);
+  const ups = await conn.select().from(s.uploads).where(inArray(s.uploads.videoId, ids));
+  for (const u of ups) {
+    await deleteFromProvider(u);
+    await conn.delete(s.uploads).where(eqq(s.uploads.id, u.id));
+  }
+  await conn.update(s.videos).set({ playbackUrl: null, thumbnailUrl: null, mediaStatus: "none" }).where(inArray(s.videos.id, ids));
+  return ups.length;
 }
 
 /* ---------------- local：ffmpeg で HLS（複数の解像度・ビットレート）に変換 ---------------- */

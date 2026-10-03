@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { fail, json, sameOrigin } from "@/lib/http";
-import { completeUpload } from "@/lib/media";
+import { completeUpload, maxUploadSec } from "@/lib/media";
 import { ownUpload } from "@/lib/upload-auth";
 
 const Body = z.object({
@@ -20,6 +20,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!p.success) return fail("BAD_REQUEST", "送信内容が正しくありません");
   if (r.upload.status !== "uploading") return json({ id: r.upload.id, status: r.upload.status });
   if (r.upload.provider === "local" && r.upload.received !== r.upload.size) return fail("INCOMPLETE", "まだすべてのデータが届いていません", 409);
+  if (p.data.durationMs && p.data.durationMs > maxUploadSec() * 1000) {
+    return fail("TOO_LONG", `動画が長すぎます（${Math.floor(maxUploadSec() / 60)}分までです）`, 413);
+  }
   const poster = p.data.poster ? Buffer.from(p.data.poster.split(",")[1], "base64") : null;
   const u = await completeUpload(r.conn, r.upload, { ...p.data, poster });
   return json({ id: u.id, status: u.status });

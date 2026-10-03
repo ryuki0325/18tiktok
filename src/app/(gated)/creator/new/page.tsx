@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { affiliateDomains, tags } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { NavBar } from "@/components/NavBar";
-import { maxUploadBytes, mediaProvider } from "@/lib/media";
+import { maxUploadBytes, maxUploadSec, mediaProvider } from "@/lib/media";
 import { PostForm } from "./PostForm";
 
 export const metadata = { title: "投稿する" };
@@ -20,7 +20,7 @@ export default async function NewVideo() {
   return (
     <div className="screen">
       <NavBar title="投稿する" back="/me" />
-      <PostForm tags={allTags.map((t) => t.name)} domains={domains} upload={mediaProvider() ? { maxMb: Math.round(maxUploadBytes() / 1024 / 1024) } : null} />
+      <PostForm tags={allTags.map((t) => t.name)} domains={domains} upload={mediaProvider() ? { maxMb: Math.round(maxUploadBytes() / 1024 / 1024), maxSec: maxUploadSec() } : null} />
     </div>
   );
 }

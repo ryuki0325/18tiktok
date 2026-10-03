@@ -226,3 +226,26 @@ describe("動画の軽い情報（いいね数・再生数・場所）", () => {
     expect(card).toMatchObject({ src: "/media/x/master.m3u8", poster: "/media/x/poster.jpg", width: 1920, height: 1080 });
   });
 });
+
+describe("保存料をむだにしない後片付け", () => {
+  it("削除された動画のファイルは、猶予を過ぎたら保存先からも消す", async () => {
+    const { purgeRemovedMedia } = await import("@/lib/media");
+    const [v] = await db.select().from(s.videos).limit(1);
+    await db.update(s.videos).set({ status: "removed", playbackUrl: "/media/zz/master.m3u8", thumbnailUrl: "/media/zz/poster.jpg", mediaStatus: "ready", createdAt: new Date(Date.now() - 30 * 86400_000) }).where(eq(s.videos.id, v.id));
+    await db.insert(s.uploads).values({ userId: v.creatorId, videoId: v.id, provider: "local", filename: "a.mp4", mime: "video/mp4", size: 10, status: "ready", expiresAt: new Date(Date.now() + 3600_000) });
+    expect(await purgeRemovedMedia(db)).toBe(1);
+    const [after] = await db.select().from(s.videos).where(eq(s.videos.id, v.id));
+    expect(after.playbackUrl).toBeNull();
+    expect(after.mediaStatus).toBe("none");
+    expect((await db.select().from(s.uploads).where(eq(s.uploads.videoId, v.id))).length).toBe(0);
+  });
+
+  it("消したばかりの動画は、猶予のあいだ残す（誤操作に備える）", async () => {
+    const { purgeRemovedMedia } = await import("@/lib/media");
+    const [v] = await db.select().from(s.videos).where(eq(s.videos.status, "published")).limit(1);
+    await db.update(s.videos).set({ status: "removed", playbackUrl: "/media/yy/master.m3u8", mediaStatus: "ready", createdAt: new Date() }).where(eq(s.videos.id, v.id));
+    expect(await purgeRemovedMedia(db)).toBe(0);
+    const [after] = await db.select().from(s.videos).where(eq(s.videos.id, v.id));
+    expect(after.playbackUrl).toBe("/media/yy/master.m3u8");
+  });
+});

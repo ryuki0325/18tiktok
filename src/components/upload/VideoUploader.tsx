@@ -17,7 +17,7 @@ const mb = (n: number) => `${(n / 1024 / 1024).toFixed(n > 100 * 1024 * 1024 ? 0
  * 動画ファイルの選択とアップロード。大きなファイルも 8MB ずつ分けて送り、切れても続きから再開できる。
  * 送り終えたら uploadId を親フォームに渡す（変換が終わる前に投稿してもよい）
  */
-export function VideoUploader({ onChange, maxMb }: { onChange: (uploadId: string | null) => void; maxMb: number }) {
+export function VideoUploader({ onChange, maxMb, maxSec }: { onChange: (uploadId: string | null) => void; maxMb: number; maxSec: number }) {
   const [st, setSt] = useState<State>({ k: "idle" });
   const [preview, setPreview] = useState<{ url: string; landscape: boolean } | null>(null);
   const file = useRef<File | null>(null);
@@ -73,6 +73,8 @@ export function VideoUploader({ onChange, maxMb }: { onChange: (uploadId: string
     onChange(null);
     file.current = f;
     info.current = await readVideoInfo(f);
+    const sec = (info.current.durationMs || 0) / 1000;
+    if (sec > maxSec + 1) { setSt({ k: "failed", message: `動画が長すぎます（${Math.floor(maxSec / 60)}分までです）` }); file.current = null; return; }
     setPreview({ url: URL.createObjectURL(f), landscape: !!info.current.width && info.current.width > info.current.height });
     void send();
   };
@@ -90,7 +92,7 @@ export function VideoUploader({ onChange, maxMb }: { onChange: (uploadId: string
         <button type="button" className="up-pick" onClick={() => input.current?.click()}>
           <span className="up-ic"><Icon name="upload" size={28} /></span>
           <b>動画を選ぶ</b>
-          <span className="cap">縦長がおすすめ（横長もそのまま表示されます）・{maxMb >= 1024 ? `${maxMb / 1024}GB` : `${maxMb}MB`}まで</span>
+          <span className="cap">縦長がおすすめ（横長もそのまま表示されます）<br />{Math.floor(maxSec / 60)}分・{maxMb >= 1024 ? `${maxMb / 1024}GB` : `${maxMb}MB`}まで</span>
         </button>
       )}
       {st.k !== "idle" && (

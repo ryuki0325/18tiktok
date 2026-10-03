@@ -6,7 +6,7 @@ import { Icon } from "@/components/Icon";
 import { VideoUploader } from "@/components/upload/VideoUploader";
 import { INTENSITIES, VIDEO_CATEGORIES } from "@/lib/audience";
 
-export function PostForm({ tags, domains, upload }: { tags: string[]; domains: { domain: string; name: string }[]; upload: { maxMb: number } | null }) {
+export function PostForm({ tags, domains, upload }: { tags: string[]; domains: { domain: string; name: string }[]; upload: { maxMb: number; maxSec: number } | null }) {
   const [uploadId, setUploadId] = useState<string | null>(null);
   const [state, action, pending] = useActionState(createVideoAction, undefined);
   const [sel, setSel] = useState<string[]>([]);
@@ -21,7 +21,7 @@ export function PostForm({ tags, domains, upload }: { tags: string[]; domains: {
         {upload ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <span className="label">動画<small>必須</small></span>
-            <VideoUploader maxMb={upload.maxMb} onChange={setUploadId} />
+            <VideoUploader maxMb={upload.maxMb} maxSec={upload.maxSec} onChange={setUploadId} />
             {uploadId && <input type="hidden" name="uploadId" value={uploadId} />}
           </div>
         ) : (
