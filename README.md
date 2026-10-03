@@ -8,6 +8,9 @@ TikTok と同じ「縦スワイプ・自動再生・次の動画の先読み・�
 
 ## 公開する（Render）
 
+> **データベース（PostgreSQL）は必須です。** 組み込みDB（PGlite）は約500MBのメモリを使うため、Render の無料プラン（512MB）では落ちます。
+> PostgreSQL につないだ場合のメモリは約190MBです。本番で `DATABASE_URL` が未設定のときは、起動はしますが「データベースが未接続」と表示します。
+
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ryuki0325/18tiktok)
 
 1. 上のボタンを押す（または Render → **New → Blueprint** → このリポジトリを選ぶ）。初回は Render に GitHub の接続を許可する

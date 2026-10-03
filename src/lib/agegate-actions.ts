@@ -26,6 +26,7 @@ export async function acceptAgeGate(_: { error?: string } | undefined, formData:
     target = jar.get("onb")?.value === "1" || next !== "/" ? next : "/welcome/tags";
   } catch (e) {
     console.error("[glow] 年齢確認の保存に失敗しました", e);
+    if (e instanceof Error && e.name === "DatabaseNotConfiguredError") return { error: "サイトの準備中です（データベースが未接続です）。運営者は /api/health で設定状況を確認してください。" };
     return { error: "ただいま混み合っているか、サーバーの準備中です。少し待ってからもう一度お試しください。" };
   }
   redirect(target);

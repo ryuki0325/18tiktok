@@ -17,7 +17,9 @@ export async function GET() {
   } catch (e) {
     console.error("[glow] health: DB error", e);
     out.ok = false;
-    out.db = "接続できません（サーバーのログを確認してください）";
+    out.db = e instanceof Error && e.name === "DatabaseNotConfiguredError"
+      ? "未接続：DATABASE_URL に PostgreSQL の接続文字列を設定してください（組み込みDBは無料プランのメモリ512MBでは動きません）"
+      : "接続できません（サーバーのログを確認してください）";
   }
   return Response.json(out, { status: out.ok ? 200 : 503, headers: { "cache-control": "no-store" } });
 }
