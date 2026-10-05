@@ -218,6 +218,7 @@ export async function applyUploadToVideo(conn: DB, u: Upload) {
   await conn.update(s.videos).set({
     mediaStatus: u.status === "ready" ? "ready" : u.status === "failed" ? "failed" : "processing",
     playbackUrl: u.playbackUrl, thumbnailUrl: u.thumbnailUrl, width: u.width, height: u.height, durationMs: u.durationMs,
+    coverTimeMs: u.coverTimeMs,
   }).where(eq(s.videos.id, u.videoId));
 }
 
@@ -233,6 +234,43 @@ export async function deleteFromProvider(u: Upload) {
     if (b && u.providerRef) await fetch(`https://video.bunnycdn.com/library/${b.lib}/videos/${u.providerRef}`, { method: "DELETE", headers: { AccessKey: b.key }, signal: AbortSignal.timeout(10_000) });
   } catch (e) {
     console.error("[glow] 動画ファイルを削除できませんでした", u.id, e);
+  }
+}
+
+/**
+ * 表紙（サムネイル）を差し替える。投稿者が動画の中から選んだ1コマを使う。
+ * - local：ffmpeg でその位置を切り出し直す（正確で、容量も増えない）
+ * - bunny：その位置を表紙にするよう Bunny に伝える
+ * どちらも失敗したら false を返し、画面に「変えられませんでした」と出す。
+ */
+export async function setCover(conn: DB, u: Upload, timeMs: number): Promise<boolean> {
+  const t = Math.max(0, Math.min(timeMs, u.durationMs ?? timeMs)) / 1000;
+  await conn.update(s.uploads).set({ coverTimeMs: Math.round(t * 1000), updatedAt: new Date() }).where(eq(s.uploads.id, u.id));
+  if (u.videoId) await conn.update(s.videos).set({ coverTimeMs: Math.round(t * 1000) }).where(eq(s.videos.id, u.videoId));
+
+  if (u.provider === "local") {
+    if (!(await hasFfmpeg())) return false;
+    const dir = path.join(mediaDir(), u.id);
+    try {
+      await run("ffmpeg", ["-y", "-v", "error", "-ss", String(t), "-i", path.join(dir, "master.m3u8"),
+        "-frames:v", "1", "-vf", "scale='min(720,iw)':-2", "-q:v", "3", path.join(dir, "poster.jpg")]);
+      return true;
+    } catch (e) {
+      console.error("[glow] 表紙を作り直せませんでした", e);
+      return false;
+    }
+  }
+  const b = bunnyEnv();
+  if (!b || !u.providerRef) return false;
+  try {
+    const res = await fetch(`https://video.bunnycdn.com/library/${b.lib}/videos/${u.providerRef}`, {
+      method: "POST", headers: { AccessKey: b.key, "content-type": "application/json" },
+      body: JSON.stringify({ thumbnailTime: Math.round(t * 1000) }), signal: AbortSignal.timeout(10_000),
+    });
+    return res.ok;
+  } catch (e) {
+    console.error("[glow] Bunny の表紙を変えられませんでした", e);
+    return false;
   }
 }
 

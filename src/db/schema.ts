@@ -130,6 +130,10 @@ export const videos = pgTable("videos", {
   statusReason: text(),
   /** status が hidden のとき、誰が下げたか */
   hiddenReason: text().$type<HiddenReason>(),
+  /** 審査を通ったあと、公開するか自分だけにするか（TikTokの「この動画を見られる人」） */
+  visibility: text().$type<"public" | "private">().notNull().default("public"),
+  /** 表紙に使う位置（ミリ秒）。投稿者が動画の中から選ぶ */
+  coverTimeMs: integer(),
   /** 審査を通した日時（approved に入った時刻） */
   approvedAt: ts(),
   /** 削除した日時（ファイルの片付けの起点） */
@@ -192,6 +196,8 @@ export const uploads = pgTable("uploads", {
   width: integer(),
   height: integer(),
   durationMs: integer(),
+  /** 表紙に選んだ位置（ミリ秒） */
+  coverTimeMs: integer(),
   error: text(),
   createdAt: now(),
   updatedAt: now(),

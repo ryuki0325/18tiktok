@@ -60,8 +60,15 @@ export const CONSENT_TEXT = [
 export async function createVideo(conn: DB, input: {
   creatorId: string; title: string; description: string; tags: string[]; link?: string; category: "women" | "men" | "couple"; intensity: number;
   consents: [boolean, boolean, boolean]; ipHash: string; userAgent: string;
+  /** 審査を通ったあと、公開するか自分だけにするか */
+  visibility?: "public" | "private";
+  commentsEnabled?: boolean;
+  /** true なら下書きとして保存する（同意のチェックはまだ要らない） */
+  asDraft?: boolean;
+  /** 下書きを上書きするとき */
+  draftId?: string;
 }) {
-  if (!input.consents.every(Boolean)) return { ok: false as const, error: "3つの確認事項すべてにチェックが必要です" };
+  if (!input.asDraft && !input.consents.every(Boolean)) return { ok: false as const, error: "3つの確認事項すべてにチェックが必要です" };
   const [cp] = await conn.select().from(s.creatorProfiles).where(eq(s.creatorProfiles.userId, input.creatorId));
   if (!cp || cp.status !== "approved") return { ok: false as const, error: "投稿者として承認されていません" };
   if (cp.restrictedUntil && cp.restrictedUntil > new Date()) return { ok: false as const, error: "投稿制限中のため投稿できません" };
@@ -77,14 +84,42 @@ export async function createVideo(conn: DB, input: {
 
   return conn.transaction(async (tx) => {
     const t = tx as unknown as DB;
+    const common = {
+      title: input.title, description: input.description, category: input.category, intensity: input.intensity,
+      visibility: input.visibility ?? "public", commentsEnabled: input.commentsEnabled ?? true,
+    };
     // 段階審査：最初のN本は必ず審査。実績ランクも「今は」全件審査（自動チェックの実装後に緩める）
-    const [v] = await tx.insert(s.videos).values({
-      creatorId: input.creatorId, title: input.title, description: input.description, hue, category: input.category, intensity: input.intensity,
-      status: "pending_review", reviewRequired: true,
-      statusReason: cp.approvedPosts < fullReviewCount ? `新規投稿者の審査（${cp.approvedPosts + 1}/${fullReviewCount}本目）` : null,
-    }).returning();
+    const statusReason = input.asDraft ? null
+      : cp.approvedPosts < fullReviewCount ? `新規投稿者の審査（${cp.approvedPosts + 1}/${fullReviewCount}本目）` : null;
+    let v: typeof s.videos.$inferSelect;
+    if (input.draftId) {
+      // 下書きの続きから。状態は遷移表を通して進める
+      const [cur] = await tx.select().from(s.videos).where(and(eq(s.videos.id, input.draftId), eq(s.videos.creatorId, input.creatorId)));
+      if (!cur || cur.status !== "draft") return { ok: false as const, error: "下書きが見つかりません" };
+      const [row] = await tx.update(s.videos).set({ ...common, statusReason }).where(eq(s.videos.id, cur.id)).returning();
+      v = row;
+      await tx.delete(s.videoTags).where(eq(s.videoTags.videoId, v.id));
+      await tx.delete(s.outboundLinks).where(eq(s.outboundLinks.videoId, v.id));
+    } else {
+      const [row] = await tx.insert(s.videos).values({
+        creatorId: input.creatorId, hue, ...common,
+        status: input.asDraft ? "draft" : "pending_review", reviewRequired: true, statusReason,
+      }).returning();
+      v = row;
+    }
+    // 下書きから審査に出すときは、遷移表を通す（状態を飛ばせないように）
+    if (input.draftId && !input.asDraft) {
+      const { transition } = await import("./video-state");
+      const moved = await transition(t, { videoId: v.id, to: "pending_review", actorId: input.creatorId, expect: ["draft"] });
+      if (!moved) return { ok: false as const, error: "下書きを審査に出せませんでした" };
+      v = moved;
+    }
     const tagRows = input.tags.length ? await tx.select().from(s.tags).where(inArray(s.tags.name, input.tags)) : [];
     if (tagRows.length) await tx.insert(s.videoTags).values(tagRows.map((r) => ({ videoId: v.id, tagId: r.id })));
+    if (input.asDraft) {
+      if (link) await tx.insert(s.outboundLinks).values({ id: crypto.randomUUID().replace(/-/g, "").slice(0, 16), videoId: v.id, destinationId: link.destinationId, url: link.url, domain: link.domain, status: link.status });
+      return { ok: true as const, video: v, linkPending: link?.status === "pending_domain_review", draft: true as const };
+    }
     await appendChained(t, s.videoConsents, {
       videoId: v.id, creatorId: input.creatorId, consentVersion: CONSENT_VERSION, consentTextHash: sha256(CONSENT_TEXT.join("\n")),
       ownsRights: true, performersAdultConsented: true, notReposted: true, ipHash: input.ipHash, userAgent: input.userAgent.slice(0, 300),
@@ -111,10 +146,19 @@ export async function reviewVideo(conn: DB, adminId: string, videoId: string, de
   const [v] = await conn.select().from(s.videos).where(eq(s.videos.id, videoId));
   if (!v || v.status !== "pending_review") return false;
   if (decision === "approve") {
-    const row = await approveAndPublish(conn, videoId, adminId);
+    const row = v.visibility === "private"
+      // 本人が「自分だけ」を選んでいたら、審査は通すが公開はしない
+      ? await (async () => {
+        await transition(conn, { videoId, to: "approved", statusReason: null, actorId: adminId, expect: ["pending_review"] });
+        return transition(conn, { videoId, to: "hidden", hiddenReason: "by_creator", actorId: adminId });
+      })()
+      : await approveAndPublish(conn, videoId, adminId);
     if (!row) return false;
     await conn.update(s.creatorProfiles).set({ approvedPosts: sql`${s.creatorProfiles.approvedPosts} + 1` }).where(eq(s.creatorProfiles.userId, v.creatorId));
-    await conn.insert(s.notifications).values({ userId: v.creatorId, kind: "video_approved", body: `「${v.title}」が公開されました` });
+    await conn.insert(s.notifications).values({
+      userId: v.creatorId, kind: "video_approved",
+      body: v.visibility === "private" ? `「${v.title}」の審査が通りました（自分だけに公開の設定です）` : `「${v.title}」が公開されました`,
+    });
   } else {
     const reason = note || "ガイドラインに沿っていません";
     await transition(conn, { videoId, to: "rejected", statusReason: reason, actorId: adminId });

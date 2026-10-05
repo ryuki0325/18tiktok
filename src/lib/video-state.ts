@@ -15,7 +15,7 @@ import type { HiddenReason, VideoStatus } from "@/db/schema";
  * deleted からは戻せない。画面やAPIがどこから呼んでも、必ずこの表を通す。
  */
 const ALLOWED: Record<VideoStatus, readonly VideoStatus[]> = {
-  draft: ["uploading", "deleted"],
+  draft: ["uploading", "pending_review", "deleted"],
   uploading: ["processing", "draft", "rejected", "deleted"],
   processing: ["pending_review", "rejected", "deleted"],
   pending_review: ["approved", "rejected", "hidden", "deleted"],

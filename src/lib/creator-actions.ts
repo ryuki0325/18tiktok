@@ -44,8 +44,28 @@ const Post = z.object({
   tags: z.array(z.string()).min(1, "タグを1つ以上選んでください").max(5, "タグは5つまでです"),
   link: z.string().trim().max(2048).optional(),
   category: z.enum(["women", "men", "couple"], { message: "ジャンル（出演者）を選んでください" }),
-  intensity: z.coerce.number().int().min(1, "刺激の強さを選んでください").max(3),
+  intensity: z.coerce.number("刺激の強さを選んでください").int().min(1, "刺激の強さを選んでください").max(3),
+  visibility: z.enum(["public", "private"]).default("public"),
+  commentsEnabled: z.coerce.boolean().default(true),
 });
+
+/** 下書きは、まだ全部そろっていなくても保存できる */
+const Draft = Post.partial({ title: true, tags: true, category: true, intensity: true }).extend({
+  title: z.string().trim().max(60).default(""),
+  tags: z.array(z.string()).max(5).default([]),
+});
+
+/** フォームの中身を1か所で読む（投稿と下書きで同じものを使う） */
+function readPost(form: FormData) {
+  return {
+    title: form.get("title"), description: form.get("description") ?? "", tags: form.getAll("tags"),
+    link: form.get("link") || undefined,
+    // 下書きのときは未選択（null）を undefined にして、必須チェックを通さない
+    category: form.get("category") ?? undefined, intensity: form.get("intensity") ?? undefined,
+    visibility: form.get("visibility") === "private" ? "private" : "public",
+    commentsEnabled: form.get("commentsEnabled") !== "off",
+  };
+}
 
 export async function createVideoAction(_: FormState, form: FormData): Promise<FormState> {
   const u = await currentUser();
@@ -58,8 +78,11 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
   // 年齢の確認が済んでいること
   const vok = await canPublish(u.id);
   if (!vok.ok) return { error: vok.reason! };
-  const parsed = Post.safeParse({ title: form.get("title"), description: form.get("description") ?? "", tags: form.getAll("tags"), link: form.get("link") || undefined, category: form.get("category"), intensity: form.get("intensity") ?? 0 });
+  const asDraft = form.get("intent") === "draft";
+  const parsed = (asDraft ? Draft : Post).safeParse(readPost(form));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const draftId = String(form.get("draftId") ?? "") || undefined;
+  if (draftId && !isUuid(draftId)) return { error: "下書きが見つかりません" };
   const consents = (["c1", "c2", "c3"] as const).map((k) => form.get(k) === "on") as [boolean, boolean, boolean];
   const conn = await db();
   // 動画ファイル（チャンクアップロード済み）。保存先が設定されている場合は必須
@@ -73,14 +96,20 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
     if (upload.status === "failed") return { error: "動画の変換に失敗しました。別のファイルでお試しください" };
   } else if (mediaProvider()) return { error: "動画ファイルを選んでください" };
   const r = await createVideo(conn, {
-    creatorId: u.id, ...parsed.data, consents, ipHash: await clientIpHash(), userAgent: (await headers()).get("user-agent") ?? "",
+    creatorId: u.id,
+    ...parsed.data,
+    category: (parsed.data.category ?? "women") as "women" | "men" | "couple",
+    intensity: parsed.data.intensity || 1,
+    consents, ipHash: await clientIpHash(), userAgent: (await headers()).get("user-agent") ?? "",
+    asDraft, draftId,
   });
   if (!r.ok) return { error: r.error };
   if (upload) {
     const [linked] = await conn.update(uploads).set({ videoId: r.video.id }).where(eq(uploads.id, upload.id)).returning();
     await applyUploadToVideo(conn, linked);
   }
-  redirect(`/creator/videos?submitted=1${r.linkPending ? "&linkPending=1" : ""}`);
+  revalidatePath("/creator/videos");
+  redirect(asDraft ? "/creator/videos?saved=1" : `/creator/videos?submitted=1${r.linkPending ? "&linkPending=1" : ""}`);
 }
 
 /** 投稿者自身による非公開・再公開・削除（いつでも可能） */

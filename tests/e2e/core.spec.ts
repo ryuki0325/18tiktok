@@ -169,13 +169,15 @@ test.describe("動画のアップロードと配信", () => {
     await passGate(page);
     await loginAs(page, "luna_night@demo.example");
     await page.goto("/creator/new");
-    await expect(page.locator(".uploader[data-ready]")).toBeVisible();
-    await page.locator('input[type="file"]').setInputFiles(file);
+    // 1) 動画を選ぶ画面 → 選ぶと 2) 内容を書く画面に切り替わり、裏で送信が進む
+    await expect(page.locator(".pick-main")).toBeVisible();
+    await page.locator('input[aria-label="動画ファイル"]').setInputFiles(file);
+    await expect(page.locator(".composer")).toBeVisible();
     await expect(page.getByText("動画の準備ができました")).toBeVisible({ timeout: 90_000 });
     await page.getByRole("radio", { name: /女性/ }).click();
     await page.getByRole("radio", { name: "ソフト" }).click();
     const title = `横長テスト${Date.now() % 100000}`;
-    await page.fill("#title", title);
+    await page.fill('[aria-label="説明"]', title);
     await page.locator("button.chip").first().click();
     for (const t of ["自分が撮影・出演し", "出演者全員が18歳以上", "他人の動画の転載"]) await page.getByText(t).click();
     await page.getByRole("button", { name: "審査に提出" }).click();
@@ -215,6 +217,47 @@ test.describe("動画のアップロードと配信", () => {
 
     await page.goto(`/?v=${v.id}`);
     await expect(page.locator(".item.active video.fv")).toHaveClass(/contain/);
+  });
+
+  test("投稿画面：下書き保存・公開範囲・コメント許可・表紙選び", async ({ page }) => {
+    test.skip(!hasFfmpeg, "ffmpeg が必要");
+    test.setTimeout(150_000);
+    const file = path.join(tmpdir(), `glow-e2e-compose-${process.pid}.mp4`);
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=s=540x960:d=3", "-c:v", "libx264", "-pix_fmt", "yuv420p", file]);
+    await passGate(page);
+    await loginAs(page, "luna_night@demo.example");
+    await page.goto("/creator/new");
+    await page.locator('input[aria-label="動画ファイル"]').setInputFiles(file);
+    await expect(page.getByText("動画の準備ができました")).toBeVisible({ timeout: 90_000 });
+
+    // 公開範囲とコメント許可は切り替えられる
+    const mine = page.getByRole("radio", { name: "自分だけ" });
+    await mine.click();
+    await expect(mine).toHaveAttribute("aria-checked", "true");
+    const sw = page.getByRole("button", { name: "コメントを許可" });
+    await sw.click();
+    await expect(sw).toHaveAttribute("aria-pressed", "false");
+    await sw.click();
+    await expect(sw).toHaveAttribute("aria-pressed", "true");
+
+    // 表紙を選ぶシートが開き、位置を選んで決められる
+    await page.locator(".cover-btn").click();
+    const sheet = page.getByRole("dialog", { name: "表紙を選ぶ" });
+    await expect(sheet).toBeVisible();
+    await expect(sheet.locator('.cover-strip [role="radio"]').first()).toBeVisible({ timeout: 20_000 });
+    await sheet.locator('.cover-strip [role="radio"]').nth(2).click();
+    await sheet.getByRole("button", { name: "この表紙にする" }).click();
+    await expect(sheet).toHaveCount(0);
+
+    // 内容が途中でも下書きとして保存できる
+    await page.fill('[aria-label="説明"]', `下書きテスト${Date.now() % 100000}`);
+    await page.getByRole("button", { name: "下書き保存" }).click();
+    await page.waitForURL(/creator\/videos\?saved=1/);
+
+    // 投稿画面に戻ると、下書きが一覧に出る
+    await page.goto("/creator/new");
+    await expect(page.locator(".pick-main")).toBeVisible();
+    await expect(page.getByText("下書き", { exact: false }).first()).toBeVisible();
   });
 });
 
