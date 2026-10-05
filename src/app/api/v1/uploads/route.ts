@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
+import { uploads } from "@/db/schema";
 import { currentUser } from "@/lib/auth";
 import { fail, json, rateLimit, sameOrigin } from "@/lib/http";
 import { maxUploadBytes, mediaProvider, startUpload } from "@/lib/media";
@@ -21,6 +23,11 @@ export async function POST(req: Request) {
   if (u.creatorStatus !== "approved") return fail("FORBIDDEN", "投稿者として承認されていません", 403);
   if (!mediaProvider()) return fail("UNAVAILABLE", "動画のアップロードは準備中です", 503);
   if (!(await rateLimit(`upload:${u.id}`, 30, 86400))) return fail("RATE_LIMITED", "1日のアップロード上限に達しました", 429);
+  // 未完了のアップロードを大量に作らせない（ディスクと枠の食い潰しを防ぐ）
+  const conn0 = await db();
+  const [{ n }] = await conn0.select({ n: sql<number>`count(*)::int` }).from(uploads)
+    .where(and(eq(uploads.userId, u.id), eq(uploads.status, "uploading")));
+  if (n >= 3) return fail("TOO_MANY", "送信中の動画が多すぎます。終わってからもう一度お試しください", 429);
   const p = Body.safeParse(await req.json().catch(() => null));
   if (!p.success) return fail("BAD_REQUEST", p.error.issues[0].message);
   if (p.data.size > maxUploadBytes()) return fail("TOO_LARGE", `ファイルが大きすぎます（${Math.round(maxUploadBytes() / 1024 / 1024)}MBまで）`, 413);

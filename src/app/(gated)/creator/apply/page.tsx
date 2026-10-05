@@ -2,7 +2,16 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { NavBar } from "@/components/NavBar";
 import { Icon } from "@/components/Icon";
+import { requestTime } from "@/lib/settings";
+import { MIN_AGE, verifyMethod } from "@/lib/verification";
 import { ApplyForm } from "./ApplyForm";
+
+/** 方式ごとに、申請者へ伝える内容を変える */
+const METHOD_NOTE: Record<string, string> = {
+  self_declared: "入力した生年月日は運営の記録として保存され、年齢の確認に使います。虚偽の申告が分かった場合はアカウントを停止します。",
+  document_manual: "このあと、運営が身分証で年齢を確認します。確認が済むまで投稿はできません。書類の画像は確認後すぐに破棄します。",
+  ekyc: "このあと、本人確認サービスで年齢を確認します。確認が済むまで投稿はできません。書類の画像は当サイトには保存されません。",
+};
 
 export const metadata = { title: "投稿者になる" };
 
@@ -40,7 +49,7 @@ export default async function Apply() {
               <p className="cap" style={{ margin: "10px 0 0" }}>最初の5本は、公開前に必ず運営が確認します。詳しくは<Link href="/legal/guidelines" style={{ textDecoration: "underline" }}>投稿ガイドライン</Link>をご覧ください。</p>
             </div>
             <div className="notice info"><Icon name="shield" size={18} /><span>本人確認書類の提出は、現在の運用方針の決定待ちのため受け付けていません（決まり次第、この画面に追加されます）。</span></div>
-            <ApplyForm />
+            <ApplyForm minAge={MIN_AGE} methodNote={METHOD_NOTE[verifyMethod()]} maxDate={new Date(requestTime() - MIN_AGE * 365.25 * 86400_000).toISOString().slice(0, 10)} />
           </>
         )}
       </div>

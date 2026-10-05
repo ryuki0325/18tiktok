@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { sameOrigin } from "@/lib/http";
-import { appendChunk, CHUNK_SIZE } from "@/lib/media";
+import { rateLimit, sameOrigin } from "@/lib/http";
+import { appendChunk, CHUNK_SIZE, markUpload, NotAVideo } from "@/lib/media";
 import { ownUpload } from "@/lib/upload-auth";
 
 /**
@@ -31,12 +31,22 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if (!(await sameOrigin())) return new NextResponse(null, { status: 403, headers: TUS });
   const r = await ownUpload((await params).id);
   if ("error" in r) return r.error;
+  // 1人あたりの送信回数に上限を置く（大量送信によるディスクの食い潰しを防ぐ）
+  if (!(await rateLimit(`tus:${r.user.id}`, 4000, 3600))) return new NextResponse(null, { status: 429, headers: TUS });
   if (r.upload.status !== "uploading") return new NextResponse(null, { status: 409, headers: { ...TUS, "Upload-Offset": String(r.upload.received) } });
   if (req.headers.get("content-type") !== "application/offset+octet-stream") return new NextResponse(null, { status: 415, headers: TUS });
   const offset = Number(req.headers.get("upload-offset"));
   if (!Number.isSafeInteger(offset) || offset < 0) return new NextResponse(null, { status: 400, headers: TUS });
   const body = new Uint8Array(await req.arrayBuffer());
   if (body.byteLength > CHUNK_SIZE) return new NextResponse(null, { status: 413, headers: TUS });
-  const res = await appendChunk(r.conn, r.upload, offset, body);
-  return new NextResponse(null, { status: res.ok ? 204 : res.status, headers: { ...TUS, "Upload-Offset": String(res.received) } });
+  try {
+    const res = await appendChunk(r.conn, r.upload, offset, body);
+    return new NextResponse(null, { status: res.ok ? 204 : res.status, headers: { ...TUS, "Upload-Offset": String(res.received) } });
+  } catch (e) {
+    if (e instanceof NotAVideo) {
+      await markUpload(r.conn, r.upload.id, { status: "failed", error: e.message });
+      return new NextResponse(JSON.stringify({ error: { code: "NOT_A_VIDEO", message: e.message } }), { status: 415, headers: { ...TUS, "content-type": "application/json" } });
+    }
+    throw e;
+  }
 }

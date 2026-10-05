@@ -13,7 +13,7 @@ export default async function EditVideo({ params }: { params: Promise<{ id: stri
   const { id } = await params;
   const conn = await db();
   const [v] = await conn.select().from(videos).where(and(eq(videos.id, id), eq(videos.creatorId, u.id)));
-  if (!v || v.status === "removed") notFound();
+  if (!v || v.status === "deleted") notFound();
   const [allTags, mine, [link]] = await Promise.all([
     conn.select({ name: tags.name }).from(tags).orderBy(tags.id),
     conn.select({ name: tags.name }).from(videoTags).innerJoin(tags, eq(tags.id, videoTags.tagId)).where(eq(videoTags.videoId, id)),

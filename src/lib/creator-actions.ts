@@ -7,6 +7,9 @@ import { z } from "zod";
 import { db } from "@/db";
 import { affiliateDomains, creatorProfiles, outboundLinks, tags, uploads, videoTags, videos } from "@/db/schema";
 import { applyUploadToVideo, isUuid, mediaProvider } from "./media";
+import { transition } from "./video-state";
+import { activeLimits } from "./safety";
+import { canPublish, submitVerification } from "./verification";
 import { checkAffiliateUrl } from "./url";
 import { getSetting } from "./settings";
 import { currentUser } from "./auth";
@@ -18,15 +21,21 @@ export async function applyCreatorAction(_: FormState, form: FormData): Promise<
   const u = await currentUser();
   if (!u) redirect("/login?next=/creator/apply");
   if (!u.emailVerifiedAt) return { error: "先にメールアドレスの確認をお願いします（マイページから再送できます）" };
-  if (form.get("adult") !== "on" || form.get("rules") !== "on") return { error: "2つの確認事項にチェックしてください" };
+  if (form.get("rules") !== "on" || form.get("rights") !== "on") return { error: "2つの確認事項にチェックしてください" };
+  if (!(await rateLimit(`apply:${u.id}`, 5, 86400))) return { error: "申請が多すぎます。しばらくしてからお試しください" };
   const bio = String(form.get("bio") ?? "").trim().slice(0, 300);
   const conn = await db();
   const [cp] = await conn.select().from(creatorProfiles).where(eq(creatorProfiles.userId, u.id));
   if (cp && cp.status !== "rejected") return { error: "すでに申請済みです" };
+  // 年齢の確認を先に通す（結果だけを残し、方式は lib/verification.ts に閉じている）
+  const v = await submitVerification(conn, u.id, String(form.get("birthDate") ?? ""));
+  if (!v.ok) return { error: v.error };
   await conn.insert(creatorProfiles).values({ userId: u.id, bio, status: "pending" })
     .onConflictDoUpdate({ target: creatorProfiles.userId, set: { status: "pending", bio, appliedAt: new Date() } });
   revalidatePath("/creator/apply");
-  return { info: "申請を受け付けました。運営の確認後にお知らせします。" };
+  return { info: v.status === "verified"
+    ? "申請を受け付けました。運営の確認後にお知らせします。"
+    : "申請を受け付けました。年齢の確認が済みしだいお知らせします。" };
 }
 
 const Post = z.object({
@@ -42,6 +51,13 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
   const u = await currentUser();
   if (!u) redirect("/login?next=/creator/new");
   if (!(await rateLimit(`post:${u.id}`, 20, 86400))) return { error: "1日の投稿上限に達しました" };
+  // 停止中の人は投稿できない
+  const limits = activeLimits(u);
+  if (limits.banned || limits.suspended) return { error: "現在投稿できません" };
+  if (limits.postBanned) return { error: "投稿を停止されています" };
+  // 年齢の確認が済んでいること
+  const vok = await canPublish(u.id);
+  if (!vok.ok) return { error: vok.reason! };
   const parsed = Post.safeParse({ title: form.get("title"), description: form.get("description") ?? "", tags: form.getAll("tags"), link: form.get("link") || undefined, category: form.get("category"), intensity: form.get("intensity") ?? 0 });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const consents = (["c1", "c2", "c3"] as const).map((k) => form.get(k) === "on") as [boolean, boolean, boolean];
@@ -76,12 +92,11 @@ export async function myVideoAction(form: FormData) {
   const conn = await db();
   const [v] = await conn.select().from(videos).where(and(eq(videos.id, id), eq(videos.creatorId, u.id)));
   if (!v) return;
-  if (op === "hide" && v.status === "published") await conn.update(videos).set({ status: "hidden_by_creator" }).where(eq(videos.id, id));
-  if (op === "show" && v.status === "hidden_by_creator") await conn.update(videos).set({ status: "published" }).where(eq(videos.id, id));
-  if (op === "delete") {
-    await conn.update(videos).set({ status: "removed", statusReason: "投稿者が削除" }).where(eq(videos.id, id));
-    await conn.update(outboundLinks).set({ status: "disabled_by_admin" }).where(eq(outboundLinks.videoId, id));
-  }
+  // 状態は必ず遷移表を通す（審査を飛ばした公開などができないように）
+  if (op === "hide") await transition(conn, { videoId: id, to: "hidden", hiddenReason: "by_creator", actorId: u.id, expect: ["published", "approved"] });
+  // 運営が下げた動画は投稿者側から戻せない
+  if (op === "show" && v.hiddenReason === "by_creator") await transition(conn, { videoId: id, to: "published", actorId: u.id, expect: ["hidden"] });
+  if (op === "delete") await transition(conn, { videoId: id, to: "deleted", statusReason: "投稿者が削除", actorId: u.id });
   if (op === "comments") await conn.update(videos).set({ commentsEnabled: !v.commentsEnabled }).where(eq(videos.id, id));
   revalidatePath("/creator/videos");
 }
@@ -104,7 +119,7 @@ export async function updateVideoAction(_: FormState, form: FormData): Promise<F
   const d = parsed.data;
   const conn = await db();
   const [v] = await conn.select().from(videos).where(and(eq(videos.id, d.id), eq(videos.creatorId, u.id)));
-  if (!v || v.status === "removed") return { error: "動画が見つかりません" };
+  if (!v || v.status === "deleted") return { error: "動画が見つかりません" };
   const [old] = await conn.select().from(outboundLinks).where(eq(outboundLinks.videoId, v.id));
   let linkChange: null | { url: string; domain: string; status: "active" | "pending_domain_review" } | "remove" = null;
   if ((old?.url ?? "") !== d.link) {

@@ -7,75 +7,19 @@ import { getSetting } from "./settings";
 import { checkAffiliateUrl, containsUrl } from "./url";
 import { sha256 } from "./crypto";
 
-/* ================= 通報（docs/04 §8） ================= */
-export const REASON_LABEL: Record<s.ReportReason, string> = {
-  minor_suspected: "未成年の疑い",
-  non_consensual: "同意のない撮影・盗撮",
-  unauthorized_repost: "無断転載",
-  inappropriate: "不適切なコンテンツ",
-  other: "その他",
-};
-const PRIORITY: Record<s.ReportReason, "P0" | "P1" | "P2"> = {
-  minor_suspected: "P0", non_consensual: "P0", unauthorized_repost: "P1", inappropriate: "P1", other: "P2",
-};
-const IMMEDIATE: s.ReportReason[] = ["minor_suspected", "non_consensual"];
+/* 通報・案件・措置は src/lib/safety.ts に移した（動画以外も扱うため） */
 
-export async function fileReport(conn: DB, input: { videoId: string; reason: s.ReportReason; detail?: string; reporterKey: string }) {
-  const sla = await getSetting("report.sla_hours", conn);
-  const priority = PRIORITY[input.reason];
-  return conn.transaction(async (tx) => {
-    const t = tx as unknown as DB;
-    const [video] = await tx.select().from(s.videos).where(eq(s.videos.id, input.videoId));
-    if (!video) return { ok: false as const, error: "動画が見つかりません" };
-    const inserted = await tx.insert(s.reportTickets).values({
-      videoId: input.videoId, reason: input.reason, detail: input.detail ?? null, reporterKey: input.reporterKey,
-      priority, slaDueAt: new Date(Date.now() + sla[priority] * 3600_000),
-    }).onConflictDoNothing().returning();
-    if (!inserted.length) return { ok: true as const, duplicate: true, hidden: video.status === "hidden_by_report" };
-    const ticket = inserted[0];
-
-    let hide = IMMEDIATE.includes(input.reason);
-    if (!hide) {
-      const key = `report.auto_hide_threshold.${input.reason}` as "report.auto_hide_threshold.other";
-      const threshold = await getSetting(key, t);
-      const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(s.reportTickets)
-        .where(and(eq(s.reportTickets.videoId, input.videoId), eq(s.reportTickets.reason, input.reason), eq(s.reportTickets.status, "open")));
-      hide = n >= threshold;
-    }
-    if (hide && video.status === "published") {
-      await tx.update(s.videos).set({ status: "hidden_by_report", statusReason: `通報（${REASON_LABEL[input.reason]}）により確認中` }).where(eq(s.videos.id, input.videoId));
-      await tx.update(s.reportTickets).set({ autoHidden: true }).where(eq(s.reportTickets.id, ticket.id));
-      await appendChained(t, s.reportActions, { ticketId: ticket.id, adminId: null, action: "auto_hide", note: REASON_LABEL[input.reason] });
-    }
-    return { ok: true as const, duplicate: false, hidden: hide };
-  });
-}
-
-/** 運営の対応：復帰 or 削除。同じ動画の未対応の通報もまとめて閉じる */
-export async function resolveReport(conn: DB, adminId: string, ticketId: string, decision: "restore" | "remove" | "dismiss", note: string) {
-  return conn.transaction(async (tx) => {
-    const t = tx as unknown as DB;
-    const [ticket] = await tx.select().from(s.reportTickets).where(eq(s.reportTickets.id, ticketId));
-    if (!ticket) return false;
-    const status = decision === "restore" ? "resolved_restored" : decision === "remove" ? "resolved_removed" : "dismissed";
-    const open = await tx.update(s.reportTickets).set({ status }).where(and(eq(s.reportTickets.videoId, ticket.videoId), eq(s.reportTickets.status, "open"))).returning();
-    if (decision === "restore") await tx.update(s.videos).set({ status: "published", statusReason: null }).where(and(eq(s.videos.id, ticket.videoId), eq(s.videos.status, "hidden_by_report")));
-    if (decision === "remove") {
-      const [v] = await tx.update(s.videos).set({ status: "removed", statusReason: note || "規約違反のため削除しました" }).where(eq(s.videos.id, ticket.videoId)).returning();
-      if (v) await tx.insert(s.notifications).values({ userId: v.creatorId, kind: "video_removed", body: `「${v.title}」を削除しました。理由：${note || "規約違反"}` });
-    }
-    for (const o of open) await appendChained(t, s.reportActions, { ticketId: o.id, adminId, action: decision, note });
-    await audit(t, adminId, `report.${decision}`, "video", ticket.videoId, { ticketId, note });
-    return true;
-  });
-}
-
-/* ================= コメント ================= */
 export async function postComment(conn: DB, input: { videoId: string; userId: string; body: string; parentId?: string | null }) {
   const body = input.body.trim();
   if (!body) return { ok: false as const, error: "コメントを入力してください" };
   if (body.length > 300) return { ok: false as const, error: "コメントは300文字までです" };
   if (containsUrl(body)) return { ok: false as const, error: "コメントにURLは書けません" };
+  const [author] = await conn.select().from(s.users).where(eq(s.users.id, input.userId));
+  if (!author) return { ok: false as const, error: "利用者が見つかりません" };
+  const { activeLimits } = await import("./safety");
+  const limits = activeLimits(author);
+  if (limits.banned || limits.suspended) return { ok: false as const, error: "現在コメントできません" };
+  if (limits.commentBanned) return { ok: false as const, error: "コメントの投稿を停止されています" };
   const [video] = await conn.select().from(s.videos).where(eq(s.videos.id, input.videoId));
   if (!video || video.status !== "published") return { ok: false as const, error: "この動画にはコメントできません" };
   if (!video.commentsEnabled) return { ok: false as const, error: "投稿者がコメントをオフにしています" };
@@ -106,17 +50,6 @@ async function notifyComment(conn: DB, c: typeof s.comments.$inferSelect, creato
   if (rows.length) await conn.insert(s.notifications).values(rows);
 }
 
-export async function reportComment(conn: DB, input: { commentId: string; reason: string; reporterKey: string }) {
-  const ins = await conn.insert(s.commentReports).values(input).onConflictDoNothing().returning();
-  if (!ins.length) return { hidden: false };
-  const threshold = await getSetting("comments.auto_hide_threshold", conn);
-  const [{ n }] = await conn.select({ n: sql<number>`count(*)::int` }).from(s.commentReports).where(eq(s.commentReports.commentId, input.commentId));
-  const hide = input.reason === "minor_related" || n >= threshold;
-  if (hide) await conn.update(s.comments).set({ status: "hidden_by_report" }).where(and(eq(s.comments.id, input.commentId), eq(s.comments.status, "visible")));
-  return { hidden: hide };
-}
-
-/* ================= 投稿（動画ファイルはまだ扱わない） ================= */
 export const CONSENT_VERSION = 1;
 export const CONSENT_TEXT = [
   "自分が撮影・出演し、権利を持つ動画です",
@@ -133,12 +66,11 @@ export async function createVideo(conn: DB, input: {
   if (!cp || cp.status !== "approved") return { ok: false as const, error: "投稿者として承認されていません" };
   if (cp.restrictedUntil && cp.restrictedUntil > new Date()) return { ok: false as const, error: "投稿制限中のため投稿できません" };
 
-  let link: { url: string; domain: string; status: "active" | "pending_domain_review" } | null = null;
+  let link: { url: string; domain: string; destinationId: string | null; status: "active" | "pending_domain_review" } | null = null;
   if (input.link?.trim()) {
-    const chk = checkAffiliateUrl(input.link, await getSetting("shortener_domains", conn));
-    if (!chk.ok) return { ok: false as const, error: chk.reason };
-    const [allowed] = await conn.select().from(s.affiliateDomains).where(and(eq(s.affiliateDomains.domain, chk.domain), eq(s.affiliateDomains.isActive, true)));
-    link = { url: chk.url, domain: chk.domain, status: allowed ? "active" : "pending_domain_review" };
+    const chk = await checkDestinationUrl(conn, input.link);
+    if (!chk.ok) return { ok: false as const, error: chk.error };
+    link = chk.link;
   }
   const fullReviewCount = await getSetting("review.new_creator_full_review_count", conn);
   const hue: [number, number, number] = [0, 0, 0].map(() => Math.floor(Math.random() * 360)) as [number, number, number];
@@ -157,36 +89,56 @@ export async function createVideo(conn: DB, input: {
       videoId: v.id, creatorId: input.creatorId, consentVersion: CONSENT_VERSION, consentTextHash: sha256(CONSENT_TEXT.join("\n")),
       ownsRights: true, performersAdultConsented: true, notReposted: true, ipHash: input.ipHash, userAgent: input.userAgent.slice(0, 300),
     });
-    if (link) await tx.insert(s.outboundLinks).values({ id: crypto.randomUUID().replace(/-/g, "").slice(0, 16), videoId: v.id, ...link });
+    if (link) await tx.insert(s.outboundLinks).values({ id: crypto.randomUUID().replace(/-/g, "").slice(0, 16), videoId: v.id, destinationId: link.destinationId, url: link.url, domain: link.domain, status: link.status });
+    // 運営の審査キューに積む。新規の投稿者ほど先に見る
+    const { openCase } = await import("./safety");
+    await openCase(t, {
+      kind: "video_review", targetType: "video", targetId: v.id, ownerId: input.creatorId,
+      priority: cp.approvedPosts < fullReviewCount ? "high" : "medium",
+      summary: `審査待ち：${input.title}`,
+    });
     return { ok: true as const, video: v, linkPending: link?.status === "pending_domain_review" };
   });
 }
 
+/**
+ * 動画の審査。承認は approved を経由して published にするので、審査を飛ばせない。
+ * 自動チェックは今は入れていないため、すべてここに来る（枠は video-state 側に用意済み）。
+ */
 export async function reviewVideo(conn: DB, adminId: string, videoId: string, decision: "approve" | "reject", note: string) {
-  return conn.transaction(async (tx) => {
-    const t = tx as unknown as DB;
-    const [v] = await tx.select().from(s.videos).where(eq(s.videos.id, videoId));
-    if (!v || v.status !== "pending_review") return false;
-    if (decision === "approve") {
-      await tx.update(s.videos).set({ status: "published", statusReason: null, publishedAt: new Date() }).where(eq(s.videos.id, videoId));
-      await tx.update(s.creatorProfiles).set({ approvedPosts: sql`${s.creatorProfiles.approvedPosts} + 1` }).where(eq(s.creatorProfiles.userId, v.creatorId));
-      await tx.insert(s.notifications).values({ userId: v.creatorId, kind: "video_approved", body: `「${v.title}」が公開されました` });
-    } else {
-      await tx.update(s.videos).set({ status: "rejected", statusReason: note || "ガイドラインに沿っていません" }).where(eq(s.videos.id, videoId));
-      await tx.insert(s.notifications).values({ userId: v.creatorId, kind: "video_rejected", body: `「${v.title}」を差し戻しました。理由：${note || "ガイドラインに沿っていません"}` });
-    }
-    await tx.insert(s.videoReviews).values({ videoId, adminId, decision, note });
-    await audit(t, adminId, `video.${decision}`, "video", videoId, { note });
-    return true;
-  });
+  const { approveAndPublish, transition } = await import("./video-state");
+  const { closeCase } = await import("./safety");
+  const [v] = await conn.select().from(s.videos).where(eq(s.videos.id, videoId));
+  if (!v || v.status !== "pending_review") return false;
+  if (decision === "approve") {
+    const row = await approveAndPublish(conn, videoId, adminId);
+    if (!row) return false;
+    await conn.update(s.creatorProfiles).set({ approvedPosts: sql`${s.creatorProfiles.approvedPosts} + 1` }).where(eq(s.creatorProfiles.userId, v.creatorId));
+    await conn.insert(s.notifications).values({ userId: v.creatorId, kind: "video_approved", body: `「${v.title}」が公開されました` });
+  } else {
+    const reason = note || "ガイドラインに沿っていません";
+    await transition(conn, { videoId, to: "rejected", statusReason: reason, actorId: adminId });
+    await conn.insert(s.notifications).values({ userId: v.creatorId, kind: "video_rejected", body: `「${v.title}」を差し戻しました。理由：${reason}` });
+  }
+  await conn.insert(s.videoReviews).values({ videoId, adminId, decision, note: note || null });
+  // 審査キューの案件を閉じる
+  const [c] = await conn.select({ id: s.moderationCases.id }).from(s.moderationCases)
+    .where(and(eq(s.moderationCases.targetType, "video"), eq(s.moderationCases.targetId, videoId), eq(s.moderationCases.kind, "video_review")));
+  if (c) await closeCase(conn, adminId, c.id, decision === "approve" ? "承認して公開" : "差し戻し", note, decision === "approve" ? "resolved_restored" : "resolved_removed");
+  await audit(conn, adminId, `video.${decision}`, "video", videoId, { note });
+  return true;
 }
 
-/* ================= 外部リンクのクリック計測（docs/04 §10） ================= */
 export async function recordClick(conn: DB, input: { linkId: string; viewerKey: string; isBot: boolean; creatorKey: string }) {
   const [link] = await conn.select().from(s.outboundLinks).where(eq(s.outboundLinks.id, input.linkId));
   if (!link || link.status !== "active") return null;
-  const [v] = await conn.select({ status: s.videos.status }).from(s.videos).where(eq(s.videos.id, link.videoId));
+  const [v] = await conn.select({ status: s.videos.status, creatorId: s.videos.creatorId }).from(s.videos).where(eq(s.videos.id, link.videoId));
   if (!v || v.status !== "published") return null;
+  // 送客先が止められていたら通さない（管理画面からの一括停止がここで効く）
+  if (link.destinationId) {
+    const [d] = await conn.select({ status: s.destinations.status }).from(s.destinations).where(eq(s.destinations.id, link.destinationId));
+    if (!d || d.status !== "approved") return null;
+  }
   const windowSec = await getSetting("clicks.dedupe_window_sec", conn);
   let invalid: string | null = null;
   if (input.isBot) invalid = "bot";
@@ -197,8 +149,12 @@ export async function recordClick(conn: DB, input: { linkId: string; viewerKey: 
       .orderBy(desc(s.linkClicks.id)).limit(1);
     if (recent) invalid = "dup_window";
   }
-  await conn.insert(s.linkClicks).values({ linkId: link.id, videoId: link.videoId, viewerKey: input.viewerKey, isValid: !invalid, invalidReason: invalid });
-  return { url: link.url, valid: !invalid, reason: invalid };
+  const clickId = crypto.randomUUID().replace(/-/g, "");
+  await conn.insert(s.linkClicks).values({
+    clickId, linkId: link.id, videoId: link.videoId, creatorId: v.creatorId, destinationId: link.destinationId,
+    viewerKey: input.viewerKey, isValid: !invalid, invalidReason: invalid,
+  });
+  return { url: link.url, valid: !invalid, reason: invalid, clickId };
 }
 
 /** 許可ドメインから外したら、そのドメインのリンクを一括で無効化（F-5） */
@@ -226,29 +182,27 @@ export async function addDomain(conn: DB, adminId: string, domain: string, displ
 }
 
 /* ================= 制裁（D-3） ================= */
-export const PENALTY_LABEL = { warning: "警告", restriction: "投稿制限", suspension: "一時停止", ban: "BAN", lift: "解除" } as const;
 
-export async function penalize(conn: DB, adminId: string, creatorId: string, level: keyof typeof PENALTY_LABEL, reason: string, days?: number) {
-  return conn.transaction(async (tx) => {
-    const t = tx as unknown as DB;
-    const endsAt = days ? new Date(Date.now() + days * 86400_000) : null;
-    await appendChained(t, s.creatorPenalties, { creatorId, level, reason, endsAt, adminId });
-    if (level === "restriction") await tx.update(s.creatorProfiles).set({ restrictedUntil: endsAt ?? new Date(Date.now() + 7 * 86400_000) }).where(eq(s.creatorProfiles.userId, creatorId));
-    if (level === "suspension") await tx.update(s.creatorProfiles).set({ status: "suspended" }).where(eq(s.creatorProfiles.userId, creatorId));
-    if (level === "ban") {
-      await tx.update(s.creatorProfiles).set({ status: "banned" }).where(eq(s.creatorProfiles.userId, creatorId));
-      await tx.update(s.users).set({ status: "banned" }).where(eq(s.users.id, creatorId));
-      await tx.update(s.videos).set({ status: "removed", statusReason: "アカウント停止" }).where(eq(s.videos.creatorId, creatorId));
-      await tx.delete(s.sessions).where(eq(s.sessions.userId, creatorId));
-    }
-    if (level === "lift") {
-      await tx.update(s.creatorProfiles).set({ status: "approved", restrictedUntil: null }).where(eq(s.creatorProfiles.userId, creatorId));
-      await tx.update(s.users).set({ status: "active" }).where(eq(s.users.id, creatorId));
-    }
-    if (level !== "warning") {
-      await tx.update(s.creatorProfiles).set({ violationPoints: sql`${s.creatorProfiles.violationPoints} + ${level === "lift" ? 0 : 1}` }).where(eq(s.creatorProfiles.userId, creatorId));
-    }
-    await tx.insert(s.notifications).values({ userId: creatorId, kind: `penalty_${level}`, body: `運営からのお知らせ：${PENALTY_LABEL[level]}（理由：${reason}）` });
-    await audit(t, adminId, `creator.${level}`, "user", creatorId, { reason, days });
-  });
+/**
+ * 「完全版を見る」のURLを確かめる。
+ * 投稿者が任意のURLを貼れる形にはせず、運営が承認した送客先（destinations）のものに限る。
+ */
+export async function checkDestinationUrl(conn: DB, raw: string) {
+  const chk = checkAffiliateUrl(raw, await getSetting("shortener_domains", conn));
+  if (!chk.ok) return { ok: false as const, error: chk.reason };
+  const [dest] = await conn.select().from(s.destinations).where(eq(s.destinations.domain, chk.domain));
+  if (!dest) return { ok: false as const, error: "この送客先は登録されていません。運営に追加を依頼してください" };
+  if (dest.status === "rejected") return { ok: false as const, error: "この送客先は使えません" };
+  if (dest.urlPattern) {
+    let re: RegExp;
+    try { re = new RegExp(dest.urlPattern); } catch { re = /.^/; }
+    if (!re.test(chk.url)) return { ok: false as const, error: `${dest.serviceName} のリンクの形が違います。自分のページのURLを貼ってください` };
+  }
+  return {
+    ok: true as const,
+    link: {
+      url: chk.url, domain: chk.domain, destinationId: dest.id,
+      status: (dest.status === "approved" ? "active" : "pending_domain_review") as "active" | "pending_domain_review",
+    },
+  };
 }

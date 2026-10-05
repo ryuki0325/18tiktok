@@ -8,7 +8,8 @@ import { VideoBackdrop } from "../VideoBackdrop";
 import { fmt } from "../format";
 import { useToast } from "../Toast";
 import { api } from "./api";
-import { CommentSheet, MoreSheet, RATES, ReportSheet, ShareSheet } from "./Sheets";
+import { CommentSheet, MoreSheet, RATES, ShareSheet } from "./Sheets";
+import { ReportSheet } from "../ReportSheet";
 import { FeedVideo, loadHls } from "./FeedVideo";
 import { FullscreenView } from "./FullscreenView";
 import { usePager } from "./usePager";
@@ -256,7 +257,7 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
         <button className="r" onClick={goSearch} aria-label="検索"><Icon name="search" /></button>
         <input ref={searchFocus} className="kbd-proxy" aria-hidden="true" tabIndex={-1} inputMode="search" />
       </div>
-      {sheet?.kind === "report" && <ReportSheet card={sheet.card} onClose={(hidden) => { setSheet(null); if (hidden) setCards((cs) => cs.filter((x) => x.id !== sheet.card.id)); }} />}
+      {sheet?.kind === "report" && <ReportSheet targetType="video" targetId={sheet.card.id} label={sheet.card.title} onClose={(hidden) => { setSheet(null); if (hidden) setCards((cs) => cs.filter((x) => x.id !== sheet.card.id)); }} />}
       {sheet?.kind === "comment" && <CommentSheet card={sheet.card} loggedIn={loggedIn} onClose={() => setSheet(null)} onPosted={() => patch(sheet.card.id, (x) => ({ comments: x.comments + 1 }))} />}
       {sheet?.kind === "share" && <ShareSheet card={sheet.card} onClose={() => setSheet(null)} />}
       {sheet?.kind === "more" && (

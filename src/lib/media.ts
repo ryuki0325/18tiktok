@@ -117,9 +117,36 @@ export async function startUpload(conn: DB, userId: string, f: { filename: strin
 
 /* ---------------- local：チャンクの受け取り（tus の PATCH） ---------------- */
 
+/**
+ * 動画ファイルの先頭を見て、本当に動画かを確かめる。
+ * 申告された MIME は偽装できるので、最初のチャンクで中身を確認する。
+ * （ここを通っても安全とは言い切れないので、変換は別プロセスの ffmpeg に任せている）
+ */
+export function looksLikeVideo(head: Uint8Array): boolean {
+  if (head.length < 12) return false;
+  const b = head;
+  // ISO BMFF（MP4 / MOV / M4V）："....ftyp"
+  if (b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) return true;
+  // Matroska / WebM：1A 45 DF A3
+  if (b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return true;
+  // AVI："RIFF....AVI "
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x41 && b[9] === 0x56 && b[10] === 0x49) return true;
+  // MPEG-TS：0x47 で始まる
+  if (b[0] === 0x47) return true;
+  // FLV："FLV"
+  if (b[0] === 0x46 && b[1] === 0x4c && b[2] === 0x56) return true;
+  return false;
+}
+
+export class NotAVideo extends Error {
+  constructor() { super("動画ファイルではないようです。MP4・MOV・WebM などを選んでください"); this.name = "NotAVideo"; }
+}
+
 export async function appendChunk(conn: DB, u: Upload, offset: number, body: Uint8Array): Promise<{ ok: true; received: number } | { ok: false; status: number; received: number }> {
   if (offset !== u.received) return { ok: false, status: 409, received: u.received };
   if (offset + body.byteLength > u.size) return { ok: false, status: 413, received: u.received };
+  // 最初のチャンクで中身を確かめる。動画でなければここで止める
+  if (offset === 0 && !looksLikeVideo(body)) throw new NotAVideo();
   const { appendFile } = await import("node:fs/promises");
   await appendFile(partPath(u.id), body);
   // 実ファイルの大きさを正とする（途中で落ちた場合のずれを防ぐ）
@@ -227,7 +254,7 @@ export async function purgeStaleUploads(conn: DB) {
 export async function purgeRemovedMedia(conn: DB, graceDays = 7) {
   const { and, lt, eq: eqq, isNotNull, inArray } = await import("drizzle-orm");
   const dead = await conn.select({ id: s.videos.id }).from(s.videos)
-    .where(and(eqq(s.videos.status, "removed"), isNotNull(s.videos.playbackUrl), lt(s.videos.createdAt, new Date(Date.now() - graceDays * 86400_000))));
+    .where(and(eqq(s.videos.status, "deleted"), isNotNull(s.videos.playbackUrl), lt(s.videos.deletedAt, new Date(Date.now() - graceDays * 86400_000))));
   if (!dead.length) return 0;
   const ids = dead.map((d) => d.id);
   const ups = await conn.select().from(s.uploads).where(inArray(s.uploads.videoId, ids));

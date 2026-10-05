@@ -72,7 +72,7 @@ export default async function Dashboard() {
         <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between" }}><h2 className="label" style={{ margin: 0 }}>直近の投稿</h2><Link className="cap" href="/creator/videos">すべて見る</Link></div>
           <div className="list">
-            {mine.filter((v) => v.status !== "removed").slice(0, 6).map((v) => { const [l, c] = STATUS[v.status]; return (
+            {mine.filter((v) => v.status !== "deleted").slice(0, 6).map((v) => { const [l, c] = STATUS[v.status]; return (
               <div key={v.id} className="row" style={{ minHeight: 88 }}>
                 <span className="sth"><VideoBackdrop hue={v.hue} /></span>
                 <span className="grow"><b style={{ display: "block", fontSize: 14, marginBottom: 4 }}>{v.title}</b>{v.status === "rejected" && <span className="cap" style={{ color: "var(--bad)" }}>理由：{v.statusReason}</span>}</span>

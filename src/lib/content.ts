@@ -23,11 +23,18 @@ export type VideoCard = {
   status: string;
 };
 
-type Opts = { viewerKey: string; userId?: string | null; preferredTags?: string[]; audience?: Audience; maxIntensity?: number };
+type Opts = {
+  viewerKey: string; userId?: string | null; preferredTags?: string[]; audience?: Audience; maxIntensity?: number;
+  /** 成人向けを見せてよいか。false なら動画を1本も返さない（サムネイル・検索・共有URLからの露出も防ぐ） */
+  adultAllowed?: boolean;
+};
+
+/** このサイトの動画はすべて成人向け。見せてよい状態でなければ何も返さない */
+const adultBlocked = (o: Opts) => o.adultAllowed === false;
 
 /** 動画IDの一覧から表示用データを組み立てる（公開中のものだけ） */
 export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublished = false): Promise<VideoCard[]> {
-  if (!ids.length) return [];
+  if (!ids.length || adultBlocked(o)) return [];
   const d = conn ?? (await db());
   const rows = await d.select({ v: s.videos, handle: s.users.handle, avatarHue: s.users.avatarHue, avatarUrl: s.users.avatarUrl })
     .from(s.videos).innerJoin(s.users, eq(s.users.id, s.videos.creatorId))
@@ -73,6 +80,7 @@ export type FeedTab = "recommended" | "popular" | "following";
  * おすすめ：新しさ × 好みのタグ × フォロー、人気：再生・クリック・いいねを時間で減衰させたスコア
  */
 export async function feed(tab: FeedTab, o: Opts, limit = 20, offset = 0): Promise<VideoCard[]> {
+  if (adultBlocked(o)) return [];
   const d = await db();
   // 最初の分岐（女性・男性・カップル）で絞る。フォロー中は分岐に関係なく全部見せる
   const byAudience = tab !== "following" && o.audience && o.audience !== "all" ? eq(s.videos.category, o.audience) : undefined;
@@ -103,6 +111,7 @@ export async function feed(tab: FeedTab, o: Opts, limit = 20, offset = 0): Promi
 }
 
 export async function videosByTag(tag: string, o: Opts) {
+  if (adultBlocked(o)) return [];
   const d = await db();
   const rows = await d.select({ id: s.videos.id }).from(s.videos)
     .innerJoin(s.videoTags, eq(s.videoTags.videoId, s.videos.id)).innerJoin(s.tags, eq(s.tags.id, s.videoTags.tagId))
@@ -111,6 +120,7 @@ export async function videosByTag(tag: string, o: Opts) {
 }
 
 export async function videosByCreator(creatorId: string, o: Opts) {
+  if (adultBlocked(o)) return [];
   const d = await db();
   const rows = await d.select({ id: s.videos.id }).from(s.videos)
     .where(and(eq(s.videos.creatorId, creatorId), eq(s.videos.status, "published"))).orderBy(desc(s.videos.publishedAt)).limit(60);
@@ -118,6 +128,7 @@ export async function videosByCreator(creatorId: string, o: Opts) {
 }
 
 export async function search(q: string, o: Opts) {
+  if (adultBlocked(o)) return { tags: [], creators: [], videos: [] };
   const d = await db();
   const like = `%${q.replace(/[%_\\]/g, (m) => "\\" + m)}%`;
   const [tagHits, creatorHits, videoRows] = await Promise.all([
@@ -132,6 +143,7 @@ export async function search(q: string, o: Opts) {
 
 /** 週間ランキング（有効な再生＋クリック×3） */
 export async function weeklyRanking(o: Opts, limit = 10) {
+  if (adultBlocked(o)) return [];
   const d = await db();
   const since = new Date(Date.now() - 7 * 86400_000);
   const rows = await d.select({
@@ -146,6 +158,7 @@ export async function weeklyRanking(o: Opts, limit = 10) {
 
 /** 「探す」の下に並べる、いま見られている動画 */
 export async function trending(o: Opts, limit = 24) {
+  if (adultBlocked(o)) return [];
   const d = await db();
   const rows = await d.select({ id: s.videos.id }).from(s.videos)
     .where(eq(s.videos.status, "published"))

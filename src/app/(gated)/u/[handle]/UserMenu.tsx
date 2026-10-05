@@ -5,10 +5,12 @@ import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { api } from "@/components/feed/api";
 import { useToast } from "@/components/Toast";
+import { ReportSheet } from "@/components/ReportSheet";
 
 /** 他人のプロフィールの「≡」。共有・表示しない・通報 */
 export function UserMenu({ creatorId, handle, mine }: { creatorId: string; handle: string; mine: boolean }) {
   const [open, setOpen] = useState(false);
+  const [reporting, setReporting] = useState(false);
   const toast = useToast();
   const router = useRouter();
   useEffect(() => {
@@ -34,6 +36,7 @@ export function UserMenu({ creatorId, handle, mine }: { creatorId: string; handl
   };
   return (
     <>
+      {reporting && <ReportSheet targetType="profile" targetId={creatorId} label={`@${handle}`} onClose={() => setReporting(false)} />}
       <button className="iconbtn" onClick={() => setOpen(true)} aria-label="メニュー" aria-expanded={open}><Icon name="menu" /></button>
       {open && (
         <>
@@ -44,7 +47,7 @@ export function UserMenu({ creatorId, handle, mine }: { creatorId: string; handl
             <div className="acts" role="group" aria-label="操作">
               <button onClick={share}><span className="ic"><Icon name="share" size={24} /></span>共有</button>
               <button onClick={block}><span className="ic"><Icon name="eyeoff" size={24} /></span>表示しない</button>
-              <Link href={`/takedown?u=${encodeURIComponent(handle)}`} onClick={() => setOpen(false)}><span className="ic bad"><Icon name="flag" size={24} /></span>通報</Link>
+              <button onClick={() => { setOpen(false); setReporting(true); }}><span className="ic bad"><Icon name="flag" size={24} /></span>報告する</button>
             </div>
           </div>
         </>

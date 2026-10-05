@@ -4,6 +4,7 @@ import type { DB } from "@/db";
 import * as s from "@/db/schema";
 import { audit } from "./ledger";
 import { purgeRemovedMedia, purgeStaleUploads } from "./media";
+import { purgeVerificationData } from "./verification";
 import { getSetting } from "./settings";
 import { registrableDomain } from "./url";
 
@@ -61,6 +62,19 @@ async function probe(url: string): Promise<{ kind: "ok"; status: number; finalHo
   return { kind: "fail", reason: "転送が多すぎます" };
 }
 
+/** 期限つきの措置が切れたら、自動で元に戻す */
+async function liftExpiredSanctions(conn: DB) {
+  const now = new Date();
+  const a = await conn.update(s.users).set({ status: "active", suspendedUntil: null })
+    .where(and(eq(s.users.status, "suspended"), isNotNull(s.users.suspendedUntil), lt(s.users.suspendedUntil, now)))
+    .returning({ id: s.users.id });
+  for (const u of a) {
+    await conn.update(s.creatorProfiles).set({ status: "approved", restrictedUntil: null })
+      .where(and(eq(s.creatorProfiles.userId, u.id), eq(s.creatorProfiles.status, "suspended")));
+  }
+  return a.length;
+}
+
 /** 保存期間を過ぎたデータの削除（個人情報は必要最小限に） */
 export async function purgeExpired(conn: DB) {
   const viewDays = await getSetting("retention.view_events_days", conn);
@@ -76,6 +90,10 @@ export async function purgeExpired(conn: DB) {
     rateLimits: await del(conn.delete(s.rateLimits).where(lt(s.rateLimits.windowStart, new Date(now - day))).returning({ k: s.rateLimits.key })),
     staleUploads: await purgeStaleUploads(conn),
     removedMedia: await purgeRemovedMedia(conn),
+    // 保存期限を過ぎた生年月日を消す（「確認済み」という結果は残す）
+    verificationData: await purgeVerificationData(conn),
+    // 期限の切れた措置を自動で解く
+    expiredSanctions: await liftExpiredSanctions(conn),
     notifications: await del(conn.delete(s.notifications).where(and(isNotNull(s.notifications.readAt), lt(s.notifications.createdAt, new Date(now - notifDays * day)))).returning({ id: s.notifications.id })),
   };
   await audit(conn, null, "job.purge_expired", "retention", null, result);

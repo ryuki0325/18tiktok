@@ -58,7 +58,7 @@ test.describe("通報と自動非公開", () => {
     await page.locator(".sheet").getByRole("button", { name: "通報" }).click();
     await page.getByRole("radio", { name: /未成年の疑い/ }).click();
     await page.getByRole("button", { name: "送信" }).click();
-    await expect(page.getByRole("status")).toContainText("非公開");
+    await expect(page.getByRole("status")).toContainText("表示されません");
     await expect(page.locator(`.item[data-vid="${id}"]`)).toHaveCount(0);
     const feed = await page.request.get("/api/v1/feed?tab=recommended&offset=0");
     expect(await feed.text()).not.toContain(id!);
@@ -98,7 +98,7 @@ test.describe("権限", () => {
     await page.fill("#password", "glow-admin-e2e");
     await page.getByRole("button", { name: /次へ/ }).click();
     await expect(page).toHaveURL(/\/admin\/mfa/);
-    await page.goto("/admin/reports");
+    await page.goto("/admin/cases");
     await expect(page).toHaveURL(/\/admin\/mfa/);
     const secret = (await page.locator("code").textContent())!.trim();
     adminSecret = secret;
@@ -133,7 +133,9 @@ test.describe("動画のアップロードと配信", () => {
     expect(tus.chunkSize).toBe(128 * 1024);
     const url = `/api/v1/uploads/${id}/tus`;
     const h = { origin: "http://localhost:3200", "Tus-Resumable": "1.0.0", "Content-Type": "application/offset+octet-stream" };
+    // 先頭はMP4のしるし（ftyp）にする。でないと「動画ではない」として弾かれる
     const chunk = Buffer.alloc(tus.chunkSize, 1);
+    Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32]).copy(chunk, 0);
     expect((await page.request.patch(url, { headers: { ...h, "Upload-Offset": "0" }, data: chunk })).status()).toBe(204);
     // 同じ位置をもう一度送る（通信が切れて再送した想定）→ 409 と正しい位置
     const dup = await page.request.patch(url, { headers: { ...h, "Upload-Offset": "0" }, data: chunk });
@@ -143,6 +145,14 @@ test.describe("動画のアップロードと配信", () => {
     expect(head.headers()["upload-offset"]).toBe(String(tus.chunkSize));
     // 途中で完了させようとしても受け付けない
     expect((await page.request.post(`/api/v1/uploads/${id}/complete`, { headers: { origin: "http://localhost:3200" }, data: {} })).status()).toBe(409);
+    // 動画でないファイルは、中身を見て弾く（MIMEの自己申告は信用しない）
+    const bad = await page.request.post("/api/v1/uploads", { headers: { origin: "http://localhost:3200" }, data: { filename: "evil.mp4", mime: "video/mp4", size: 1024 } });
+    const badId = (await bad.json()).id;
+    const badRes = await page.request.patch(`/api/v1/uploads/${badId}/tus`, {
+      headers: { ...h, "Upload-Offset": "0" }, data: Buffer.from("<?php system($_GET[0]); ?>".padEnd(64, " ")),
+    });
+    expect(badRes.status()).toBe(415);
+
     // 他人は触れない
     const other = await page.context().browser()!.newContext();
     const o = await other.newPage();

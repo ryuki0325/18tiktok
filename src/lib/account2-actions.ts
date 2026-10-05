@@ -61,7 +61,7 @@ export async function deleteAccountAction(_: FormState, form: FormData): Promise
   const conn = await db();
   const key = `u:${u.id}`;
   await conn.transaction(async (tx) => {
-    await tx.update(videos).set({ status: "removed", statusReason: "退会" }).where(eq(videos.creatorId, u.id));
+    await tx.update(videos).set({ status: "deleted", statusReason: "退会", deletedAt: new Date() }).where(eq(videos.creatorId, u.id));
     await tx.update(comments).set({ status: "removed" }).where(eq(comments.userId, u.id));
     await tx.delete(follows).where(or(eq(follows.followerId, u.id), eq(follows.creatorId, u.id)));
     await tx.delete(likes).where(eq(likes.viewerKey, key));

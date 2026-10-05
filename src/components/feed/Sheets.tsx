@@ -7,6 +7,7 @@ import { ProfileAvatar } from "../profile/ProfileAvatar";
 import { ago, fmt } from "../format";
 import { useToast } from "../Toast";
 import { api } from "./api";
+import { ReportSheet } from "../ReportSheet";
 
 function Sheet({ title, onClose, children, sub }: { title: React.ReactNode; onClose: () => void; children: React.ReactNode; sub?: React.ReactNode }) {
   const [dy, setDy] = useState(0);
@@ -33,45 +34,6 @@ function Sheet({ title, onClose, children, sub }: { title: React.ReactNode; onCl
         {children}
       </div>
     </>
-  );
-}
-
-const REASONS = [
-  ["minor_suspected", "未成年の疑い", true],
-  ["non_consensual", "同意のない撮影・盗撮", true],
-  ["unauthorized_repost", "無断転載", false],
-  ["inappropriate", "不適切なコンテンツ", false],
-  ["other", "その他", false],
-] as const;
-
-export function ReportSheet({ card, onClose }: { card: VideoCard; onClose: (hidden?: boolean) => void }) {
-  const [reason, setReason] = useState<string | null>(null);
-  const [detail, setDetail] = useState("");
-  const [busy, setBusy] = useState(false);
-  const toast = useToast();
-  const canSend = !!reason && (reason !== "other" || detail.trim().length > 0) && !busy;
-  const send = async () => {
-    if (!canSend) return;
-    setBusy(true);
-    const r = await api<{ hidden: boolean; duplicate: boolean }>(`/api/v1/videos/${card.id}/reports`, { method: "POST", body: { reason, detail } });
-    setBusy(false);
-    if (!r.ok) { toast(r.data.error?.message ?? "送信できませんでした"); return; }
-    toast(r.data.duplicate ? "この動画はすでに通報済みです" : r.data.hidden ? "通報を受け付けました。運営が確認するまで、この動画は非公開になります。" : "通報を受け付けました。ご協力ありがとうございます。");
-    onClose(r.data.hidden);
-  };
-  return (
-    <Sheet title="通報する" onClose={() => onClose()} sub={<p className="muted" style={{ margin: "-6px 0 0", fontSize: 14 }}>問題のあるコンテンツを報告してください。</p>}>
-      <div role="radiogroup" aria-label="通報の理由">
-        {REASONS.map(([k, l, immediate]) => (
-          <button key={k} className="radio" role="radio" aria-checked={reason === k} onClick={() => setReason(k)}>
-            <span className="dot" /><span>{l}</span>{immediate && <span className="badge b-bad" style={{ marginLeft: "auto" }}>即非公開</span>}
-          </button>
-        ))}
-      </div>
-      {reason === "other" && <textarea className="input" placeholder="詳しい内容（必須・1000文字まで）" maxLength={1000} value={detail} onChange={(e) => setDetail(e.target.value)} aria-label="詳しい内容" />}
-      <button className="btn btn-primary pill" style={{ height: 52 }} disabled={!canSend} onClick={send}>{busy ? "送信中…" : "送信"}</button>
-      <span className="cap" style={{ textAlign: "center" }}>ログインしていなくても通報できます。通報者が投稿者に知られることはありません。</span>
-    </Sheet>
   );
 }
 
@@ -123,10 +85,8 @@ export function CommentSheet({ card, loggedIn, onClose, onPosted }: { card: Vide
     const r = await api(`/api/v1/comments/${c.id}/like`, { method: c.liked ? "DELETE" : "PUT" });
     if (!r.ok) patch(c.id, (x) => ({ ...x, liked: c.liked, likes: c.likes }));
   };
-  const report = async (c: C) => {
-    const r = await api(`/api/v1/comments/${c.id}/reports`, { method: "POST", body: { reason: "other" } });
-    toast(r.ok ? "コメントを通報しました" : "通報できませんでした");
-  };
+  // コメントの通報は、動画と同じ共通のシートを開く
+  const [reporting, setReporting] = useState<C | null>(null);
   const remove = async (c: C) => {
     const r = await api(`/api/v1/comments/${c.id}`, { method: "DELETE" });
     if (!r.ok) { toast("削除できませんでした"); return; }
@@ -146,14 +106,15 @@ export function CommentSheet({ card, loggedIn, onClose, onPosted }: { card: Vide
           : list.length === 0 ? <div className="cmt-empty"><b>まだコメントはありません</b><span className="cap">最初のひとことを書いてみませんか。</span></div>
             : list.map((c) => (
               <div key={c.id}>
-                <CommentRow c={c} onLike={like} onReply={openReply} onReport={report} onRemove={remove} />
-                {c.replies?.map((r) => <CommentRow key={r.id} c={r} reply onLike={like} onReply={openReply} onReport={report} onRemove={remove} />)}
+                <CommentRow c={c} onLike={like} onReply={openReply} onReport={setReporting} onRemove={remove} />
+                {c.replies?.map((r) => <CommentRow key={r.id} c={r} reply onLike={like} onReply={openReply} onReport={setReporting} onRemove={remove} />)}
                 {(c.replyCount ?? 0) > (c.replies?.length ?? 0) && (
                   <button className="cmt-more" onClick={() => more(c)}>返信をもっと見る（{(c.replyCount ?? 0) - (c.replies?.length ?? 0)}件）</button>
                 )}
               </div>
             ))}
       </div>
+      {reporting && <ReportSheet targetType="comment" targetId={reporting.id} label={reporting.body.slice(0, 20)} onClose={(hidden) => { setReporting(null); if (hidden) setList((l) => (l ?? []).filter((x) => x.id !== reporting.id)); }} />}
       {!card.commentsEnabled ? <p className="cap" style={{ textAlign: "center" }}>投稿者がコメントをオフにしています。</p> : loggedIn ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {replyTo && (

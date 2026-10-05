@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, type DB } from "@/db";
 import * as s from "@/db/schema";
 import { hydrate, type VideoCard } from "./content";
+import { CREATOR_PRIVATE } from "./video-state";
 import type { Viewer } from "./viewer";
 
 export type ProfileTab = "posts" | "liked" | "saved" | "private";
@@ -50,7 +51,7 @@ export async function profileVideos(tab: ProfileTab, p: Profile, v: Viewer, limi
   const d = await db();
   if (tab === "posts" || tab === "private") {
     const rows = await d.select({ id: s.videos.id }).from(s.videos)
-      .where(and(eq(s.videos.creatorId, p.id), tab === "posts" ? eq(s.videos.status, "published") : inArray(s.videos.status, ["pending_review", "rejected", "hidden_by_creator", "hidden_by_report"])))
+      .where(and(eq(s.videos.creatorId, p.id), tab === "posts" ? eq(s.videos.status, "published") : inArray(s.videos.status, CREATOR_PRIVATE)))
       .orderBy(desc(s.videos.publishedAt), desc(s.videos.createdAt)).limit(limit);
     return hydrate(rows.map((r) => r.id), v, d, tab === "private");
   }

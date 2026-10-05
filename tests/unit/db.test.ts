@@ -1,9 +1,12 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { createDb, setDbForTest, type DB } from "@/db";
 import { feed } from "@/lib/content";
 import * as s from "@/db/schema";
-import { createVideo, fileReport, postComment, recordClick, removeDomain, resolveReport, reviewVideo, reportComment } from "@/lib/moderation";
+import { createVideo, postComment, recordClick, removeDomain, reviewVideo } from "@/lib/moderation";
+import { closeCase, emergencyAction, fileReport, sanction, activeLimits } from "@/lib/safety";
+import { canTransition, transition, InvalidTransition } from "@/lib/video-state";
+import { ageOn, submitVerification, canPublish, purgeVerificationData } from "@/lib/verification";
 import { appendChained, audit, verifyChain } from "@/lib/ledger";
 
 let db: DB;
@@ -30,26 +33,155 @@ describe("シード", () => {
 });
 
 describe("通報と自動非公開", () => {
-  it("未成年の疑いは1件で即非公開、運営が復帰できる", async () => {
+  it("未成年の疑いは1件で即非公開。案件が立ち、運営が復帰できる", async () => {
     const [v] = await published();
-    const r = await fileReport(db, { videoId: v.id, reason: "minor_suspected", reporterKey: "d:aaaa" });
+    const r = await fileReport(db, { targetType: "video", targetId: v.id, reason: "minor_suspected", reporterKey: "d:aaaa" });
     expect(r).toMatchObject({ ok: true, hidden: true });
     const [after] = await db.select().from(s.videos).where(eq(s.videos.id, v.id));
-    expect(after.status).toBe("hidden_by_report");
-    const [ticket] = await db.select().from(s.reportTickets).where(eq(s.reportTickets.videoId, v.id));
-    expect(ticket.priority).toBe("P0");
-    await resolveReport(db, adminId, ticket.id, "restore", "問題なし");
+    expect(after.status).toBe("hidden");
+    expect(after.hiddenReason).toBe("by_report");
+    const [rep] = await db.select().from(s.reports).where(eq(s.reports.targetId, v.id));
+    expect(rep.priority).toBe("critical");
+    expect(rep.autoActioned).toBe(true);
+    // 運営の作業キューにも積まれている
+    const [cs] = await db.select().from(s.moderationCases).where(and(eq(s.moderationCases.targetId, v.id), eq(s.moderationCases.kind, "report")));
+    expect(cs.priority).toBe("critical");
+    // 問題なしとして戻す
+    const { restoreTarget } = await import("@/lib/safety");
+    await restoreTarget(db, "video", v.id, adminId);
+    await closeCase(db, adminId, cs.id, "問題なし", "確認済み", "resolved_restored");
     const [restored] = await db.select().from(s.videos).where(eq(s.videos.id, v.id));
     expect(restored.status).toBe("published");
+    const [closed] = await db.select().from(s.moderationCases).where(eq(s.moderationCases.id, cs.id));
+    expect(closed.status).toBe("closed");
   });
-  it("無断転載は閾値（3件）に達したら非公開。同じ人の重複は数えない", async () => {
+
+  it("無断掲載は2件で非公開。同じ人の重複は数えない", async () => {
     const v = (await published())[1];
-    for (const k of ["d:1", "d:1", "d:2"]) {
-      const r = await fileReport(db, { videoId: v.id, reason: "unauthorized_repost", reporterKey: k });
-      expect(r.ok && r.hidden).toBe(false);
-    }
-    const r3 = await fileReport(db, { videoId: v.id, reason: "unauthorized_repost", reporterKey: "d:3" });
-    expect(r3.ok && r3.hidden).toBe(true);
+    const r1 = await fileReport(db, { targetType: "video", targetId: v.id, reason: "unauthorized_repost", reporterKey: "d:1" });
+    expect(r1.ok && r1.hidden).toBe(false);
+    // 同じ人がもう一度送っても重複として扱う
+    const dup = await fileReport(db, { targetType: "video", targetId: v.id, reason: "unauthorized_repost", reporterKey: "d:1" });
+    expect(dup.ok && dup.duplicate).toBe(true);
+    const r2 = await fileReport(db, { targetType: "video", targetId: v.id, reason: "unauthorized_repost", reporterKey: "d:2" });
+    expect(r2.ok && r2.hidden).toBe(true);
+  });
+
+  it("コメントとプロフィールも通報できる", async () => {
+    const [v] = await published();
+    const c = await postComment(db, { videoId: v.id, userId: viewerId, body: "通報のテスト" });
+    if (!c.ok) throw new Error();
+    const r = await fileReport(db, { targetType: "comment", targetId: c.comment.id, reason: "harassment", reporterKey: "d:z1" });
+    expect(r.ok).toBe(true);
+    const p = await fileReport(db, { targetType: "profile", targetId: creatorId, reason: "voyeurism", reporterKey: "d:z2" });
+    expect(p).toMatchObject({ ok: true, hidden: true });
+    // プロフィールへの重い通報は、その人の公開中の動画をまとめて下げる
+    const left = await db.select().from(s.videos).where(and(eq(s.videos.creatorId, creatorId), eq(s.videos.status, "published")));
+    expect(left.length).toBe(0);
+    const { restoreTarget } = await import("@/lib/safety");
+    await restoreTarget(db, "profile", creatorId, adminId);
+  });
+
+  it("理由に合わない対象は受け付けない", async () => {
+    const [v] = await published();
+    const r = await fileReport(db, { targetType: "comment", targetId: v.id, reason: "voyeurism", reporterKey: "d:z9" });
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe("動画の状態の移り変わり", () => {
+  it("審査を飛ばして公開にはできない", async () => {
+    expect(canTransition("pending_review", "published")).toBe(false);
+    expect(canTransition("pending_review", "approved")).toBe(true);
+    expect(canTransition("approved", "published")).toBe(true);
+    expect(canTransition("deleted", "published")).toBe(false);
+  });
+
+  it("許されない移り方は例外になる", async () => {
+    const [v] = await published();
+    await db.update(s.videos).set({ status: "deleted", deletedAt: new Date() }).where(eq(s.videos.id, v.id));
+    await expect(transition(db, { videoId: v.id, to: "published" })).rejects.toBeInstanceOf(InvalidTransition);
+    await db.update(s.videos).set({ status: "published", deletedAt: null }).where(eq(s.videos.id, v.id));
+  });
+});
+
+describe("本人・年齢の確認", () => {
+  it("生年月日から年齢を正しく数える", () => {
+    const at = new Date("2026-10-05T00:00:00Z");
+    expect(ageOn("2008-10-05", at)).toBe(18);
+    expect(ageOn("2008-10-06", at)).toBe(17); // 誕生日の前日はまだ17歳
+    expect(ageOn("2026-13-01", at)).toBeNull();
+    expect(ageOn("2027-01-01", at)).toBeNull();
+  });
+
+  it("18歳未満は投稿者になれない。確認が済むまで投稿できない", async () => {
+    const [u] = await db.insert(s.users).values({ email: `kid${Date.now()}@t.example`, handle: `kid${Date.now()}`, displayName: "k", passwordHash: "x" }).returning();
+    const young = await submitVerification(db, u.id, new Date(Date.now() - 15 * 365.25 * 86400_000).toISOString().slice(0, 10));
+    expect(young.ok).toBe(false);
+    expect((await canPublish(u.id, db)).ok).toBe(false);
+    const ok = await submitVerification(db, u.id, "1995-03-04");
+    expect(ok).toMatchObject({ ok: true, status: "verified" });
+    expect((await canPublish(u.id, db)).ok).toBe(true);
+    // 年齢の状態も確認済みになる
+    const [after] = await db.select().from(s.users).where(eq(s.users.id, u.id));
+    expect(after.ageStatus).toBe("age_verified");
+  });
+
+  it("保存期限を過ぎた生年月日は消え、確認済みという結果は残る", async () => {
+    const [u] = await db.select().from(s.users).where(eq(s.users.id, creatorId));
+    await db.update(s.creatorVerifications).set({ retentionUntil: new Date(Date.now() - 86400_000) }).where(eq(s.creatorVerifications.userId, u.id));
+    expect(await purgeVerificationData(db)).toBeGreaterThan(0);
+    const [v] = await db.select().from(s.creatorVerifications).where(eq(s.creatorVerifications.userId, u.id));
+    expect(v.birthDate).toBeNull();
+    expect(v.status).toBe("verified");
+  });
+});
+
+describe("利用者への措置", () => {
+  it("コメント停止・投稿停止・解除が効き、履歴が残る", async () => {
+    const [u] = await db.insert(s.users).values({ email: `sx${Date.now()}@t.example`, handle: `sx${Date.now()}`, displayName: "s", passwordHash: "x", emailVerifiedAt: new Date() }).returning();
+    await sanction(db, adminId, u.id, "comment_ban", "荒らし", 7);
+    let [row] = await db.select().from(s.users).where(eq(s.users.id, u.id));
+    expect(activeLimits(row).commentBanned).toBe(true);
+    const [v] = await published();
+    expect((await postComment(db, { videoId: v.id, userId: u.id, body: "書けないはず" })).ok).toBe(false);
+    await sanction(db, adminId, u.id, "lift", "異議が認められた");
+    [row] = await db.select().from(s.users).where(eq(s.users.id, u.id));
+    expect(activeLimits(row).commentBanned).toBe(false);
+    // 履歴は書き換えできない記録に残る
+    const hist = await db.select().from(s.userSanctions).where(eq(s.userSanctions.userId, u.id));
+    expect(hist.length).toBe(2);
+    expect(await verifyChain(db, s.userSanctions)).toBeNull();
+  });
+
+  it("停止するとログイン中のセッションも切れる", async () => {
+    const [u] = await db.insert(s.users).values({ email: `sy${Date.now()}@t.example`, handle: `sy${Date.now()}`, displayName: "s", passwordHash: "x" }).returning();
+    await db.insert(s.sessions).values({ id: `sess${Date.now()}`, userId: u.id, expiresAt: new Date(Date.now() + 86400_000) });
+    await sanction(db, adminId, u.id, "suspend", "規約違反", 3);
+    expect((await db.select().from(s.sessions).where(eq(s.sessions.userId, u.id))).length).toBe(0);
+    const [row] = await db.select().from(s.users).where(eq(s.users.id, u.id));
+    expect(row.status).toBe("suspended");
+  });
+});
+
+describe("緊急の対応", () => {
+  it("ワンクリックで非公開・削除でき、監査ログに残る", async () => {
+    const [v] = await published();
+    await emergencyAction(db, adminId, "hide_video", v.id, "確認のため");
+    let [after] = await db.select().from(s.videos).where(eq(s.videos.id, v.id));
+    expect(after.status).toBe("hidden");
+    expect(after.hiddenReason).toBe("by_admin");
+    await emergencyAction(db, adminId, "delete_video", v.id, "重大な違反");
+    [after] = await db.select().from(s.videos).where(eq(s.videos.id, v.id));
+    expect(after.status).toBe("deleted");
+    expect(after.deletedAt).not.toBeNull();
+    // 削除しても記録は残る
+    const logs = await db.select().from(s.adminAuditLogs).where(eq(s.adminAuditLogs.targetId, v.id));
+    expect(logs.some((l) => l.action === "emergency.delete_video")).toBe(true);
+    expect(await verifyChain(db, s.adminAuditLogs)).toBeNull();
+    // 外部リンクも止まる
+    const links = await db.select().from(s.outboundLinks).where(eq(s.outboundLinks.videoId, v.id));
+    expect(links.every((l) => l.status !== "active")).toBe(true);
   });
 });
 
@@ -69,9 +201,24 @@ describe("投稿と審査", () => {
     const [v] = await db.select().from(s.videos).where(eq(s.videos.id, r.video.id));
     expect(v.status).toBe("published");
   });
-  it("許可リスト外のドメインは審査待ちリンクになる", async () => {
+  it("登録されていない送客先のURLは受け付けない", async () => {
     const r = await createVideo(db, { creatorId, category: "women", intensity: 1, title: "外部", description: "", tags: [], link: "https://unknown-partner.net/p", consents: [true, true, true], ipHash: "x", userAgent: "ua" });
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.error).toMatch(/登録されていません/);
+  });
+  it("承認待ちの送客先なら、リンクは承認されるまで出ない", async () => {
+    const r = await createVideo(db, { creatorId, category: "women", intensity: 1, title: "承認待ち", description: "", tags: [], link: "https://partner-b.example/p", consents: [true, true, true], ipHash: "x", userAgent: "ua" });
     expect(r.ok && r.linkPending).toBe(true);
+  });
+  it("送客先を止めると、そのサービス宛てのリンクは移動できなくなる", async () => {
+    const r = await createVideo(db, { creatorId, category: "women", intensity: 1, title: "停止テスト", description: "", tags: [], link: "https://example.com/stop", consents: [true, true, true], ipHash: "x", userAgent: "ua" });
+    if (!r.ok) throw new Error();
+    await reviewVideo(db, adminId, r.video.id, "approve", "");
+    const [link] = await db.select().from(s.outboundLinks).where(eq(s.outboundLinks.videoId, r.video.id));
+    expect(await recordClick(db, { linkId: link.id, viewerKey: "d:stop1", isBot: false, creatorKey: "u:x" })).not.toBeNull();
+    await db.update(s.destinations).set({ status: "paused" }).where(eq(s.destinations.domain, "example.com"));
+    expect(await recordClick(db, { linkId: link.id, viewerKey: "d:stop2", isBot: false, creatorKey: "u:x" })).toBeNull();
+    await db.update(s.destinations).set({ status: "approved" }).where(eq(s.destinations.domain, "example.com"));
   });
   it("短縮URLは拒否", async () => {
     const r = await createVideo(db, { creatorId, category: "women", intensity: 1, title: "短縮", description: "", tags: [], link: "https://bit.ly/x", consents: [true, true, true], ipHash: "x", userAgent: "ua" });
@@ -106,8 +253,12 @@ describe("コメント", () => {
     expect(ng.ok && ng.pending).toBe(true);
     const ok = await postComment(db, { videoId: v.id, userId: viewerId, body: "素敵です" });
     if (!ok.ok) throw new Error();
-    for (const k of ["a", "b"]) expect((await reportComment(db, { commentId: ok.comment.id, reason: "spam", reporterKey: k })).hidden).toBe(false);
-    expect((await reportComment(db, { commentId: ok.comment.id, reason: "spam", reporterKey: "c" })).hidden).toBe(true);
+    for (const k of ["d:a", "d:b", "d:c", "d:d"]) {
+      const r = await fileReport(db, { targetType: "comment", targetId: ok.comment.id, reason: "spam", reporterKey: k });
+      expect(r.ok && r.hidden).toBe(false);
+    }
+    const last = await fileReport(db, { targetType: "comment", targetId: ok.comment.id, reason: "spam", reporterKey: "d:e" });
+    expect(last.ok && last.hidden).toBe(true);
   });
 });
 
@@ -118,6 +269,7 @@ describe("追記型ログ", () => {
     expect(await verifyChain(db, s.adminAuditLogs)).toBeNull();
     expect(await verifyChain(db, s.videoConsents)).toBeNull();
     expect(await verifyChain(db, s.reportActions)).toBeNull();
+    expect(await verifyChain(db, s.userSanctions)).toBeNull();
     const appendOnly = (e: unknown) => /append-only/.test(String((e as { cause?: Error }).cause?.message ?? e));
     await expect(db.execute(sql`update admin_audit_logs set action = 'tampered'`)).rejects.toSatisfy(appendOnly);
     await expect(db.execute(sql`delete from video_consents`)).rejects.toSatisfy(appendOnly);
@@ -231,7 +383,7 @@ describe("保存料をむだにしない後片付け", () => {
   it("削除された動画のファイルは、猶予を過ぎたら保存先からも消す", async () => {
     const { purgeRemovedMedia } = await import("@/lib/media");
     const [v] = await db.select().from(s.videos).limit(1);
-    await db.update(s.videos).set({ status: "removed", playbackUrl: "/media/zz/master.m3u8", thumbnailUrl: "/media/zz/poster.jpg", mediaStatus: "ready", createdAt: new Date(Date.now() - 30 * 86400_000) }).where(eq(s.videos.id, v.id));
+    await db.update(s.videos).set({ status: "deleted", playbackUrl: "/media/zz/master.m3u8", thumbnailUrl: "/media/zz/poster.jpg", mediaStatus: "ready", deletedAt: new Date(Date.now() - 30 * 86400_000) }).where(eq(s.videos.id, v.id));
     await db.insert(s.uploads).values({ userId: v.creatorId, videoId: v.id, provider: "local", filename: "a.mp4", mime: "video/mp4", size: 10, status: "ready", expiresAt: new Date(Date.now() + 3600_000) });
     expect(await purgeRemovedMedia(db)).toBe(1);
     const [after] = await db.select().from(s.videos).where(eq(s.videos.id, v.id));
@@ -243,7 +395,7 @@ describe("保存料をむだにしない後片付け", () => {
   it("消したばかりの動画は、猶予のあいだ残す（誤操作に備える）", async () => {
     const { purgeRemovedMedia } = await import("@/lib/media");
     const [v] = await db.select().from(s.videos).where(eq(s.videos.status, "published")).limit(1);
-    await db.update(s.videos).set({ status: "removed", playbackUrl: "/media/yy/master.m3u8", mediaStatus: "ready", createdAt: new Date() }).where(eq(s.videos.id, v.id));
+    await db.update(s.videos).set({ status: "deleted", playbackUrl: "/media/yy/master.m3u8", mediaStatus: "ready", deletedAt: new Date() }).where(eq(s.videos.id, v.id));
     expect(await purgeRemovedMedia(db)).toBe(0);
     const [after] = await db.select().from(s.videos).where(eq(s.videos.id, v.id));
     expect(after.playbackUrl).toBe("/media/yy/master.m3u8");

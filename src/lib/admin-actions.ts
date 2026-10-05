@@ -4,11 +4,12 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import QRCode from "qrcode";
 import { db } from "@/db";
-import { comments, creatorProfiles, featuredSlots, notifications, sessions, takedownRequests, users, videos, type Role } from "@/db/schema";
+import { comments, creatorProfiles, destinations, featuredSlots, moderationCases, notifications, sessions, takedownRequests, users, videos, type Role } from "@/db/schema";
 import { adminOrNull, authenticate, createSession, currentUser, isAdminRole, markMfaVerified } from "./auth";
 import { clientIpHash, rateLimit } from "./http";
 import { audit } from "./ledger";
-import { addDomain, penalize, PENALTY_LABEL, removeDomain, resolveReport, reviewVideo } from "./moderation";
+import { addDomain, removeDomain, reviewVideo } from "./moderation";
+import { closeCase, emergencyAction, restoreTarget, sanction, SANCTION_LABEL, type EmergencyAction } from "./safety";
 import { setSetting, type SettingKey } from "./settings";
 import { newTotpSecret, otpauthUri, verifyTotp } from "./totp";
 import type { FormState } from "./account-actions";
@@ -74,21 +75,55 @@ export async function creatorDecisionAction(form: FormData) {
   revalidatePath("/admin/creators");
 }
 
-export async function penaltyAction(form: FormData) {
-  const level = str(form, "level") as keyof typeof PENALTY_LABEL;
-  const a = await need(level === "ban" || level === "lift" ? ["super_admin"] : level === "suspension" ? ["report_handler"] : ["reviewer", "report_handler"]);
+/** 利用者への措置（投稿者でない人にも使える） */
+export async function sanctionAction(form: FormData) {
+  const kind = str(form, "kind") as keyof typeof SANCTION_LABEL;
+  if (!(kind in SANCTION_LABEL)) return;
+  // 重い措置ほど強い権限を求める
+  const a = await need(kind === "ban" || kind === "lift" ? ["super_admin"] : kind === "suspend" ? ["report_handler"] : ["reviewer", "report_handler"]);
   const reason = str(form, "reason");
-  if (!reason || !(level in PENALTY_LABEL)) return;
-  await penalize(await db(), a.id, str(form, "id"), level, reason, Number(form.get("days")) || undefined);
+  if (!reason) return;
+  await sanction(await db(), a.id, str(form, "id"), kind, reason, Number(form.get("days")) || undefined, str(form, "caseId") || undefined);
+  revalidatePath("/admin/users");
   revalidatePath("/admin/creators");
+  revalidatePath("/admin/cases");
 }
 
-/* ---------- 通報 ---------- */
-export async function reportAction(form: FormData) {
+/* ---------- 通報・審査キュー ---------- */
+/** 案件を閉じる。対象を消す／戻す／却下する */
+export async function caseAction(form: FormData) {
   const a = await need(["report_handler"]);
+  const conn = await db();
+  const caseId = str(form, "id");
   const d = str(form, "decision");
-  await resolveReport(await db(), a.id, str(form, "id"), d === "remove" ? "remove" : d === "restore" ? "restore" : "dismiss", str(form, "note"));
-  revalidatePath("/admin/reports");
+  const note = str(form, "note");
+  const [c] = await conn.select().from(moderationCases).where(eq(moderationCases.id, caseId));
+  if (!c) return;
+  if (d === "remove") {
+    if (c.targetType === "video") await emergencyAction(conn, a.id, "delete_video", c.targetId, note || "通報により削除");
+    else if (c.targetType === "comment") await conn.update(comments).set({ status: "removed" }).where(eq(comments.id, c.targetId));
+    else await emergencyAction(conn, a.id, "hide_all_videos", c.targetId, note || "通報により非公開");
+    await closeCase(conn, a.id, caseId, "削除・非公開", note, "resolved_removed");
+  } else if (d === "restore") {
+    await restoreTarget(conn, c.targetType, c.targetId, a.id);
+    await closeCase(conn, a.id, caseId, "問題なしとして復帰", note, "resolved_restored");
+  } else {
+    await closeCase(conn, a.id, caseId, "却下", note, "dismissed");
+  }
+  await audit(conn, a.id, `case.${d}`, c.targetType, c.targetId, { caseId, note });
+  revalidatePath("/admin/cases");
+  revalidatePath("/admin");
+}
+
+/** 管理画面のワンクリック操作（緊急対応） */
+export async function emergencyActionForm(form: FormData) {
+  const action = str(form, "action") as EmergencyAction;
+  // 削除と停止は強い権限、非公開は通報担当でもできる
+  const heavy = ["delete_video", "suspend_user", "hide_all_videos"].includes(action);
+  const a = await need(heavy ? ["super_admin", "report_handler"] : ["reviewer", "report_handler"]);
+  const r = await emergencyAction(await db(), a.id, action, str(form, "id"), str(form, "reason"));
+  for (const p of ["/admin", "/admin/cases", "/admin/videos", "/admin/users", "/admin/links"]) revalidatePath(p);
+  return r;
 }
 
 export async function commentModerationAction(form: FormData) {
@@ -210,4 +245,28 @@ export async function checkBunnyAction(): Promise<{ ok: boolean; message: string
   await need(["super_admin"]);
   const { checkBunny } = await import("./media");
   return checkBunny();
+}
+
+/* ---------- 送客先（完全版を見る） ---------- */
+export async function destinationAction(form: FormData) {
+  const a = await need(["super_admin"]);
+  const conn = await db();
+  const op = str(form, "op");
+  const id = str(form, "id");
+  if (op === "add") {
+    const domain = str(form, "domain").toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    const serviceName = str(form, "serviceName");
+    if (!domain || !serviceName || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) return;
+    const [row] = await conn.insert(destinations).values({
+      serviceName, domain, affiliateUrl: str(form, "affiliateUrl"), urlPattern: str(form, "urlPattern") || null, status: "pending",
+    }).onConflictDoNothing().returning();
+    if (row) await audit(conn, a.id, "destination.add", "destination", row.id, { serviceName, domain });
+  } else if (op === "approve" || op === "pause" || op === "reject") {
+    const status = op === "approve" ? "approved" : op === "pause" ? "paused" : "rejected";
+    const [row] = await conn.update(destinations).set({
+      status, updatedAt: new Date(), ...(op === "approve" ? { approvedAt: new Date(), approvedBy: a.id } : {}),
+    }).where(eq(destinations.id, id)).returning();
+    if (row) await audit(conn, a.id, `destination.${op}`, "destination", id, { serviceName: row.serviceName, reason: str(form, "reason") });
+  }
+  revalidatePath("/admin/links");
 }

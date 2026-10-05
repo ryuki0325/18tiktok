@@ -30,6 +30,12 @@ const DEMO_COMMENTS = ["色の雰囲気が本当にきれい…", "このシリ�
 /** 何度呼んでも安全（初回だけ入る） */
 export async function seed(db: DB, opts: { demo: boolean }) {
   await db.insert(s.tags).values(SEED_TAGS.map((name) => ({ name, slug: encodeURIComponent(name) }))).onConflictDoNothing();
+  // 「完全版を見る」の送客先。運営が承認したサービスだけを並べる
+  await db.insert(s.destinations).values([
+    { serviceName: "Example（提携先サンプル）", domain: "example.com", status: "approved", approvedAt: new Date(), affiliateUrl: "https://example.com/" },
+    { serviceName: "Partner A（サンプル）", domain: "partner-a.example", status: "approved", approvedAt: new Date(), affiliateUrl: "https://partner-a.example/" },
+    { serviceName: "Partner B（サンプル）", domain: "partner-b.example", status: "pending", affiliateUrl: "https://partner-b.example/" },
+  ]).onConflictDoNothing();
   await db.insert(s.affiliateDomains).values([
     { domain: "example.com", displayName: "Example（提携先サンプル）" },
     { domain: "partner-a.example", displayName: "Partner A（サンプル）" },
@@ -68,19 +74,26 @@ export async function seed(db: DB, opts: { demo: boolean }) {
       passwordHash: demoPw, emailVerifiedAt: new Date(), avatarHue: c.hue[0], bio: c.bio,
     }).returning();
     await db.insert(s.creatorProfiles).values({ userId: u.id, status: "approved", approvedPosts: c.videos.length, approvedAt: new Date(), bio: c.bio });
+    await db.insert(s.creatorVerifications).values({
+      userId: u.id, method: "self_declared", status: "verified", birthDate: "1996-05-20", isAdult: true,
+      verifiedAt: new Date(), retentionUntil: new Date(Date.now() + 3 * 365 * 86400_000),
+    }).onConflictDoNothing();
+    await db.update(s.users).set({ ageStatus: "age_verified" }).where(eq(s.users.id, u.id));
     for (const v of c.videos) {
       const shift = videoIds.length * 17;
       const [row] = await db.insert(s.videos).values({
         creatorId: u.id, title: v.title, description: v.desc, status: "published", category: c.category, intensity: v.intensity ?? 1,
         hue: [(c.hue[0] + shift) % 360, (c.hue[1] + shift) % 360, (c.hue[2] + shift) % 360] as [number, number, number],
-        baseLikes: v.likes, reviewRequired: false, publishedAt: new Date(Date.now() - hoursAgo * 3600_000),
+        baseLikes: v.likes, reviewRequired: false,
+        publishedAt: new Date(Date.now() - hoursAgo * 3600_000), approvedAt: new Date(Date.now() - hoursAgo * 3600_000),
       }).returning();
       hoursAgo += 7;
       videoIds.push(row.id);
       await db.insert(s.videoTags).values(v.tags.map((t) => ({ videoId: row.id, tagId: tagId.get(t)! })));
       if (v.link) {
         const domain = new URL(v.link).hostname;
-        await db.insert(s.outboundLinks).values({ id: crypto.randomUUID().replace(/-/g, "").slice(0, 16), videoId: row.id, url: v.link, domain, status: "active" });
+        const [dest] = await db.select().from(s.destinations).where(eq(s.destinations.domain, domain));
+        await db.insert(s.outboundLinks).values({ id: crypto.randomUUID().replace(/-/g, "").slice(0, 16), videoId: row.id, destinationId: dest?.id ?? null, url: v.link, domain, status: dest?.status === "approved" ? "active" : "pending_domain_review" });
       }
     }
   }

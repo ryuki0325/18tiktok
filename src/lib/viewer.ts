@@ -15,8 +15,12 @@ export async function viewerContext() {
   if (await regionBlocked()) redirect("/unavailable");
   await requireAgeGate(path);
   const user = await currentUser();
+  // 成人向けを見せてよい状態か。年齢確認を通していても、運営が制限していれば見せない
+  const adultAllowed = user?.ageStatus !== "age_restricted";
+  if (!adultAllowed) redirect("/restricted");
   const { preferredTags, audience, maxIntensity } = await readTaste(user?.id ?? null);
-  return { user, viewerKey: await viewerKey(), preferredTags, audience, maxIntensity, userId: user?.id ?? null };
+  // adultAllowed は、画面を出さないAPI側でも同じ判断ができるように渡す
+  return { user, viewerKey: await viewerKey(), preferredTags, audience, maxIntensity, userId: user?.id ?? null, adultAllowed };
 }
 
 /** 好み（最初の分岐と好きなタグ）。ログイン中はDB、未ログインはCookie */

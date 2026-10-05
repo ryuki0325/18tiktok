@@ -22,6 +22,14 @@ export async function acceptAgeGate(_: { error?: string } | undefined, formData:
     jar.set(AG_COOKIE, makeAgToken(row.id, expiresAt), {
       httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", expires: expiresAt,
     });
+    // ログイン中なら、年齢の状態も「確認済み」にする（制限中の人は変えない）
+    const { currentUser } = await import("./auth");
+    const u = await currentUser();
+    if (u && u.ageStatus === "unknown") {
+      const { users } = await import("@/db/schema");
+      const { eq } = await import("drizzle-orm");
+      await conn.update(users).set({ ageStatus: "age_verified" }).where(eq(users.id, u.id));
+    }
     const next = safeNext(formData.get("next"));
     // 好みの質問は利用者が増えてから復活させる。今は年齢確認の後すぐにフィードへ
     target = next;
