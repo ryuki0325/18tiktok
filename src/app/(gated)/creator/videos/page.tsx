@@ -40,7 +40,9 @@ export default async function MyVideos({ searchParams }: { searchParams: Promise
                       {v.status === "published" && <button className="btn btn-sm btn-secondary" name="op" value="hide">非公開にする</button>}
                       {v.status === "hidden" && <button className="btn btn-sm btn-secondary" name="op" value="show">公開に戻す</button>}
                       {v.status === "published" && <button className="btn btn-sm btn-secondary" name="op" value="comments">{v.commentsEnabled ? "コメントをオフ" : "コメントをオン"}</button>}
-                      <Link className="btn btn-sm btn-secondary" href={`/creator/videos/${v.id}/edit`}>編集</Link>
+                      {v.status === "draft"
+                        ? <Link className="btn btn-sm btn-primary" href={`/creator/new?draft=${v.id}`}>続きを書く</Link>
+                        : <Link className="btn btn-sm btn-secondary" href={`/creator/videos/${v.id}/edit`}>編集</Link>}
                       <button className="btn btn-sm btn-danger" name="op" value="delete">削除</button>
                     </form>
                   </div>

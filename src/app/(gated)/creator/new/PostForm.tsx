@@ -19,31 +19,42 @@ const MAX_TAGS = 5;
  * 1) 動画を選ぶ  2) 選んだ瞬間から裏で送りながら、説明・表紙・公開設定を決める
  * 下のボタンは「下書き保存」と「審査に提出」の2つ。
  */
-export function PostForm({ tags, destinations, upload, drafts }: {
+type Resume = {
+  id: string; caption: string; tags: string[]; category: string | null; intensity: number | null;
+  visibility: "public" | "private"; comments: boolean; poster: string | null; hasMedia: boolean;
+  destId: string; linkUrl: string;
+};
+
+export function PostForm({ tags, destinations, upload, drafts, resume }: {
   tags: string[]; destinations: Dest[]; upload: { maxMb: number; maxSec: number } | null; drafts: Draft[];
+  /** 下書きの続きから書くとき、その中身 */
+  resume?: Resume | null;
 }) {
   const [uploadId, setUploadId] = useState<string | null>(null);
   const [state, action, pending] = useActionState(createVideoAction, undefined);
   const up = useUpload({ maxMb: upload?.maxMb ?? 0, maxSec: upload?.maxSec ?? 0, onReady: setUploadId });
   const input = useRef<HTMLInputElement>(null);
 
-  const [caption, setCaption] = useState("");
-  const [sel, setSel] = useState<string[]>([]);
-  const [cat, setCat] = useState<string | null>(null);
-  const [lv, setLv] = useState<number | null>(null);
-  const [visibility, setVisibility] = useState<"public" | "private">("public");
-  const [comments, setComments] = useState(true);
-  const [destId, setDestId] = useState("");
-  const [linkUrl, setLinkUrl] = useState("");
+  const [caption, setCaption] = useState(resume?.caption ?? "");
+  const [sel, setSel] = useState<string[]>(resume?.tags ?? []);
+  const [cat, setCat] = useState<string | null>(resume?.category ?? null);
+  const [lv, setLv] = useState<number | null>(resume?.intensity ?? null);
+  const [visibility, setVisibility] = useState<"public" | "private">(resume?.visibility ?? "public");
+  const [comments, setComments] = useState(resume?.comments ?? true);
+  const [destId, setDestId] = useState(resume?.destId ?? "");
+  const [linkUrl, setLinkUrl] = useState(resume?.linkUrl ?? "");
   const [checks, setChecks] = useState({ c1: false, c2: false, c3: false });
   const [coverOpen, setCoverOpen] = useState(false);
 
   // 保存先が未設定のときは、動画なしで先に内容だけ登録できる（運営が設定するまでの間）
-  const chosen = !upload || !!up.file;
-  const ready = (!upload || !!uploadId) && !!cat && !!lv && caption.trim().length > 0 && sel.length > 0
+  // 下書きの続きは、動画がもう付いているので最初から内容を書く画面に入る
+  const kept = !!resume?.hasMedia;
+  const chosen = !upload || !!up.file || kept;
+  const hasVideo = !upload || !!uploadId || kept;
+  const ready = hasVideo && !!cat && !!lv && caption.trim().length > 0 && sel.length > 0
     && checks.c1 && checks.c2 && checks.c3 && !pending;
   // 下書きは、動画さえ送れていれば保存できる
-  const canDraft = (!upload || !!uploadId) && !pending;
+  const canDraft = hasVideo && !pending;
 
   const toggleTag = (t: string) =>
     setSel((s) => (s.includes(t) ? s.filter((x) => x !== t) : s.length < MAX_TAGS ? [...s, t] : s));
@@ -70,7 +81,7 @@ export function PostForm({ tags, destinations, upload, drafts }: {
             <span className="label">下書き<small>{drafts.length}件</small></span>
             <div className="hscroll">
               {drafts.map((d) => (
-                <Link key={d.id} className="draft-card" href="/creator/videos">
+                <Link key={d.id} className="draft-card" href={`/creator/new?draft=${d.id}`}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   {d.poster ? <img src={d.poster} alt="" /> : <span className="ph" style={{ background: `linear-gradient(160deg, hsl(${d.hue[0]} 40% 24%), hsl(${d.hue[1]} 40% 12%))` }} />}
                   <span className="t">{d.title || "（無題）"}</span>
@@ -90,16 +101,20 @@ export function PostForm({ tags, destinations, upload, drafts }: {
 
   /* ---------- 2) 投稿の内容を決める画面 ---------- */
   const st = up.state;
+  // 下書きの続きのときは、保存してある表紙を出す（手元に動画ファイルはない）
+  const coverSrc = up.cover ?? (kept ? resume!.poster : null);
   const statusLine =
     st.k === "uploading" ? `アップロード中 ${up.pct}%（${mb(st.sent)} / ${mb(st.total)}）`
       : st.k === "paused" ? `一時停止中 ${up.pct}%`
         : st.k === "processing" ? "画質ごとに変換中です（このまま投稿できます）"
           : st.k === "ready" ? "動画の準備ができました"
-            : st.k === "failed" ? st.message : "";
+            : st.k === "failed" ? st.message
+              : kept ? "下書きの続きです" : "";
 
   return (
     <form action={action} className="composer">
       <input type="hidden" name="uploadId" value={uploadId ?? ""} />
+      {resume && <input type="hidden" name="draftId" value={resume.id} />}
       <input type="hidden" name="visibility" value={visibility} />
       <input type="hidden" name="commentsEnabled" value={comments ? "on" : "off"} />
       {cat && <input type="hidden" name="category" value={cat} />}
@@ -137,8 +152,8 @@ export function PostForm({ tags, destinations, upload, drafts }: {
           {upload && (
             <button type="button" className="cover-btn" onClick={() => setCoverOpen(true)} disabled={!up.file || st.k !== "ready"}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              {up.cover ? <img src={up.cover} alt="" /> : <span className="ph"><Icon name="video" size={22} /></span>}
-              <span className="lbl">{st.k === "ready" ? "表紙を選ぶ" : "準備中…"}</span>
+              {coverSrc ? <img src={coverSrc} alt="" /> : <span className="ph"><Icon name="video" size={22} /></span>}
+              <span className="lbl">{kept && !up.file ? "動画は保存済み" : st.k === "ready" ? "表紙を選ぶ" : "準備中…"}</span>
             </button>
           )}
         </div>

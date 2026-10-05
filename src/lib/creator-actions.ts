@@ -94,7 +94,14 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
     if (!upload || upload.videoId) return { error: "動画ファイルが見つかりません。もう一度アップロードしてください" };
     if (upload.status === "uploading") return { error: "動画のアップロードがまだ終わっていません" };
     if (upload.status === "failed") return { error: "動画の変換に失敗しました。別のファイルでお試しください" };
-  } else if (mediaProvider()) return { error: "動画ファイルを選んでください" };
+  } else if (mediaProvider()) {
+    // 下書きの続きは、動画がもう付いているので選び直さなくてよい
+    if (!draftId) return { error: "動画ファイルを選んでください" };
+    const [d] = await conn.select({ media: videos.mediaStatus }).from(videos)
+      .where(and(eq(videos.id, draftId), eq(videos.creatorId, u.id), eq(videos.status, "draft")));
+    if (!d) return { error: "下書きが見つかりません" };
+    if (d.media === "none") return { error: "動画ファイルを選んでください" };
+  }
   const r = await createVideo(conn, {
     creatorId: u.id,
     ...parsed.data,

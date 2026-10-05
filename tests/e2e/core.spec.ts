@@ -254,10 +254,22 @@ test.describe("動画のアップロードと配信", () => {
     await page.getByRole("button", { name: "下書き保存" }).click();
     await page.waitForURL(/creator\/videos\?saved=1/);
 
-    // 投稿画面に戻ると、下書きが一覧に出る
+    // 投稿画面に戻ると下書きが一覧に出て、続きから書ける（内容が戻っている）
     await page.goto("/creator/new");
     await expect(page.locator(".pick-main")).toBeVisible();
-    await expect(page.getByText("下書き", { exact: false }).first()).toBeVisible();
+    await page.locator(".draft-card").first().click();
+    await expect(page.locator(".composer")).toBeVisible();
+    await expect(page.locator('[aria-label="説明"]')).toHaveValue(/下書きテスト/);
+    await expect(page.getByRole("radio", { name: "自分だけ" })).toHaveAttribute("aria-checked", "true");
+
+    // 続きを書いて審査に出すと、下書きではなく審査待ちになる（新しい動画が増えない）
+    await page.getByRole("radio", { name: /女性/ }).click();
+    await page.getByRole("radio", { name: "ソフト" }).click();
+    await page.locator("button.chip").first().click();
+    for (const t of ["自分が撮影・出演し", "出演者全員が18歳以上", "他人の動画の転載"]) await page.getByText(t).click();
+    await page.getByRole("button", { name: "審査に提出" }).click();
+    await page.waitForURL(/creator\/videos\?submitted=1/);
+    await expect(page.getByRole("button", { name: "続きを書く" })).toHaveCount(0);
   });
 });
 
