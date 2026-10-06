@@ -138,7 +138,7 @@ export function FeedVideo({ src, poster, width, height, active, paused, muted, r
   return (
     <>
       <video
-        ref={ref} className={`fv${contain || landscape ? " contain" : ""}`} poster={poster ?? undefined}
+        ref={ref} className={`fv${contain ? " contain" : landscape ? " fv-land" : ""}`} poster={poster ?? undefined}
         playsInline loop muted={muted} preload={preload === "idle" ? "metadata" : "auto"}
         disablePictureInPicture controlsList="nodownload noplaybackrate noremoteplayback" x-webkit-airplay="deny"
         onLoadedMetadata={(e) => { const v = e.currentTarget; v.playbackRate = rate; if (v.videoWidth) setNatural({ w: v.videoWidth, h: v.videoHeight }); }}

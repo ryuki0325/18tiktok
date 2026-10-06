@@ -295,7 +295,63 @@ test.describe("動画のアップロードと配信", () => {
     expect(seg.status()).toBe(206);
 
     await page.goto(`/?v=${v.id}`);
-    await expect(page.locator(".item.active video.fv")).toHaveClass(/contain/);
+    // 横長の動画は、ふだん（縦持ち）は切らずに全体を見せる（fv-land=contain）
+    await expect(page.locator(".item.active video.fv")).toHaveClass(/fv-land/);
+  });
+
+  test("スマホを横に倒すと、横長の動画が画面いっぱいになる（いいね等は縦と同じ）", async ({ page, browser }) => {
+    test.skip(!hasFfmpeg || !adminSecret, "ffmpeg と管理者が必要");
+    test.setTimeout(150_000);
+    const file = path.join(tmpdir(), `glow-e2e-rotate-${process.pid}.mp4`);
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "gradients=s=1280x720:d=4:speed=0.05", "-c:v", "libx264", "-pix_fmt", "yuv420p", file]);
+    await passGate(page);
+    await loginAs(page, "luna_night@demo.example");
+    await page.goto("/creator/new");
+    await page.locator('input[aria-label="動画ファイル"]').setInputFiles(file);
+    await expect(page.getByText("動画の準備ができました")).toBeVisible({ timeout: 90_000 });
+    await page.getByRole("radio", { name: /女性/ }).click();
+    await page.getByRole("radio", { name: "ソフト" }).click();
+    const title = `回転テスト${Date.now() % 100000}`;
+    await page.fill('[aria-label="説明"]', title);
+    await page.locator("button.chip").first().click();
+    await fillLink(page);
+    for (const t of ["自分が撮影・出演し", "出演者全員が18歳以上", "他人の動画の転載"]) await page.getByText(t).click();
+    await page.getByRole("button", { name: "審査に提出" }).click();
+    await page.waitForURL(/creator\/videos\?submitted=1/);
+
+    const admin = await browser.newPage();
+    await admin.goto("/admin/login");
+    await admin.fill("#email", "admin@example.com");
+    await admin.fill("#password", "glow-admin-e2e");
+    await admin.getByRole("button", { name: /次へ/ }).click();
+    await admin.fill('[aria-label="6桁のコード"]', totp(adminSecret));
+    await admin.getByRole("button", { name: "確認" }).click();
+    await admin.waitForURL(/\/admin$/);
+    await admin.goto("/admin/reviews");
+    await admin.locator(".card", { hasText: title }).getByRole("button", { name: "承認して公開" }).click();
+    await admin.close();
+
+    const all: { title: string; id: string }[] = [];
+    for (let off: number | null = 0; off !== null;) {
+      const j = await (await page.request.get(`/api/v1/feed?tab=recommended&offset=${off}`)).json();
+      all.push(...j.videos); off = j.nextOffset;
+    }
+    const v = all.find((x) => x.title === title)!;
+    const fit = async () => page.locator(".item.active video.fv").evaluate((el) => getComputedStyle(el).objectFit);
+
+    // 縦持ち（高さのほうが大きい）→ 切らずに全体
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/?v=${v.id}`);
+    await expect(page.locator(".item.active video.fv")).toHaveClass(/fv-land/);
+    expect(await fit()).toBe("contain");
+    // ボタン（いいね等）は出ている
+    await expect(page.locator(".item.active").getByRole("button", { name: "いいね" })).toBeVisible();
+
+    // 横に倒す（幅のほうが大きく、高さが低い）→ 画面いっぱい
+    await page.setViewportSize({ width: 844, height: 390 });
+    await expect.poll(fit).toBe("cover");
+    // いいね等のボタンは横持ちでも同じく出ている
+    await expect(page.locator(".item.active").getByRole("button", { name: "いいね" })).toBeVisible();
   });
 
   test("投稿画面：下書き保存・公開範囲・コメント許可・表紙選び", async ({ page }) => {

@@ -24,7 +24,6 @@ import type { FormState } from "./account-actions";
  * 投稿者の登録。運営の承認は置かず、登録できたらすぐ投稿できる。
  *
  * そのかわり入口で次を満たしてもらう：
- *  - メールアドレスの確認が済んでいること
  *  - 生年月日（18歳以上）
  *  - 承認済みのサービスのアフィリエイトID（1つ以上。ほかの人が登録済みのIDは使えない）
  *  - 確認事項すべてへの同意（内容と版を、書き換えられない形で記録する）
@@ -32,7 +31,7 @@ import type { FormState } from "./account-actions";
 export async function applyCreatorAction(_: FormState, form: FormData): Promise<FormState> {
   const u = await currentUser();
   if (!u) redirect("/login?next=/creator/apply");
-  if (!u.emailVerifiedAt) return { error: "先にメールアドレスの確認をお願いします（マイページから再送できます）" };
+  // メールアドレスの確認は投稿の条件にしない（あとで確認してもらう。通知メールは確認済みの人にだけ届く）
   if (!(await rateLimit(`apply:${u.id}`, 5, 86400))) return { error: "やり直しが多すぎます。しばらくしてからお試しください" };
 
   // 確認事項は1つでも欠けたら進めない
