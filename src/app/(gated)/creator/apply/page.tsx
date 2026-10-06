@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { destinations } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { NavBar } from "@/components/NavBar";
 import { Icon } from "@/components/Icon";
@@ -19,6 +22,10 @@ const STEPS = ["申請", "運営の確認", "投稿できるようになりま�
 
 export default async function Apply() {
   const u = await requireUser("/creator/apply");
+  const conn = await db();
+  // 投稿者になるには、承認済みの送客先で自分の販売ページを持っていることが条件
+  const dests = await conn.select({ id: destinations.id, serviceName: destinations.serviceName, domain: destinations.domain })
+    .from(destinations).where(eq(destinations.status, "approved")).orderBy(destinations.serviceName);
   const s = u.creatorStatus;
   const step = !s || s === "rejected" ? 0 : s === "pending" ? 1 : 2;
   return (
@@ -45,11 +52,18 @@ export default async function Apply() {
                 <li>自分で撮影・出演し、権利を持つ動画だけ</li>
                 <li>出演者全員が18歳以上で、公開に同意しているもの</li>
                 <li>日本の法令に沿って修整されているもの</li>
+                <li><b>自分の販売ページ（アフィリエイトURL）を持っていること</b></li>
+                <li><b>投稿するのは、その作品のサンプル動画</b></li>
               </ul>
               <p className="cap" style={{ margin: "10px 0 0" }}>最初の5本は、公開前に必ず運営が確認します。詳しくは<Link href="/legal/guidelines" style={{ textDecoration: "underline" }}>投稿ガイドライン</Link>をご覧ください。</p>
             </div>
             <div className="notice info"><Icon name="shield" size={18} /><span>本人確認書類の提出は、現在の運用方針の決定待ちのため受け付けていません（決まり次第、この画面に追加されます）。</span></div>
-            <ApplyForm minAge={MIN_AGE} methodNote={METHOD_NOTE[verifyMethod()]} maxDate={new Date(requestTime() - MIN_AGE * 365.25 * 86400_000).toISOString().slice(0, 10)} />
+            {dests.length === 0 ? (
+              <div className="notice warn"><Icon name="alert" size={18} /><span>いま受け付けている送客先がありません。運営が送客先を追加するまで、投稿者の申請はできません。</span></div>
+            ) : (
+              <ApplyForm minAge={MIN_AGE} methodNote={METHOD_NOTE[verifyMethod()]} destinations={dests}
+                maxDate={new Date(requestTime() - MIN_AGE * 365.25 * 86400_000).toISOString().slice(0, 10)} />
+            )}
           </>
         )}
       </div>

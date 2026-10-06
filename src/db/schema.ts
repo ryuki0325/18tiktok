@@ -80,6 +80,12 @@ export const creatorProfiles = pgTable("creator_profiles", {
   userId: uuid().primaryKey().references(() => users.id, { onDelete: "cascade" }),
   status: text().$type<CreatorStatus>().notNull().default("pending"),
   bio: text().notNull().default(""),
+  /**
+   * 申請のときに登録した送客先と、自分のアフィリエイトURL。
+   * 「実際に自分の販売ページを持っている人だけ投稿者にする」ための入口の条件。
+   */
+  destinationId: uuid().references(() => destinations.id, { onDelete: "set null" }),
+  affiliateUrl: text(),
   approvedPosts: integer().notNull().default(0),
   violationPoints: integer().notNull().default(0),
   restrictedUntil: ts(),

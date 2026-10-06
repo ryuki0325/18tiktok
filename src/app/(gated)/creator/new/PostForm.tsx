@@ -28,10 +28,12 @@ type Resume = {
   destId: string; linkUrl: string;
 };
 
-export function PostForm({ tags, destinations, upload, drafts, resume }: {
+export function PostForm({ tags, destinations, upload, drafts, resume, myLink }: {
   tags: string[]; destinations: Dest[]; upload: { maxMb: number; maxSec: number; canTrim: boolean } | null; drafts: Draft[];
   /** 下書きの続きから書くとき、その中身 */
   resume?: Resume | null;
+  /** 申請のときに登録した自分の販売ページ（初期値に使う） */
+  myLink?: { destId: string; url: string } | null;
 }) {
   const [uploadId, setUploadId] = useState<string | null>(null);
   const [state, action, pending] = useActionState(createVideoAction, undefined);
@@ -44,8 +46,8 @@ export function PostForm({ tags, destinations, upload, drafts, resume }: {
   const [lv, setLv] = useState<number | null>(resume?.intensity ?? null);
   const [visibility, setVisibility] = useState<"public" | "private">(resume?.visibility ?? "public");
   const [comments, setComments] = useState(resume?.comments ?? true);
-  const [destId, setDestId] = useState(resume?.destId ?? "");
-  const [linkUrl, setLinkUrl] = useState(resume?.linkUrl ?? "");
+  const [destId, setDestId] = useState(resume?.destId ?? myLink?.destId ?? "");
+  const [linkUrl, setLinkUrl] = useState(resume?.linkUrl ?? myLink?.url ?? "");
   const [checks, setChecks] = useState({ c1: false, c2: false, c3: false });
   const [coverOpen, setCoverOpen] = useState(false);
   // 前に送りかけた動画。もう一度同じファイルを選べば、続きから送れる
@@ -65,7 +67,9 @@ export function PostForm({ tags, destinations, upload, drafts, resume }: {
   const kept = !!resume?.hasMedia;
   const chosen = !upload || !!up.file || kept;
   const hasVideo = !upload || !!uploadId || kept;
+  // 「完全版を見る」のリンクは必須（サンプル動画として投稿してもらうため）
   const ready = hasVideo && !!cat && !!lv && caption.trim().length > 0 && sel.length > 0
+    && !!destId && linkUrl.trim().length > 0
     && checks.c1 && checks.c2 && checks.c3 && !pending;
   // 下書きは、動画さえ送れていれば保存できる
   const canDraft = hasVideo && !pending;
@@ -236,13 +240,13 @@ export function PostForm({ tags, destinations, upload, drafts, resume }: {
 
         {/* 完全版を見る（承認済みの送客先から選ぶ） */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span className="label">「完全版を見る」のリンク<small>任意</small></span>
+          <span className="label">「完全版を見る」のリンク<small>必須</small></span>
           {destinations.length === 0 ? (
             <span className="cap">いまは使える送客先がありません。運営にサービスの追加を依頼してください。</span>
           ) : (
             <>
               <select className="input" value={destId} onChange={(e) => setDestId(e.target.value)} style={{ height: 46 }} aria-label="送客先のサービス">
-                <option value="">使わない</option>
+                <option value="">選んでください</option>
                 {destinations.map((d) => <option key={d.id} value={d.id}>{d.serviceName}（{d.domain}）</option>)}
               </select>
               {destId && (
@@ -251,6 +255,7 @@ export function PostForm({ tags, destinations, upload, drafts, resume }: {
                     placeholder={`https://${destinations.find((d) => d.id === destId)?.domain}/...`} aria-label="自分のページのURL" />
                   <span className="cap" style={{ display: "flex", gap: 6 }}>
                     <Icon name="shield" size={14} />
+                    この動画は<b>サンプル</b>として扱われます。完全版を売っている自分のページのURLを入れてください。
                     選んだサービスのURLだけ登録できます。短縮URLは使えません。移動の前に確認画面とPR表記が出ます。
                   </span>
                 </>

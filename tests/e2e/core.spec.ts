@@ -120,6 +120,17 @@ test.describe("権限", () => {
   });
 });
 
+/** 「完全版を見る」のリンクは必須。承認済みの送客先を選んで自分のページのURLを入れる */
+async function fillLink(page: Page) {
+  const sel = page.getByLabel("送客先のサービス");
+  const first = (await sel.locator("option").nth(1).getAttribute("value"))!;
+  await sel.selectOption(first);
+  // 表示は「サービス名（ドメイン）」。サービス名にも全角カッコが入るので、最後のカッコを使う
+  const label = await sel.locator(`option[value="${first}"]`).innerText();
+  const domain = [...label.matchAll(/（([^（）]+)）/g)].at(-1)![1];
+  await page.getByLabel("自分のページのURL").fill(`https://${domain}/my/sample-${Date.now() % 100000}`);
+}
+
 const CRON_SECRET = "e2e-cron-secret-0123456789";
 const WEBHOOK_SECRET = "e2e-bunny-hook-0123456789";
 
@@ -208,6 +219,7 @@ test.describe("動画のアップロードと配信", () => {
     const title = `横長テスト${Date.now() % 100000}`;
     await page.fill('[aria-label="説明"]', title);
     await page.locator("button.chip").first().click();
+    await fillLink(page);
     for (const t of ["自分が撮影・出演し", "出演者全員が18歳以上", "他人の動画の転載"]) await page.getByText(t).click();
     await page.getByRole("button", { name: "審査に提出" }).click();
     await page.waitForURL(/creator\/videos\?submitted=1/);
@@ -295,6 +307,7 @@ test.describe("動画のアップロードと配信", () => {
     await page.getByRole("radio", { name: /女性/ }).click();
     await page.getByRole("radio", { name: "ソフト" }).click();
     await page.locator("button.chip").first().click();
+    await fillLink(page);
     for (const t of ["自分が撮影・出演し", "出演者全員が18歳以上", "他人の動画の転載"]) await page.getByText(t).click();
     await page.getByRole("button", { name: "審査に提出" }).click();
     await page.waitForURL(/creator\/videos\?submitted=1/);
@@ -375,6 +388,32 @@ test.describe("動画のアップロードと配信", () => {
     // 外せる
     await page.getByRole("button", { name: "ゆったり を外す" }).click();
     await expect(page.locator(".taginput .chip.on")).toHaveCount(2);
+  });
+
+  test("リンクがないと投稿できない（サンプル動画＋販売ページが条件）", async ({ page }) => {
+    test.skip(!hasFfmpeg, "ffmpeg が必要");
+    test.setTimeout(150_000);
+    const file = path.join(tmpdir(), `glow-e2e-link-${process.pid}.mp4`);
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=s=540x960:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", file]);
+    await passGate(page);
+    await loginAs(page, "luna_night@demo.example");
+    await page.goto("/creator/new");
+    await page.locator('input[aria-label="動画ファイル"]').setInputFiles(file);
+    await expect(page.getByText("動画の準備ができました")).toBeVisible({ timeout: 120_000 });
+
+    // リンク以外をすべて埋めても、提出はできないまま
+    await page.fill('[aria-label="説明"]', `リンク必須テスト${Date.now() % 10000}`);
+    await page.getByLabel("タグ", { exact: true }).fill("ホテル");
+    await page.getByRole("button", { name: "#ホテル" }).click();
+    await page.getByRole("radio", { name: /女性/ }).click();
+    await page.getByRole("radio", { name: "ソフト" }).click();
+    for (const t of ["自分が撮影・出演し", "出演者全員が18歳以上", "他人の動画の転載"]) await page.getByText(t).click();
+    const submit = page.getByRole("button", { name: "審査に提出" });
+    await expect(submit).toBeDisabled();
+
+    // 販売ページのURLを入れると提出できるようになる
+    await fillLink(page);
+    await expect(submit).toBeEnabled();
   });
 
   test("送りかけの動画は、ページを開き直しても続きから送れる", async ({ page }) => {

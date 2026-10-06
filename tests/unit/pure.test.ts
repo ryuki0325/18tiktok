@@ -170,3 +170,20 @@ describe("お知らせメール", () => {
     Object.assign(process.env, { MAIL_PROVIDER: keep.p ?? "", RESEND_API_KEY: keep.k ?? "", MAIL_FROM: keep.f ?? "" });
   });
 });
+
+describe("投稿の条件（サンプル動画＋販売ページ）", () => {
+  const base = {
+    title: "サンプル", description: "", tags: ["ホテル"], category: "women",
+    intensity: 1, visibility: "public", commentsEnabled: true,
+  };
+  it("「完全版を見る」のリンクがないと通らない", async () => {
+    const { Post } = await import("@/lib/post-schema");
+    const r = Post.safeParse({ ...base, link: "" });
+    expect(r.success).toBe(false);
+    expect(r.success === false && r.error.issues[0].message).toContain("リンク");
+  });
+  it("リンクがあれば通る", async () => {
+    const { Post } = await import("@/lib/post-schema");
+    expect(Post.safeParse({ ...base, link: "https://example.com/my/page" }).success).toBe(true);
+  });
+});

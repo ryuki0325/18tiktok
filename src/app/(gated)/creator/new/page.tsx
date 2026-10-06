@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { destinations, outboundLinks, tags, videoTags, videos } from "@/db/schema";
+import { creatorProfiles, destinations, outboundLinks, tags, videoTags, videos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { NavBar } from "@/components/NavBar";
 import { canTrim, maxUploadBytes, maxUploadSec, mediaProvider } from "@/lib/media";
@@ -24,6 +24,10 @@ export default async function NewVideo({ searchParams }: { searchParams: Promise
   const blockedReason = limits.banned || limits.suspended ? "現在アカウントが停止されています。"
     : limits.postBanned ? "投稿を停止されています。解除まで投稿できません。"
       : !v.ok ? v.reason : null;
+
+  // 申請のときに登録した販売ページを、投稿画面の初期値に使う
+  const [me] = await conn.select({ destinationId: creatorProfiles.destinationId, affiliateUrl: creatorProfiles.affiliateUrl })
+    .from(creatorProfiles).where(eq(creatorProfiles.userId, u.id));
 
   const [allTags, dests, drafts] = await Promise.all([
     conn.select({ name: tags.name }).from(tags).orderBy(tags.id),
@@ -76,6 +80,7 @@ export default async function NewVideo({ searchParams }: { searchParams: Promise
           destinations={dests}
           drafts={drafts}
           resume={resume}
+          myLink={me?.destinationId && me.affiliateUrl ? { destId: me.destinationId, url: me.affiliateUrl } : null}
           upload={mediaProvider() ? { maxMb: Math.round(maxUploadBytes() / 1024 / 1024), maxSec: maxUploadSec(), canTrim: canTrim() } : null}
         />
       )}

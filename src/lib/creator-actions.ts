@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
+import { Draft, Post } from "./post-schema";
 import { db } from "@/db";
 import { affiliateDomains, creatorProfiles, outboundLinks, tags, uploads, videoTags, videos } from "@/db/schema";
 import { applyUploadToVideo, dropSource, isUuid, mediaProvider } from "./media";
@@ -15,46 +16,37 @@ import { checkAffiliateUrl } from "./url";
 import { getSetting } from "./settings";
 import { currentUser } from "./auth";
 import { clientIpHash, rateLimit } from "./http";
-import { createVideo } from "./moderation";
+import { checkDestinationUrl, createVideo } from "./moderation";
 import type { FormState } from "./account-actions";
 
 export async function applyCreatorAction(_: FormState, form: FormData): Promise<FormState> {
   const u = await currentUser();
   if (!u) redirect("/login?next=/creator/apply");
   if (!u.emailVerifiedAt) return { error: "先にメールアドレスの確認をお願いします（マイページから再送できます）" };
-  if (form.get("rules") !== "on" || form.get("rights") !== "on") return { error: "2つの確認事項にチェックしてください" };
+  if (form.get("rules") !== "on" || form.get("rights") !== "on" || form.get("sample") !== "on") return { error: "3つの確認事項すべてにチェックしてください" };
   if (!(await rateLimit(`apply:${u.id}`, 5, 86400))) return { error: "申請が多すぎます。しばらくしてからお試しください" };
   const bio = String(form.get("bio") ?? "").trim().slice(0, 300);
   const conn = await db();
   const [cp] = await conn.select().from(creatorProfiles).where(eq(creatorProfiles.userId, u.id));
   if (cp && cp.status !== "rejected") return { error: "すでに申請済みです" };
+
+  // 自分の販売ページ（アフィリエイトURL）を持っていることを、投稿者になる条件にしている。
+  // 承認済みの送客先のURLだけを受け付け、短縮URLや転送はここで弾く。
+  const chk = await checkDestinationUrl(conn, String(form.get("affiliateUrl") ?? "").trim());
+  if (!chk.ok) return { error: chk.error };
+  if (chk.link.status !== "active") return { error: "この送客先はまだ使えません。運営の確認が終わるまでお待ちください" };
+
   // 年齢の確認を先に通す（結果だけを残し、方式は lib/verification.ts に閉じている）
   const v = await submitVerification(conn, u.id, String(form.get("birthDate") ?? ""));
   if (!v.ok) return { error: v.error };
-  await conn.insert(creatorProfiles).values({ userId: u.id, bio, status: "pending" })
-    .onConflictDoUpdate({ target: creatorProfiles.userId, set: { status: "pending", bio, appliedAt: new Date() } });
+  const link = { destinationId: chk.link.destinationId, affiliateUrl: chk.link.url };
+  await conn.insert(creatorProfiles).values({ userId: u.id, bio, status: "pending", ...link })
+    .onConflictDoUpdate({ target: creatorProfiles.userId, set: { status: "pending", bio, appliedAt: new Date(), ...link } });
   revalidatePath("/creator/apply");
   return { info: v.status === "verified"
     ? "申請を受け付けました。運営の確認後にお知らせします。"
     : "申請を受け付けました。年齢の確認が済みしだいお知らせします。" };
 }
-
-const Post = z.object({
-  title: z.string().trim().min(1, "タイトルを入力してください").max(60, "タイトルは60文字までです"),
-  description: z.string().trim().max(300, "説明は300文字までです"),
-  tags: z.array(z.string()).min(1, "タグを1つ以上選んでください").max(5, "タグは5つまでです"),
-  link: z.string().trim().max(2048).optional(),
-  category: z.enum(["women", "men", "couple"], { message: "ジャンル（出演者）を選んでください" }),
-  intensity: z.coerce.number("刺激の強さを選んでください").int().min(1, "刺激の強さを選んでください").max(3),
-  visibility: z.enum(["public", "private"]).default("public"),
-  commentsEnabled: z.coerce.boolean().default(true),
-});
-
-/** 下書きは、まだ全部そろっていなくても保存できる */
-const Draft = Post.partial({ title: true, tags: true, category: true, intensity: true }).extend({
-  title: z.string().trim().max(60).default(""),
-  tags: z.array(z.string()).max(5).default([]),
-});
 
 /** フォームの中身を1か所で読む（投稿と下書きで同じものを使う） */
 function readPost(form: FormData) {
