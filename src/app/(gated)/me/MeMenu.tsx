@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Icon, type IconName } from "@/components/Icon";
 import { logoutAction } from "@/lib/account-actions";
 
@@ -9,6 +10,10 @@ type Row = [IconName, string, string];
 /** 右上の「≡」。設定や投稿者メニューをここにまとめる（TikTokと同じ） */
 export function MeMenu({ isCreator, isAdmin }: { isCreator: boolean; isAdmin: boolean }) {
   const [open, setOpen] = useState(false);
+  // ヘッダーは backdrop-filter を持つため、その中で position:fixed を使うと
+  // 画面ではなくヘッダー基準で配置され、シートが上に出てしまう。body 直下に出して防ぐ。
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
     if (!open) return;
     const k = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
@@ -30,7 +35,7 @@ export function MeMenu({ isCreator, isAdmin }: { isCreator: boolean; isAdmin: bo
   return (
     <>
       <button className="iconbtn" onClick={() => setOpen(true)} aria-label="メニュー" aria-expanded={open}><Icon name="menu" /></button>
-      {open && (
+      {open && mounted && createPortal(
         <>
           <div className="sheet-bg" onClick={() => setOpen(false)} />
           <div className="sheet" role="dialog" aria-modal="true" aria-label="メニュー">
@@ -45,7 +50,8 @@ export function MeMenu({ isCreator, isAdmin }: { isCreator: boolean; isAdmin: bo
             </div>
             <form action={logoutAction}><button className="btn btn-secondary pill" style={{ color: "var(--bad)" }}><Icon name="logout" size={19} />ログアウト</button></form>
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </>
   );
