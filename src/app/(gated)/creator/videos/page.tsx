@@ -24,17 +24,18 @@ export default async function MyVideos({ searchParams }: { searchParams: Promise
       <NavBar title="自分の投稿" back="/me" right={<Link className="iconbtn" href="/creator/new" aria-label="投稿する"><Icon name="plus" /></Link>} />
       <div className="sec" style={{ gap: 12, paddingBottom: 24 }}>
         {sp.edited && <div className="notice info" role="status"><Icon name="check" size={18} /><span>保存しました。{sp.rereview && "外部リンクを変更したため、再審査が終わるまで非公開になります。"}</span></div>}
-        {sp.submitted && <div className="notice info" role="status"><Icon name="check" size={18} /><span>審査に提出しました。結果は「お知らせ」でお届けします。{sp.linkPending && "外部リンクは、ドメインの審査が通るまで表示されません。"}</span></div>}
+        {sp.submitted && <div className="notice info" role="status"><Icon name="check" size={18} /><span>投稿しました。AIが投稿可能か確認しています。1分ほどで全員に公開されます。{sp.linkPending && "外部リンクは、ドメインの審査が通るまで表示されません。"}</span></div>}
         {rows.length === 0 ? <p className="cap" style={{ textAlign: "center", padding: 40 }}>まだ投稿はありません。</p> : (
           <div className="list">
             {rows.filter((r) => r.v.status !== "deleted").map(({ v, link }) => {
-              const [label, cls] = statusLabel(v.status, v.hiddenReason);
+              const held = v.status === "published" && v.releaseAt && v.releaseAt > new Date();
+              const [label, cls] = held ? ["調査中", "b-warn"] as const : statusLabel(v.status, v.hiddenReason);
               return (
                 <div key={v.id} className="row" style={{ alignItems: "flex-start", padding: "14px 16px", gap: 12 }}>
                   <span className="sth"><Thumb card={{ hue: v.hue, poster: v.thumbnailUrl }} /></span>
                   <div className="grow" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between" }}><b style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.title}</b><span className={`badge ${cls}`}>{label}</span></div>
-                    <span className="cap">{ago(v.createdAt)}{v.mediaStatus === "processing" && "・動画を変換中"}{v.mediaStatus === "failed" && "・動画の変換に失敗"}{link === "pending_domain_review" && "・リンク審査中"}{!v.commentsEnabled && "・コメントオフ"}</span>
+                    <span className="cap">{ago(v.createdAt)}{held && "・AIが投稿可能か調査中です（まもなく公開）"}{v.mediaStatus === "processing" && "・動画を変換中"}{v.mediaStatus === "failed" && "・動画の変換に失敗"}{link === "pending_domain_review" && "・リンク審査中"}{!v.commentsEnabled && "・コメントオフ"}</span>
                     {v.statusReason && v.status !== "published" && <span className="cap" style={{ color: v.status === "pending_review" ? undefined : "var(--bad)" }}>{v.status === "pending_review" ? "" : "理由："}{v.statusReason}</span>}
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
                     {v.status === "published" && (

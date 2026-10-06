@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, gte, inArray, sql, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, or, sql, lte } from "drizzle-orm";
 import { db, type DB } from "@/db";
 import * as s from "@/db/schema";
 import { getSetting } from "./settings";
@@ -43,7 +43,8 @@ export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublis
   const d = conn ?? (await db());
   const rows = await d.select({ v: s.videos, handle: s.users.handle, avatarHue: s.users.avatarHue, avatarUrl: s.users.avatarUrl })
     .from(s.videos).innerJoin(s.users, eq(s.users.id, s.videos.creatorId))
-    .where(includeUnpublished ? inArray(s.videos.id, ids) : and(inArray(s.videos.id, ids), eq(s.videos.status, "published")));
+    .where(includeUnpublished ? inArray(s.videos.id, ids)
+      : and(inArray(s.videos.id, ids), eq(s.videos.status, "published"), or(isNull(s.videos.releaseAt), lte(s.videos.releaseAt, new Date()))));
   // いいね数・再生数は videos の列（トリガーで増減）から読む。コメント・クリックは件数が少ないので集計
   const [tagRows, commentRows, clickRows, linkRows, myLikes, mySaves, myFollows, myBlocks] = await Promise.all([
     d.select({ videoId: s.videoTags.videoId, name: s.tags.name }).from(s.videoTags).innerJoin(s.tags, eq(s.tags.id, s.videoTags.tagId)).where(inArray(s.videoTags.videoId, ids)),
@@ -93,7 +94,7 @@ export async function feed(tab: FeedTab, o: Opts, limit = 20, offset = 0): Promi
   // 刺激の強さの上限（フォロー中も含めて常に守る）
   const byIntensity = o.maxIntensity && o.maxIntensity < 3 ? lte(s.videos.intensity, o.maxIntensity) : undefined;
   let idRows = await d.select({ id: s.videos.id, creatorId: s.videos.creatorId, publishedAt: s.videos.publishedAt, baseLikes: s.videos.baseLikes })
-    .from(s.videos).where(and(eq(s.videos.status, "published"), byAudience, byIntensity)).orderBy(desc(s.videos.publishedAt)).limit(300);
+    .from(s.videos).where(and(eq(s.videos.status, "published"), or(isNull(s.videos.releaseAt), lte(s.videos.releaseAt, new Date())), byAudience, byIntensity)).orderBy(desc(s.videos.publishedAt)).limit(300);
   // 「興味がない」にした動画は出さない
   if (o.viewerKey) {
     const ni = new Set((await d.select({ id: s.notInterested.videoId }).from(s.notInterested).where(eq(s.notInterested.viewerKey, o.viewerKey))).map((r) => r.id));

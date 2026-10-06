@@ -169,6 +169,20 @@ async function fillLink(page: Page) {
   await page.getByLabel("自分のページのURL").fill(`https://${domain}/my/sample-${Date.now() % 100000}`);
 }
 
+async function addTag(page: Page, name: string) {
+  const box = page.getByLabel("タグ", { exact: true });
+  await box.fill(name);
+  await box.press("Enter");
+}
+
+// 確認事項（4つ）をすべてチェックする
+async function agreeAll(page: Page) {
+  // 確認事項の各チェックボックス（四角いマーク）を押す。リンクを踏まないよう box を狙う
+  const boxes = page.locator("label.check .box");
+  const n = await boxes.count();
+  for (let i = 0; i < n; i++) await boxes.nth(i).click();
+}
+
 const CRON_SECRET = "e2e-cron-secret-0123456789";
 const WEBHOOK_SECRET = "e2e-bunny-hook-0123456789";
 
@@ -238,8 +252,8 @@ test.describe("動画のアップロードと配信", () => {
     await other.close();
   });
 
-  test("投稿者がアップロード → HLS（複数の画質）に変換 → 審査で公開 → 横長は切らずに表示", async ({ page, browser }) => {
-    test.skip(!hasFfmpeg || !adminSecret, "ffmpeg と管理者の2段階認証（前のテスト）が必要");
+  test("投稿者がアップロード → HLS（複数の画質）に変換 → 審査で公開 → 横長は切らずに表示", async ({ page }) => {
+    test.skip(!hasFfmpeg, "ffmpeg が必要");
     test.setTimeout(150_000);
     // 日本語や全角カッコを含むパスだとファイル選択に渡せないことがあるため、一時フォルダに作る
     const file = path.join(tmpdir(), `glow-e2e-landscape-${process.pid}.mp4`);
@@ -253,29 +267,13 @@ test.describe("動画のアップロードと配信", () => {
     await expect(page.locator(".composer")).toBeVisible();
     await expect(page.getByText("動画の準備ができました")).toBeVisible({ timeout: 90_000 });
     await page.getByRole("radio", { name: /女性/ }).click();
-    await page.getByRole("radio", { name: "ソフト" }).click();
     const title = `横長テスト${Date.now() % 100000}`;
     await page.fill('[aria-label="説明"]', title);
-    await page.locator("button.chip").first().click();
+    await addTag(page, "ホテル");
     await fillLink(page);
-    for (const t of ["自分が撮影・出演し", "出演者全員が18歳以上", "他人の動画の転載"]) await page.getByText(t).click();
-    await page.getByRole("button", { name: "審査に提出" }).click();
+    await agreeAll(page);
+    await page.getByRole("button", { name: "投稿する" }).click();
     await page.waitForURL(/creator\/videos\?submitted=1/);
-
-    const admin = await browser.newPage();
-    await admin.goto("/admin/login");
-    await admin.fill("#email", "admin@example.com");
-    await admin.fill("#password", "glow-admin-e2e");
-    await admin.getByRole("button", { name: /次へ/ }).click();
-    await admin.fill('[aria-label="6桁のコード"]', totp(adminSecret));
-    await admin.getByRole("button", { name: "確認" }).click();
-    await admin.waitForURL(/\/admin$/);
-    await admin.goto("/admin/reviews");
-    const card = admin.locator(".card", { hasText: title });
-    await expect(card.locator("video")).toHaveCount(1); // 審査画面で動画を確認できる
-    await card.getByRole("button", { name: "承認して公開" }).click();
-    await expect(admin.locator(".card", { hasText: title })).toHaveCount(0);
-    await admin.close();
 
     const all: { title: string; id: string; src: string; width: number; height: number; poster: string }[] = [];
     for (let off: number | null = 0; off !== null;) {
@@ -299,8 +297,8 @@ test.describe("動画のアップロードと配信", () => {
     await expect(page.locator(".item.active video.fv")).toHaveClass(/fv-land/);
   });
 
-  test("スマホを横に倒すと、横長の動画が画面いっぱいになる（いいね等は縦と同じ）", async ({ page, browser }) => {
-    test.skip(!hasFfmpeg || !adminSecret, "ffmpeg と管理者が必要");
+  test("スマホを横に倒すと、横長の動画が画面いっぱいになる（いいね等は縦と同じ）", async ({ page }) => {
+    test.skip(!hasFfmpeg, "ffmpeg が必要");
     test.setTimeout(150_000);
     const file = path.join(tmpdir(), `glow-e2e-rotate-${process.pid}.mp4`);
     execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "gradients=s=1280x720:d=4:speed=0.05", "-c:v", "libx264", "-pix_fmt", "yuv420p", file]);
@@ -310,26 +308,13 @@ test.describe("動画のアップロードと配信", () => {
     await page.locator('input[aria-label="動画・写真を選ぶ"]').setInputFiles(file);
     await expect(page.getByText("動画の準備ができました")).toBeVisible({ timeout: 90_000 });
     await page.getByRole("radio", { name: /女性/ }).click();
-    await page.getByRole("radio", { name: "ソフト" }).click();
     const title = `回転テスト${Date.now() % 100000}`;
     await page.fill('[aria-label="説明"]', title);
-    await page.locator("button.chip").first().click();
+    await addTag(page, "ホテル");
     await fillLink(page);
-    for (const t of ["自分が撮影・出演し", "出演者全員が18歳以上", "他人の動画の転載"]) await page.getByText(t).click();
-    await page.getByRole("button", { name: "審査に提出" }).click();
+    await agreeAll(page);
+    await page.getByRole("button", { name: "投稿する" }).click();
     await page.waitForURL(/creator\/videos\?submitted=1/);
-
-    const admin = await browser.newPage();
-    await admin.goto("/admin/login");
-    await admin.fill("#email", "admin@example.com");
-    await admin.fill("#password", "glow-admin-e2e");
-    await admin.getByRole("button", { name: /次へ/ }).click();
-    await admin.fill('[aria-label="6桁のコード"]', totp(adminSecret));
-    await admin.getByRole("button", { name: "確認" }).click();
-    await admin.waitForURL(/\/admin$/);
-    await admin.goto("/admin/reviews");
-    await admin.locator(".card", { hasText: title }).getByRole("button", { name: "承認して公開" }).click();
-    await admin.close();
 
     const all: { title: string; id: string }[] = [];
     for (let off: number | null = 0; off !== null;) {
@@ -354,8 +339,8 @@ test.describe("動画のアップロードと配信", () => {
     await expect(page.locator(".item.active").getByRole("button", { name: "いいね" })).toBeVisible();
   });
 
-  test("写真投稿：複数の画像を選んで投稿 → 審査で公開 → フィードで横スワイプで見られる", async ({ page, browser }) => {
-    test.skip(!hasFfmpeg || !adminSecret, "ffmpeg と管理者が必要");
+  test("写真投稿：複数の画像を選んで投稿 → 審査で公開 → フィードで横スワイプで見られる", async ({ page }) => {
+    test.skip(!hasFfmpeg, "ffmpeg が必要");
     test.setTimeout(150_000);
     const img1 = path.join(tmpdir(), `glow-e2e-p1-${process.pid}.jpg`);
     const img2 = path.join(tmpdir(), `glow-e2e-p2-${process.pid}.jpg`);
@@ -371,28 +356,12 @@ test.describe("動画のアップロードと配信", () => {
 
     const title = `写真テスト${Date.now() % 100000}`;
     await page.fill('[aria-label="説明"]', title);
-    await page.getByLabel("タグ", { exact: true }).fill("ホテル");
-    await page.getByRole("button", { name: "#ホテル" }).click();
+    await addTag(page, "ホテル");
     await page.getByRole("radio", { name: /女性/ }).click();
-    await page.getByRole("radio", { name: "ソフト" }).click();
     await fillLink(page);
-    for (const t of ["自分が撮影・出演し", "出演者全員が18歳以上", "他人の動画の転載"]) await page.getByText(t).click();
-    await page.getByRole("button", { name: "審査に提出" }).click();
+    await agreeAll(page);
+    await page.getByRole("button", { name: "投稿する" }).click();
     await page.waitForURL(/creator\/videos\?submitted=1/);
-
-    const admin = await browser.newPage();
-    await admin.goto("/admin/login");
-    await admin.fill("#email", "admin@example.com");
-    await admin.fill("#password", "glow-admin-e2e");
-    await admin.getByRole("button", { name: /次へ/ }).click();
-    await admin.fill('[aria-label="6桁のコード"]', totp(adminSecret));
-    await admin.getByRole("button", { name: "確認" }).click();
-    await admin.waitForURL(/\/admin$/);
-    await admin.goto("/admin/reviews");
-    const card = admin.locator(".card", { hasText: title });
-    await expect(card.getByText("写真2枚")).toBeVisible();
-    await card.getByRole("button", { name: "承認して公開" }).click();
-    await admin.close();
 
     const all: { title: string; id: string; kind: string; images: unknown[] }[] = [];
     for (let off: number | null = 0; off !== null;) {
@@ -436,11 +405,10 @@ test.describe("動画のアップロードと配信", () => {
 
     // そのまま審査に出せる（写真が復元されているので動画扱いにならない）
     await page.getByRole("radio", { name: /女性/ }).click();
-    await page.getByRole("radio", { name: "ソフト" }).click();
-    await page.locator("button.chip").first().click();
+    await addTag(page, "ホテル");
     await fillLink(page);
-    for (const t of ["自分が撮影・出演し", "出演者全員が18歳以上", "他人の動画の転載"]) await page.getByText(t).click();
-    await page.getByRole("button", { name: "審査に提出" }).click();
+    await agreeAll(page);
+    await page.getByRole("button", { name: "投稿する" }).click();
     await page.waitForURL(/creator\/videos\?submitted=1/);
     await expect(page.getByRole("button", { name: "続きを書く" })).toHaveCount(0);
   });
@@ -490,11 +458,10 @@ test.describe("動画のアップロードと配信", () => {
 
     // 続きを書いて審査に出すと、下書きではなく審査待ちになる（新しい動画が増えない）
     await page.getByRole("radio", { name: /女性/ }).click();
-    await page.getByRole("radio", { name: "ソフト" }).click();
-    await page.locator("button.chip").first().click();
+    await addTag(page, "ホテル");
     await fillLink(page);
-    for (const t of ["自分が撮影・出演し", "出演者全員が18歳以上", "他人の動画の転載"]) await page.getByText(t).click();
-    await page.getByRole("button", { name: "審査に提出" }).click();
+    await agreeAll(page);
+    await page.getByRole("button", { name: "投稿する" }).click();
     await page.waitForURL(/creator\/videos\?submitted=1/);
     await expect(page.getByRole("button", { name: "続きを書く" })).toHaveCount(0);
   });
@@ -542,7 +509,7 @@ test.describe("動画のアップロードと配信", () => {
     await expect(page.getByRole("button", { name: /秒に切り取り済み/ })).toBeVisible();
   });
 
-  test("投稿画面：タグを自分で作れる。危ない言葉は断られ、作ったタグは運営が見るまで探せない", async ({ page }) => {
+  test("投稿画面：タグを自分で自由に付けられる（候補なし・即時）", async ({ page }) => {
     test.skip(!hasFfmpeg, "ffmpeg が必要");
     test.setTimeout(150_000);
     const file = path.join(tmpdir(), `glow-e2e-tag-${process.pid}.mp4`);
@@ -554,25 +521,20 @@ test.describe("動画のアップロードと配信", () => {
     await expect(page.locator(".composer")).toBeVisible();
     const box = page.getByLabel("タグ", { exact: true });
 
-    // 候補から選べる
-    await box.fill("ホテル");
-    await page.getByRole("button", { name: "#ホテル" }).click();
-    await expect(page.locator(".taginput .chip.on")).toHaveCount(1);
-
-    // 自分で打つと「作る」が出て、タグとして付く
+    // 自分で打って「追加」で付く
     const mine = `夜景デート${Date.now() % 10000}`;
     await box.fill(mine);
-    await page.getByRole("button", { name: new RegExp(`「${mine}」を作る`) }).click();
-    await expect(page.locator(".taginput .chip.on")).toHaveCount(2);
+    await page.getByRole("button", { name: new RegExp(`「${mine}」を追加`) }).click();
+    await expect(page.locator(".taginput .chip.on")).toHaveCount(1);
 
     // Enter でも足せる
     await box.fill("ゆったり");
     await box.press("Enter");
-    await expect(page.locator(".taginput .chip.on")).toHaveCount(3);
+    await expect(page.locator(".taginput .chip.on")).toHaveCount(2);
 
     // 外せる
     await page.getByRole("button", { name: "ゆったり を外す" }).click();
-    await expect(page.locator(".taginput .chip.on")).toHaveCount(2);
+    await expect(page.locator(".taginput .chip.on")).toHaveCount(1);
   });
 
   test("リンクがないと投稿できない（サンプル動画＋販売ページが条件）", async ({ page }) => {
@@ -588,12 +550,10 @@ test.describe("動画のアップロードと配信", () => {
 
     // リンク以外をすべて埋めても、提出はできないまま
     await page.fill('[aria-label="説明"]', `リンク必須テスト${Date.now() % 10000}`);
-    await page.getByLabel("タグ", { exact: true }).fill("ホテル");
-    await page.getByRole("button", { name: "#ホテル" }).click();
+    await addTag(page, "ホテル");
     await page.getByRole("radio", { name: /女性/ }).click();
-    await page.getByRole("radio", { name: "ソフト" }).click();
-    for (const t of ["自分が撮影・出演し", "出演者全員が18歳以上", "他人の動画の転載"]) await page.getByText(t).click();
-    const submit = page.getByRole("button", { name: "審査に提出" });
+    await agreeAll(page);
+    const submit = page.getByRole("button", { name: "投稿する" });
     await expect(submit).toBeDisabled();
 
     // 販売ページのURLを入れると提出できるようになる

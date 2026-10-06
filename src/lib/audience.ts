@@ -2,7 +2,8 @@
 export const AUDIENCES = [
   { id: "women", label: "女性", desc: "女性クリエイターの動画", hue: [330, 300, 350] },
   { id: "men", label: "男性", desc: "男性クリエイターの動画", hue: [215, 240, 195] },
-  { id: "couple", label: "カップル", desc: "ふたりで出演する動画", hue: [350, 15, 285] },
+  { id: "gay", label: "ゲイ", desc: "男性同士の動画", hue: [205, 230, 185] },
+  { id: "lesbian", label: "レズ", desc: "女性同士の動画", hue: [320, 290, 340] },
   { id: "all", label: "すべて", desc: "ジャンルを決めずに見る", hue: [270, 250, 300] },
 ] as const;
 
@@ -39,10 +40,11 @@ export const SITUATIONS: QuizOption[] = [
 const ATTRACT: Record<VideoCategory, string[]> = {
   women: ["大人の色気", "スレンダー", "グラマー", "美脚", "ランジェリー", "年上の女性", "素人感"],
   men: ["筋肉質", "細マッチョ", "大人の色気", "スーツ", "年上の男性", "素人感"],
-  couple: ["ラブラブ", "リアルな関係", "大人の駆け引き", "素人感"],
+  gay: ["筋肉質", "細マッチョ", "大人の色気", "スーツ", "素人感"],
+  lesbian: ["大人の色気", "スレンダー", "グラマー", "ランジェリー", "素人感"],
 };
 export function attractionOptions(a: Audience): QuizOption[] {
-  const list = a === "all" ? [...new Set([...ATTRACT.women, ...ATTRACT.men, ...ATTRACT.couple])] : ATTRACT[a];
+  const list = a === "all" ? [...new Set([...ATTRACT.women, ...ATTRACT.men, ...ATTRACT.gay, ...ATTRACT.lesbian])] : ATTRACT[a];
   return list.map((t) => ({ id: t, label: t, tags: [t] }));
 }
 

@@ -8,7 +8,7 @@ import { Icon } from "@/components/Icon";
 
 const PAGES: Record<string, string> = {
   terms: "利用規約", privacy: "プライバシーポリシー", guidelines: "投稿ガイドライン",
-  "takedown-policy": "削除・権利侵害申告ポリシー", operator: "運営者情報", tokushoho: "特定商取引法に基づく表記",
+  "takedown-policy": "削除・権利侵害申告ポリシー", "post-consent": "投稿前の確認・誓約事項", operator: "運営者情報", tokushoho: "特定商取引法に基づく表記",
 };
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {

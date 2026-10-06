@@ -57,7 +57,7 @@ export const userPreferences = pgTable("user_preferences", {
   userId: uuid().primaryKey().references(() => users.id, { onDelete: "cascade" }),
   theme: jsonb().notNull(),
   preferredTags: jsonb().$type<string[]>().notNull().default([]),
-  audience: text().$type<"women" | "men" | "couple" | "all">().notNull().default("all"),
+  audience: text().$type<"women" | "men" | "gay" | "lesbian" | "all">().notNull().default("all"),
   /** 刺激の強さの上限（1=ソフト〜3=ハード）。これより強い動画はフィードに出さない */
   maxIntensity: integer().notNull().default(3),
   updatedAt: now(),
@@ -193,13 +193,15 @@ export const videos = pgTable("videos", {
   hue: jsonb().$type<[number, number, number]>().notNull(),
   baseLikes: integer().notNull().default(0),
   /** 最初の分岐（女性・男性・カップル）。フィードの絞り込みに使う */
-  category: text().$type<"women" | "men" | "couple">().notNull().default("women"),
+  category: text().$type<"women" | "men" | "gay" | "lesbian">().notNull().default("women"),
   /** 刺激の強さ（1=ソフト・2=ミディアム・3=ハード）。投稿者が選び、審査で確認する */
   intensity: integer().notNull().default(1),
   reviewRequired: boolean().notNull().default(true),
   commentsEnabled: boolean().notNull().default(true),
   /** プロフィール上部に固定表示する位置（新しいほど先。null は固定なし） */
   pinnedAt: ts(),
+  /** 公開してよい時刻。投稿直後は「調査中」としてこの時刻まで他の人に見せない（null は制限なし） */
+  releaseAt: ts(),
   /*
    * 動画本体はDBに入れない。DBには「場所」と軽い情報だけを持ち、実ファイルはオブジェクトストレージ、配信はCDN。
    * 一覧：スマホ → API → DB（このテーブル）／ 本体：スマホ → CDN（playbackUrl）

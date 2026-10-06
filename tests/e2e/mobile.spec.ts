@@ -80,7 +80,7 @@ test("年齢確認の「はい」で、好みの質問を挟まずにすぐフ�
 test("（今は非表示）好みの質問ページは直接開けば使える", async ({ page }) => {
   await passGate(page);
   await page.goto("/welcome/tags");
-  await page.getByRole("radio", { name: /男性/ }).click();
+  await page.getByRole("radio", { name: "男性 男性クリエイターの動画" }).click();
   await expect(page.getByRole("heading", { name: "今夜の気分は？" })).toBeVisible();
   await page.getByRole("radio", { name: /大人の色気/ }).click();
   await expect(page.getByRole("heading", { name: /シチュエーション/ })).toBeVisible();

@@ -16,7 +16,7 @@ const DEMO: { handle: string; category: VideoCategory; bio: string; hue: number[
     { title: "深夜のドライブ", desc: "深夜のドライブ。高速の光の帯をゆっくり追いかけて。", tags: ["車内", "細マッチョ", "大人の色気"], intensity: 1, likes: 84500, link: "https://partner-a.example/aoi" },
     { title: "湾岸の灯り", desc: "夜明け前の湾岸。静かな水面に映る街の灯り。", tags: ["バスルーム", "筋肉質", "囁き"], intensity: 2, likes: 32700, link: "https://partner-a.example/aoi/2" },
   ] },
-  { handle: "rin.velvet", bio: "ふたりの時間を切り取っています", category: "couple", hue: [345, 20, 300], videos: [
+  { handle: "rin.velvet", bio: "ふたりの時間を切り取っています", category: "lesbian", hue: [345, 20, 300], videos: [
     { title: "ベルベットと低いジャズ", desc: "ベルベットの赤と、低いジャズ。今夜のプレイリストと一緒に。", tags: ["ラブラブ", "イチャイチャ", "ホテル", "リアルな関係"], intensity: 3, likes: 56100, link: null },
   ] },
   { handle: "mio_gold", bio: "ホテルのラウンジから、琥珀色の夜を", category: "women", hue: [38, 25, 55], videos: [

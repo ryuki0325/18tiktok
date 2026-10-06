@@ -190,16 +190,17 @@ describe("投稿と審査", () => {
     const r = await createVideo(db, { creatorId, category: "women", intensity: 1, title: "t", description: "", tags: [], consents: [true, true, false], ipHash: "x", userAgent: "ua" });
     expect(r.ok).toBe(false);
   });
-  it("投稿は審査待ちになり、同意が追記型ログに残り、承認で公開される", async () => {
+  it("投稿は審査なしで公開になり、同意が追記型ログに残り、一定時間は公開待ち（調査中）になる", async () => {
     const r = await createVideo(db, { creatorId, category: "women", intensity: 1, title: "新作", description: "説明", tags: ["夜景"], link: "https://example.com/x", consents: [true, true, true], ipHash: "iphash", userAgent: "ua" });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.video.status).toBe("pending_review");
+    expect(r.video.status).toBe("published");
+    expect(r.held).toBe(true);
+    // 公開してよい時刻は少し先（この間は他の人に見せない＝調査中）
+    expect(r.video.releaseAt).toBeInstanceOf(Date);
+    expect((r.video.releaseAt as Date).getTime()).toBeGreaterThan(Date.now());
     const consents = await db.select().from(s.videoConsents).where(eq(s.videoConsents.videoId, r.video.id));
     expect(consents).toHaveLength(1);
-    expect(await reviewVideo(db, adminId, r.video.id, "approve", "")).toBe(true);
-    const [v] = await db.select().from(s.videos).where(eq(s.videos.id, r.video.id));
-    expect(v.status).toBe("published");
   });
   it("登録されていない送客先のURLは受け付けない", async () => {
     const r = await createVideo(db, { creatorId, category: "women", intensity: 1, title: "外部", description: "", tags: [], link: "https://unknown-partner.net/p", consents: [true, true, true], ipHash: "x", userAgent: "ua" });
@@ -284,8 +285,8 @@ describe("最初の分岐（ジャンル）", () => {
     const men = await feed("recommended", { viewerKey: "d:x", audience: "men" }, 50);
     expect(men.length).toBeGreaterThan(0);
     expect(men.every((v) => v.category === "men")).toBe(true);
-    const couple = await feed("popular", { viewerKey: "d:x", audience: "couple" }, 50);
-    expect(couple.every((v) => v.category === "couple")).toBe(true);
+    const les = await feed("popular", { viewerKey: "d:x", audience: "lesbian" }, 50);
+    expect(les.every((v) => v.category === "lesbian")).toBe(true);
     const all = await feed("recommended", { viewerKey: "d:x", audience: "all" }, 50);
     expect(new Set(all.map((v) => v.category)).size).toBeGreaterThan(1);
   });

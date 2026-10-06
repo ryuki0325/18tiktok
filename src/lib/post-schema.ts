@@ -11,8 +11,9 @@ export const Post = z.object({
   tags: z.array(z.string()).min(1, "タグを1つ以上選んでください").max(5, "タグは5つまでです"),
   // サンプル動画として投稿してもらうため、「完全版を見る」のリンクは必須
   link: z.string().trim().min(1, "「完全版を見る」のリンクを入れてください").max(2048),
-  category: z.enum(["women", "men", "couple"], { message: "ジャンル（出演者）を選んでください" }),
-  intensity: z.coerce.number("刺激の強さを選んでください").int().min(1, "刺激の強さを選んでください").max(3),
+  category: z.enum(["women", "men", "gay", "lesbian"], { message: "ジャンルを選んでください" }),
+  // 刺激の強さは投稿画面から外したので、既定値（1）にする
+  intensity: z.coerce.number().int().min(1).max(3).default(1),
   visibility: z.enum(["public", "private"]).default("public"),
   commentsEnabled: z.coerce.boolean().default(true),
 });

@@ -10,7 +10,7 @@ import { TagInput } from "@/components/upload/TagInput";
 import { useUpload } from "@/components/upload/useUpload";
 import { usePhotos } from "@/components/upload/usePhotos";
 import { findUnfinished, forgetUnfinished, type Unfinished } from "@/components/upload/tus";
-import { INTENSITIES, VIDEO_CATEGORIES } from "@/lib/audience";
+import { VIDEO_CATEGORIES } from "@/lib/audience";
 
 type Dest = { id: string; serviceName: string; domain: string };
 type Draft = { id: string; title: string; poster: string | null; hue: [number, number, number] };
@@ -45,12 +45,11 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
   const [caption, setCaption] = useState(resume?.caption ?? "");
   const [sel, setSel] = useState<string[]>(resume?.tags ?? []);
   const [cat, setCat] = useState<string | null>(resume?.category ?? null);
-  const [lv, setLv] = useState<number | null>(resume?.intensity ?? null);
   const [visibility, setVisibility] = useState<"public" | "private">(resume?.visibility ?? "public");
   const [comments, setComments] = useState(resume?.comments ?? true);
   const [destId, setDestId] = useState(resume?.destId ?? myLink?.destId ?? "");
   const [linkUrl, setLinkUrl] = useState(resume?.linkUrl ?? myLink?.url ?? "");
-  const [checks, setChecks] = useState({ c1: false, c2: false, c3: false });
+  const [checks, setChecks] = useState({ c1: false, c2: false, c3: false, c4: false });
   const [coverOpen, setCoverOpen] = useState(false);
   // 下書きの続きは、動画がもう付いているので最初から内容を書く画面に入る
   const kept = !!resume?.hasMedia;
@@ -97,9 +96,9 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
     : isPhoto ? (ph.readyCount > 0 && !ph.uploading)
     : (!!uploadId || kept);
   // 「完全版を見る」のリンクは必須（サンプル動画として投稿してもらうため）
-  const ready = hasVideo && !!cat && !!lv && caption.trim().length > 0 && sel.length > 0
+  const ready = hasVideo && !!cat && caption.trim().length > 0 && sel.length > 0
     && !!destId && linkUrl.trim().length > 0
-    && checks.c1 && checks.c2 && checks.c3 && !pending;
+    && checks.c1 && checks.c2 && checks.c3 && checks.c4 && !pending;
   // 下書きは、動画さえ送れていれば保存できる
   const canDraft = hasVideo && !pending;
 
@@ -190,7 +189,6 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
       <input type="hidden" name="visibility" value={visibility} />
       <input type="hidden" name="commentsEnabled" value={comments ? "on" : "off"} />
       {cat && <input type="hidden" name="category" value={cat} />}
-      {lv && <input type="hidden" name="intensity" value={lv} />}
       {sel.map((t) => <input key={t} type="hidden" name="tags" value={t} />)}
       <input type="hidden" name="title" value={caption.split("\n")[0].slice(0, 60)} />
       <input type="hidden" name="description" value={caption.slice(0, 300)} />
@@ -268,25 +266,17 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
 
         {/* タグ */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span className="label">タグ<small>必須・最大{MAX_TAGS}つ（{sel.length}/{MAX_TAGS}）</small></span>
-          <TagInput all={tags} value={sel} max={MAX_TAGS} onChange={setSel} />
+          <span className="label">タグ<small className="req">必須</small><small>・最大{MAX_TAGS}つ（{sel.length}/{MAX_TAGS}）</small></span>
+          <TagInput value={sel} max={MAX_TAGS} onChange={setSel} />
         </div>
 
         {/* 必須の分類 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span className="label">ジャンル（出演者）<small>必須・視聴者の最初の分岐に使われます</small></span>
+          <span className="label">ジャンル<small className="req">必須</small><small>・視聴者の最初の分岐に使われます</small></span>
           <div className="seg" role="radiogroup" aria-label="ジャンル">
             {VIDEO_CATEGORIES.map((c) => <button type="button" key={c.id} role="radio" aria-checked={cat === c.id} onClick={() => setCat(c.id)}>{c.label}</button>)}
           </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span className="label">刺激の強さ<small>必須・視聴者の絞り込みに使われます</small></span>
-          <div className="seg" role="radiogroup" aria-label="刺激の強さ">
-            {INTENSITIES.map((x) => <button type="button" key={x.level} role="radio" aria-checked={lv === x.level} onClick={() => setLv(x.level)}>{x.label}</button>)}
-          </div>
-          {lv && <span className="cap">{INTENSITIES.find((x) => x.level === lv)?.desc}。実際の内容より弱く選ぶと差し戻しの対象になります。</span>}
-        </div>
-
         {/* 公開の設定（TikTok の「この動画を見られる人」と同じ並び） */}
         <div className="opt-list">
           <div className="opt">
@@ -306,7 +296,7 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
 
         {/* 完全版を見る（承認済みの送客先から選ぶ） */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span className="label">「完全版を見る」のリンク<small>必須</small></span>
+          <span className="label">「完全版を見る」のリンク<small className="req">必須</small></span>
           {destinations.length === 0 ? (
             <span className="cap">いまは使える送客先がありません。運営にサービスの追加を依頼してください。</span>
           ) : (
@@ -330,15 +320,25 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
           )}
         </div>
 
-        {/* 確認事項 */}
+        {/* 確認事項（詳しい内容は「投稿前の確認・誓約事項」にまとめ、ここでは要点に同意してもらう） */}
         <div style={{ display: "flex", flexDirection: "column" }}>
-          <span className="label" style={{ marginBottom: 4 }}>確認事項<small>すべて必須</small></span>
+          <span className="label" style={{ marginBottom: 4 }}>確認事項<small className="req">すべて必須</small></span>
           {(["c1", "c2", "c3"] as const).map((k, i) => (
             <span key={k} onChange={(e) => setChecks((c) => ({ ...c, [k]: (e.target as HTMLInputElement).checked }))}>
-              <Check name={k}>{["自分が撮影・出演し、権利を持つ動画です", "出演者全員が18歳以上で、公開に同意しています", "他人の動画の転載・切り抜きではありません"][i]}</Check>
+              <Check name={k}>{[
+                "出演者は自分を含め全員が18歳以上で、年齢を確認できる書類を自分で確認しました",
+                "出演者全員から、インターネットでの公開について同意を得ています",
+                "自分が権利を持つ内容で、他人の転載・切り抜き・AIによる他人の再現ではありません",
+              ][i]}</Check>
             </span>
           ))}
-          <span className="cap" style={{ marginTop: 4 }}>同意の内容は日時とともに、変更できない記録として保存されます。</span>
+          <span onChange={(e) => setChecks((c) => ({ ...c, c4: (e.target as HTMLInputElement).checked }))}>
+            <Check name="c4">
+              <Link href="/legal/post-consent" target="_blank" style={{ color: "var(--accent)", textDecoration: "underline" }}>投稿前の確認・誓約事項</Link>
+              と<Link href="/legal/guidelines" target="_blank" style={{ color: "var(--accent)", textDecoration: "underline" }}>投稿ガイドライン</Link>を読み、すべてに同意します
+            </Check>
+          </span>
+          <span className="cap" style={{ marginTop: 4 }}>同意の内容と日時は、変更できない記録として保存されます。虚偽の同意は、アカウント停止・法的措置の対象になります。</span>
         </div>
 
         <FormMessage state={state} />
@@ -347,7 +347,7 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
       {/* TikTok と同じく、下に「下書き」と「投稿」を並べる */}
       <div className="bottom-fixed">
         <button className="btn btn-secondary" name="intent" value="draft" disabled={!canDraft}>下書き保存</button>
-        <button className="btn btn-primary" name="intent" value="submit" disabled={!ready}>{pending ? "送信中…" : "審査に提出"}</button>
+        <button className="btn btn-primary" name="intent" value="submit" disabled={!ready}>{pending ? "送信中…" : "投稿する"}</button>
       </div>
 
       {coverOpen && up.file && uploadId && (

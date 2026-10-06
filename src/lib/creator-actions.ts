@@ -153,7 +153,7 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
   const r = await createVideo(conn, {
     creatorId: u.id,
     ...parsed.data,
-    category: (parsed.data.category ?? "women") as "women" | "men" | "couple",
+    category: (parsed.data.category ?? "women") as "women" | "men" | "gay" | "lesbian",
     intensity: parsed.data.intensity || 1,
     consents, ipHash: await clientIpHash(), userAgent: (await headers()).get("user-agent") ?? "",
     asDraft, draftId, kind, images,

@@ -6,7 +6,7 @@ import { currentUser } from "@/lib/auth";
 import { contentGuard, fail, json } from "@/lib/http";
 import { DEFAULT_PREF } from "@/lib/theme";
 
-const Body = z.object({ tags: z.array(z.string().max(30)).max(30), audience: z.enum(["women", "men", "couple", "all"]).default("all"), maxIntensity: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(3) });
+const Body = z.object({ tags: z.array(z.string().max(30)).max(30), audience: z.enum(["women", "men", "gay", "lesbian", "all"]).default("all"), maxIntensity: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(3) });
 
 export async function PUT(req: Request) {
   const blocked = await contentGuard({ write: true });

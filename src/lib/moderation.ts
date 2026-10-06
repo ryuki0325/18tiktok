@@ -59,7 +59,7 @@ export const CONSENT_TEXT = [
 ];
 
 export async function createVideo(conn: DB, input: {
-  creatorId: string; title: string; description: string; tags: string[]; link?: string; category: "women" | "men" | "couple"; intensity: number;
+  creatorId: string; title: string; description: string; tags: string[]; link?: string; category: "women" | "men" | "gay" | "lesbian"; intensity: number;
   consents: [boolean, boolean, boolean]; ipHash: string; userAgent: string;
   /** 審査を通ったあと、公開するか自分だけにするか */
   visibility?: "public" | "private";
@@ -85,7 +85,6 @@ export async function createVideo(conn: DB, input: {
     if (!chk.ok) return { ok: false as const, error: chk.error };
     link = chk.link;
   }
-  const fullReviewCount = await getSetting("review.new_creator_full_review_count", conn);
   const hue: [number, number, number] = [0, 0, 0].map(() => Math.floor(Math.random() * 360)) as [number, number, number];
 
   return conn.transaction(async (tx) => {
@@ -95,36 +94,36 @@ export async function createVideo(conn: DB, input: {
       ? { kind: "photo" as const, images: input.images, mediaStatus: "ready" as const,
           thumbnailUrl: input.images[0].url, width: input.images[0].w, height: input.images[0].h, playbackUrl: null }
       : {};
+    const now = new Date();
+    // 投稿直後は「調査中」として一定時間（既定60秒）だけ他の人に見せない。時間が来たら自動で公開される。
+    const holdSec = Number(process.env.POST_HOLD_SEC || 60);
+    const isPrivate = (input.visibility ?? "public") === "private";
+    // 公開：すぐ published にし、releaseAt（公開してよい時刻）を少し先にする。
+    // 自分だけ：hidden（本人のページだけに出す）。どちらも運営の審査は挟まない。
+    const publishState = input.asDraft ? {}
+      : isPrivate
+        ? { status: "hidden" as const, hiddenReason: "by_creator" as const, approvedAt: now, releaseAt: null }
+        : { status: "published" as const, publishedAt: now, approvedAt: now, releaseAt: new Date(now.getTime() + holdSec * 1000) };
     const common = {
       title: input.title, description: input.description, category: input.category, intensity: input.intensity,
       visibility: input.visibility ?? "public", commentsEnabled: input.commentsEnabled ?? true,
-      ...photo,
+      statusReason: null, ...photo,
     };
-    // 段階審査：最初のN本は必ず審査。実績ランクも「今は」全件審査（自動チェックの実装後に緩める）
-    const statusReason = input.asDraft ? null
-      : cp.approvedPosts < fullReviewCount ? `新規投稿者の審査（${cp.approvedPosts + 1}/${fullReviewCount}本目）` : null;
     let v: typeof s.videos.$inferSelect;
     if (input.draftId) {
-      // 下書きの続きから。状態は遷移表を通して進める
       const [cur] = await tx.select().from(s.videos).where(and(eq(s.videos.id, input.draftId), eq(s.videos.creatorId, input.creatorId)));
       if (!cur || cur.status !== "draft") return { ok: false as const, error: "下書きが見つかりません" };
-      const [row] = await tx.update(s.videos).set({ ...common, statusReason }).where(eq(s.videos.id, cur.id)).returning();
+      const [row] = await tx.update(s.videos).set({ ...common, ...publishState }).where(eq(s.videos.id, cur.id)).returning();
       v = row;
       await tx.delete(s.videoTags).where(eq(s.videoTags.videoId, v.id));
       await tx.delete(s.outboundLinks).where(eq(s.outboundLinks.videoId, v.id));
     } else {
       const [row] = await tx.insert(s.videos).values({
         creatorId: input.creatorId, hue, ...common,
-        status: input.asDraft ? "draft" : "pending_review", reviewRequired: true, statusReason,
+        status: input.asDraft ? "draft" : (isPrivate ? "hidden" : "published"),
+        reviewRequired: false, ...publishState,
       }).returning();
       v = row;
-    }
-    // 下書きから審査に出すときは、遷移表を通す（状態を飛ばせないように）
-    if (input.draftId && !input.asDraft) {
-      const { transition } = await import("./video-state");
-      const moved = await transition(t, { videoId: v.id, to: "pending_review", actorId: input.creatorId, expect: ["draft"] });
-      if (!moved) return { ok: false as const, error: "下書きを審査に出せませんでした" };
-      v = moved;
     }
     // 自由入力のタグは、ないものを作る（運営が見るまでは候補や検索に出ない）
     const { resolveTags } = await import("./tags");
@@ -140,14 +139,9 @@ export async function createVideo(conn: DB, input: {
       ownsRights: true, performersAdultConsented: true, notReposted: true, ipHash: input.ipHash, userAgent: input.userAgent.slice(0, 300),
     });
     if (link) await tx.insert(s.outboundLinks).values({ id: crypto.randomUUID().replace(/-/g, "").slice(0, 16), videoId: v.id, destinationId: link.destinationId, url: link.url, domain: link.domain, status: link.status });
-    // 運営の審査キューに積む。新規の投稿者ほど先に見る
-    const { openCase } = await import("./safety");
-    await openCase(t, {
-      kind: "video_review", targetType: "video", targetId: v.id, ownerId: input.creatorId,
-      priority: cp.approvedPosts < fullReviewCount ? "high" : "medium",
-      summary: `審査待ち：${input.title}`,
-    });
-    return { ok: true as const, video: v, linkPending: link?.status === "pending_domain_review" };
+    // 公開した本数を数えておく（ダッシュボード等で使う）
+    if (!isPrivate) await tx.update(s.creatorProfiles).set({ approvedPosts: sql`${s.creatorProfiles.approvedPosts} + 1` }).where(eq(s.creatorProfiles.userId, input.creatorId));
+    return { ok: true as const, video: v, linkPending: link?.status === "pending_domain_review", held: !isPrivate };
   });
 }
 

@@ -77,7 +77,7 @@ export async function resolveTags(conn: DB, names: string[], userId: string): Pr
   const created: string[] = [];
   for (const name of missing) {
     const [row] = await conn.insert(s.tags)
-      .values({ name, slug: slugOf(name), status: "pending", createdBy: userId })
+      .values({ name, slug: slugOf(name), status: "approved", createdBy: userId })
       .onConflictDoNothing({ target: s.tags.name }).returning({ id: s.tags.id });
     if (row) { have.set(name, row.id); created.push(name); continue; }
     // 同時に別の人が作った場合は、できたものを読み直す

@@ -113,6 +113,13 @@
       "when": 1791301721746,
       "tag": "0015_social",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791321442561,
+      "tag": "0016_release",
+      "breakpoints": true
     }
   ]
 }
