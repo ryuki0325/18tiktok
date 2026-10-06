@@ -27,6 +27,7 @@ type Resume = {
   id: string; caption: string; tags: string[]; category: string | null; intensity: number | null;
   visibility: "public" | "private"; comments: boolean; poster: string | null; hasMedia: boolean;
   destId: string; linkUrl: string;
+  kind: "video" | "photo"; images: { url: string; w: number; h: number }[] | null;
 };
 
 export function PostForm({ tags, destinations, upload, drafts, resume, myLink }: {
@@ -75,9 +76,9 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
 
   // 写真投稿（複数枚）。動画が選ばれていなければこちら
   const [images, setImages] = useState<{ url: string; w: number; h: number }[]>([]);
-  const ph = usePhotos({ max: upload?.maxImages ?? 0, onChange: setImages });
+  const ph = usePhotos({ max: upload?.maxImages ?? 0, onChange: setImages, initial: resume?.kind === "photo" ? resume.images : null });
   const photoInput = useRef<HTMLInputElement>(null);
-  const isPhoto = ph.photos.length > 0 && !up.file && !kept;
+  const isPhoto = resume?.kind === "photo" || (ph.photos.length > 0 && !up.file && !kept);
 
   // 「動画を選ぶ」ボタンから、動画と写真のどちらが来ても振り分ける
   const pickFiles = (files: FileList | null) => {
@@ -92,7 +93,9 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
   // 下書きの続きは、動画がもう付いているので最初から内容を書く画面に入る
   const chosen = !upload || !!up.file || kept || ph.photos.length > 0;
   // 動画は変換完了、写真は1枚以上アップロード済みで「本体あり」とみなす
-  const hasVideo = !upload || !!uploadId || kept || (isPhoto && ph.readyCount > 0 && !ph.uploading);
+  const hasVideo = !upload ? true
+    : isPhoto ? (ph.readyCount > 0 && !ph.uploading)
+    : (!!uploadId || kept);
   // 「完全版を見る」のリンクは必須（サンプル動画として投稿してもらうため）
   const ready = hasVideo && !!cat && !!lv && caption.trim().length > 0 && sel.length > 0
     && !!destId && linkUrl.trim().length > 0

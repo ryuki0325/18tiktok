@@ -40,6 +40,7 @@ export default async function NewVideo({ searchParams }: { searchParams: Promise
     id: string; caption: string; tags: string[]; category: string | null; intensity: number | null;
     visibility: "public" | "private"; comments: boolean; poster: string | null; hasMedia: boolean;
     destId: string; linkUrl: string;
+    kind: "video" | "photo"; images: { url: string; w: number; h: number }[] | null;
   };
   if (draftId) {
     const [d] = await conn.select().from(videos)
@@ -58,6 +59,7 @@ export default async function NewVideo({ searchParams }: { searchParams: Promise
         comments: d.commentsEnabled,
         poster: d.thumbnailUrl, hasMedia: d.mediaStatus !== "none",
         destId: lk[0]?.destinationId ?? "", linkUrl: lk[0]?.url ?? "",
+        kind: d.kind, images: d.images,
       };
     }
   }

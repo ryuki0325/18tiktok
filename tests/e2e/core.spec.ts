@@ -410,6 +410,41 @@ test.describe("動画のアップロードと配信", () => {
     await expect(page.locator(".item.active .photo-dots")).toBeVisible();
   });
 
+  test("写真の下書き：保存して、続きから開くと写真が戻る", async ({ page }) => {
+    test.skip(!hasFfmpeg, "ffmpeg が必要");
+    test.setTimeout(120_000);
+    const a = path.join(tmpdir(), `glow-e2e-pd1-${process.pid}.jpg`);
+    const b = path.join(tmpdir(), `glow-e2e-pd2-${process.pid}.jpg`);
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=green:s=720x1280", "-frames:v", "1", a]);
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=orange:s=720x1280", "-frames:v", "1", b]);
+    await passGate(page);
+    await loginAs(page, "luna_night@demo.example");
+    await page.goto("/creator/new");
+    await page.locator('input[aria-label="動画・写真を選ぶ"]').setInputFiles([a, b]);
+    await expect(page.getByText(/写真 2 枚の準備ができました/)).toBeVisible({ timeout: 30_000 });
+    const cap = `写真下書き${Date.now() % 100000}`;
+    await page.fill('[aria-label="説明"]', cap);
+    await page.getByRole("button", { name: "下書き保存" }).click();
+    await page.waitForURL(/creator\/videos\?saved=1/);
+
+    // 続きから開くと、写真2枚と説明が戻っている
+    await page.goto("/creator/new");
+    await page.locator(".draft-card").first().click();
+    await expect(page.locator(".composer")).toBeVisible();
+    await expect(page.locator(".photo-item")).toHaveCount(2);
+    await expect(page.locator('[aria-label="説明"]')).toHaveValue(cap);
+
+    // そのまま審査に出せる（写真が復元されているので動画扱いにならない）
+    await page.getByRole("radio", { name: /女性/ }).click();
+    await page.getByRole("radio", { name: "ソフト" }).click();
+    await page.locator("button.chip").first().click();
+    await fillLink(page);
+    for (const t of ["自分が撮影・出演し", "出演者全員が18歳以上", "他人の動画の転載"]) await page.getByText(t).click();
+    await page.getByRole("button", { name: "審査に提出" }).click();
+    await page.waitForURL(/creator\/videos\?submitted=1/);
+    await expect(page.getByRole("button", { name: "続きを書く" })).toHaveCount(0);
+  });
+
   test("投稿画面：下書き保存・公開範囲・コメント許可・表紙選び", async ({ page }) => {
     test.skip(!hasFfmpeg, "ffmpeg が必要");
     test.setTimeout(150_000);

@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type Photo = {
   key: string;
@@ -34,14 +34,29 @@ function shrink(file: File): Promise<{ dataUrl: string; w: number; h: number; pr
   });
 }
 
-export function usePhotos({ max, onChange }: { max: number; onChange: (ready: { url: string; w: number; h: number }[]) => void }) {
-  const [photos, setPhotos] = useState<Photo[]>([]);
+export function usePhotos({ max, onChange, initial }: {
+  max: number;
+  onChange: (ready: { url: string; w: number; h: number }[]) => void;
+  /** 下書きの続きから開いたとき、保存済みの画像を最初から並べる */
+  initial?: { url: string; w: number; h: number }[] | null;
+}) {
+  // 保存済みの画像は、プレビューにそのサーバーURLをそのまま使う（state は ready）
+  const [photos, setPhotos] = useState<Photo[]>(() =>
+    (initial ?? []).map((im) => ({ key: crypto.randomUUID(), previewUrl: im.url, url: im.url, w: im.w, h: im.h, state: "ready" as const })));
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
   const emit = useCallback((list: Photo[]) => {
     onChangeRef.current(list.filter((p) => p.state === "ready" && p.url).map((p) => ({ url: p.url!, w: p.w, h: p.h })));
   }, []);
+
+  // 下書きの続きで最初から入っている画像は、編集しなくてもフォームに渡しておく
+  const didInit = useRef(false);
+  useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+    if (initial?.length) emit(initial.map((im) => ({ key: "", previewUrl: im.url, url: im.url, w: im.w, h: im.h, state: "ready" as const })));
+  }, [initial, emit]);
 
   const add = useCallback(async (files: File[]) => {
     const imgs = files.filter((f) => f.type.startsWith("image/"));
