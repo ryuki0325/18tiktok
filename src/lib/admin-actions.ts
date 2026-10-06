@@ -248,6 +248,19 @@ export async function checkBunnyAction(): Promise<{ ok: boolean; message: string
 }
 
 /* ---------- 送客先（完全版を見る） ---------- */
+/** 投稿者が作ったタグを、広げる／広げないを決める */
+export async function tagAction(form: FormData) {
+  const a = await need(["super_admin", "reviewer"]);
+  const conn = await db();
+  const id = Number(str(form, "id"));
+  const op = str(form, "op");
+  if (!Number.isInteger(id) || (op !== "approve" && op !== "reject")) return;
+  const { decideTag } = await import("./tags");
+  await decideTag(conn, id, op === "approve");
+  await audit(conn, a.id, `tag.${op}`, "tag", String(id), {});
+  revalidatePath("/admin/tags");
+}
+
 export async function destinationAction(form: FormData) {
   const a = await need(["super_admin"]);
   const conn = await db();

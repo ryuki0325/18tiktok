@@ -12,6 +12,7 @@ export function AdminNav({ counts }: { counts: Record<string, number> }) {
     ["/admin/users", "利用者"],
     ["/admin/creators", "投稿者", counts.creators],
     ["/admin/comments", "コメント", counts.comments],
+    ["/admin/tags", "新しいタグ", counts.tags],
     ["/admin/links", "送客先", counts.links],
     ["/admin/takedowns", "削除請求", counts.takedowns],
     ["/admin/featured", "特集枠"], ["/admin/admins", "管理者"], ["/admin/settings", "設定"], ["/admin/audit", "監査ログ"],

@@ -1,11 +1,14 @@
 "use client";
 import Link from "next/link";
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { createVideoAction } from "@/lib/creator-actions";
 import { Check, FormMessage } from "@/components/forms/Field";
 import { Icon } from "@/components/Icon";
 import { CoverPicker } from "@/components/upload/CoverPicker";
+import { TrimBar } from "@/components/upload/TrimBar";
+import { TagInput } from "@/components/upload/TagInput";
 import { useUpload } from "@/components/upload/useUpload";
+import { findUnfinished, forgetUnfinished, type Unfinished } from "@/components/upload/tus";
 import { INTENSITIES, VIDEO_CATEGORIES } from "@/lib/audience";
 
 type Dest = { id: string; serviceName: string; domain: string };
@@ -26,7 +29,7 @@ type Resume = {
 };
 
 export function PostForm({ tags, destinations, upload, drafts, resume }: {
-  tags: string[]; destinations: Dest[]; upload: { maxMb: number; maxSec: number } | null; drafts: Draft[];
+  tags: string[]; destinations: Dest[]; upload: { maxMb: number; maxSec: number; canTrim: boolean } | null; drafts: Draft[];
   /** 下書きの続きから書くとき、その中身 */
   resume?: Resume | null;
 }) {
@@ -45,6 +48,17 @@ export function PostForm({ tags, destinations, upload, drafts, resume }: {
   const [linkUrl, setLinkUrl] = useState(resume?.linkUrl ?? "");
   const [checks, setChecks] = useState({ c1: false, c2: false, c3: false });
   const [coverOpen, setCoverOpen] = useState(false);
+  // 前に送りかけた動画。もう一度同じファイルを選べば、続きから送れる
+  const [left, setLeft] = useState<Unfinished | null>(null);
+  useEffect(() => {
+    if (!upload) return;
+    let dead = false;
+    void findUnfinished().then((u) => { if (!dead) setLeft(u); });
+    return () => { dead = true; };
+  }, [upload]);
+  const canTrim = !!upload?.canTrim;
+  const [trimOpen, setTrimOpen] = useState(false);
+  const [trim, setTrim] = useState<{ startMs: number; endMs: number } | null>(null);
 
   // 保存先が未設定のときは、動画なしで先に内容だけ登録できる（運営が設定するまでの間）
   // 下書きの続きは、動画がもう付いているので最初から内容を書く画面に入る
@@ -73,6 +87,20 @@ export function PostForm({ tags, destinations, upload, drafts, resume }: {
             {upload && <>{Math.floor(upload.maxSec / 60)}分・{upload.maxMb >= 1024 ? `${upload.maxMb / 1024}GB` : `${upload.maxMb}MB`}まで</>}
           </span>
         </button>
+        {left && up.state.k === "idle" && (
+          <div className="notice info resume" role="status">
+            <Icon name="upload" size={18} />
+            <span>
+              <b>送りかけの動画があります</b><br />
+              {left.filename}（{Math.floor((left.sent / Math.max(1, left.size)) * 100)}% まで送信済み）<br />
+              <small>同じファイルをもう一度選ぶと、続きから送ります。</small>
+            </span>
+            <span style={{ display: "flex", gap: 8, marginTop: 6 }}>
+              <button type="button" className="btn btn-sm btn-primary" onClick={() => input.current?.click()}>続きから送る</button>
+              <button type="button" className="btn btn-sm btn-secondary" onClick={() => { forgetUnfinished(); setLeft(null); }}>やめる</button>
+            </span>
+          </div>
+        )}
         {up.state.k === "failed" && <p className="cap" style={{ color: "var(--bad)", textAlign: "center" }}>{up.state.message}</p>}
         {up.state.k === "reading" && <p className="cap" style={{ textAlign: "center" }}>動画を読み込んでいます…</p>}
 
@@ -160,17 +188,18 @@ export function PostForm({ tags, destinations, upload, drafts, resume }: {
         <div className="cap-meta">
           <span className="cap num">{caption.length}/300</span>
           <button type="button" className="cap-chip" onClick={() => setCaption((c) => `${c}#`)}>#タグを入れる</button>
+          {canTrim && up.file && (
+            <button type="button" className="cap-chip" onClick={() => setTrimOpen(true)} disabled={st.k === "uploading" || st.k === "reading"}>
+              <Icon name="scissors" size={14} />{trim ? `${Math.round((trim.endMs - trim.startMs) / 1000)}秒に切り取り済み` : "長さを切り取る"}
+            </button>
+          )}
           {upload && <button type="button" className="cap-chip" onClick={up.reset}>動画を選び直す</button>}
         </div>
 
         {/* タグ */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span className="label">タグ<small>必須・最大{MAX_TAGS}つ（{sel.length}/{MAX_TAGS}）</small></span>
-          <div className="tag-wrap">
-            {tags.map((t) => (
-              <button type="button" key={t} className="chip" aria-pressed={sel.includes(t)} onClick={() => toggleTag(t)}>#{t}</button>
-            ))}
-          </div>
+          <TagInput all={tags} value={sel} max={MAX_TAGS} onChange={setSel} />
         </div>
 
         {/* 必須の分類 */}
@@ -257,6 +286,17 @@ export function PostForm({ tags, destinations, upload, drafts, resume }: {
             if (!c?.changed) return;
             // サーバーが作り直した表紙に差し替える（端末で絵を作れなかった場合もこちらで見える）
             up.setCover(c.dataUrl || `/media/${uploadId}/poster.jpg?t=${Date.now()}`);
+          }} />
+      )}
+
+      {trimOpen && up.file && uploadId && (
+        <TrimBar file={up.file} uploadId={uploadId} durationMs={up.info?.durationMs ?? 0} value={trim}
+          onClose={(v, saved) => {
+            setTrimOpen(false);
+            if (!saved) return;
+            setTrim(v);
+            // 切り取ると変換をやり直すので、終わるまで待つ
+            up.recheck();
           }} />
       )}
     </form>

@@ -271,6 +271,119 @@ test.describe("動画のアップロードと配信", () => {
     await page.waitForURL(/creator\/videos\?submitted=1/);
     await expect(page.getByRole("button", { name: "続きを書く" })).toHaveCount(0);
   });
+
+  test("投稿画面：長さを切り取ると、実際に短い動画になる", async ({ page }) => {
+    test.skip(!hasFfmpeg, "ffmpeg が必要");
+    test.setTimeout(180_000);
+    const file = path.join(tmpdir(), `glow-e2e-trim-${process.pid}.mp4`);
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=s=540x960:d=10", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", file]);
+    await passGate(page);
+    await loginAs(page, "luna_night@demo.example");
+    await page.goto("/creator/new");
+    await page.locator('input[aria-label="動画ファイル"]').setInputFiles(file);
+    await expect(page.getByText("動画の準備ができました")).toBeVisible({ timeout: 120_000 });
+
+    // 切り取る前の長さを控えておく
+    const idA = await page.locator('input[name="uploadId"]').inputValue();
+    const before = (await (await page.request.get(`/api/v1/uploads/${idA}`)).json()).durationMs as number;
+    expect(before).toBeGreaterThan(8000);
+
+    await page.getByRole("button", { name: /長さを切り取る/ }).click();
+    const sheet = page.getByRole("dialog", { name: "長さを切り取る" });
+    await expect(sheet).toBeVisible();
+    // 終わりのつまみをキーボードで手前に動かす（Shift+← は1秒ずつ）
+    const right = sheet.getByRole("slider", { name: "終わりの位置" });
+    await right.focus();
+    for (let i = 0; i < 6; i++) await right.press("Shift+ArrowLeft");
+    await expect(sheet.getByText(/になります/)).toBeVisible();
+    await sheet.getByRole("button", { name: "この長さにする" }).click();
+    await expect(sheet).toHaveCount(0);
+
+    // 変換し直され、実際に短くなる（再生用の動画そのものが短い）
+    const row = async () => (await (await page.request.get(`/api/v1/uploads/${idA}`)).json()) as { status: string; durationMs: number; trimStartMs: number | null; trimEndMs: number | null };
+    const saved = await row();
+    expect(saved.trimStartMs).toBe(0);
+    expect(saved.trimEndMs).toBeLessThan(6000);
+    await expect.poll(async () => (await row()).status, { timeout: 120_000, intervals: [500] }).toBe("ready");
+    const after = (await row()).durationMs;
+    expect(after).toBeLessThan(before - 4000);
+    const master = await (await page.request.get(`/media/${idA}/master.m3u8`)).text();
+    const first = master.split("\n").find((l) => l.endsWith("index.m3u8"))!;
+    const idx = await (await page.request.get(`/media/${idA}/${first}`)).text();
+    const total = [...idx.matchAll(/#EXTINF:([\d.]+)/g)].reduce((a, m) => a + Number(m[1]), 0);
+    expect(total).toBeLessThan(before / 1000 - 3);
+    await expect(page.getByRole("button", { name: /秒に切り取り済み/ })).toBeVisible();
+  });
+
+  test("投稿画面：タグを自分で作れる。危ない言葉は断られ、作ったタグは運営が見るまで探せない", async ({ page }) => {
+    test.skip(!hasFfmpeg, "ffmpeg が必要");
+    test.setTimeout(150_000);
+    const file = path.join(tmpdir(), `glow-e2e-tag-${process.pid}.mp4`);
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=s=540x960:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", file]);
+    await passGate(page);
+    await loginAs(page, "luna_night@demo.example");
+    await page.goto("/creator/new");
+    await page.locator('input[aria-label="動画ファイル"]').setInputFiles(file);
+    await expect(page.locator(".composer")).toBeVisible();
+    const box = page.getByLabel("タグ", { exact: true });
+
+    // 候補から選べる
+    await box.fill("ホテル");
+    await page.getByRole("button", { name: "#ホテル" }).click();
+    await expect(page.locator(".taginput .chip.on")).toHaveCount(1);
+
+    // 自分で打つと「作る」が出て、タグとして付く
+    const mine = `夜景デート${Date.now() % 10000}`;
+    await box.fill(mine);
+    await page.getByRole("button", { name: new RegExp(`「${mine}」を作る`) }).click();
+    await expect(page.locator(".taginput .chip.on")).toHaveCount(2);
+
+    // Enter でも足せる
+    await box.fill("ゆったり");
+    await box.press("Enter");
+    await expect(page.locator(".taginput .chip.on")).toHaveCount(3);
+
+    // 外せる
+    await page.getByRole("button", { name: "ゆったり を外す" }).click();
+    await expect(page.locator(".taginput .chip.on")).toHaveCount(2);
+  });
+
+  test("送りかけの動画は、ページを開き直しても続きから送れる", async ({ page }) => {
+    test.skip(!hasFfmpeg, "ffmpeg が必要");
+    test.setTimeout(120_000);
+    await passGate(page);
+    await loginAs(page, "luna_night@demo.example");
+
+    // 途中まで送った状態を作る（1チャンクだけ送って置いておく）
+    const size = 300 * 1024;
+    const init = await page.request.post("/api/v1/uploads", { headers: { origin: "http://localhost:3200" }, data: { filename: "のこり.mp4", mime: "video/mp4", size } });
+    const { id, tus } = await init.json();
+    const chunk = Buffer.alloc(tus.chunkSize, 1);
+    Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32]).copy(chunk, 0);
+    await page.request.patch(`/api/v1/uploads/${id}/tus`, {
+      headers: { origin: "http://localhost:3200", "Tus-Resumable": "1.0.0", "Content-Type": "application/offset+octet-stream", "Upload-Offset": "0" }, data: chunk,
+    });
+    // 端末が覚えている「続き」を、ブラウザの保存領域に置く
+    await page.goto("/creator/new");
+    await page.evaluate(([uid, fsize, csize]) => {
+      localStorage.setItem("glow.uploads", JSON.stringify({
+        [`のこり.mp4|${fsize}|1700000000000`]: {
+          id: uid, provider: "local", location: `${location.origin}/api/v1/uploads/${uid}/tus`,
+          tus: { endpoint: `/api/v1/uploads/${uid}/tus`, headers: {}, metadata: {}, chunkSize: csize }, at: Date.now(),
+        },
+      }));
+    }, [id, size, tus.chunkSize] as const);
+
+    await page.reload();
+    await expect(page.getByText("送りかけの動画があります")).toBeVisible();
+    await expect(page.getByText(/のこり\.mp4（4[0-9]% まで送信済み）/)).toBeVisible();
+
+    // 「やめる」で覚えている続きを捨てられる
+    await page.getByRole("button", { name: "やめる" }).click();
+    await expect(page.getByText("送りかけの動画があります")).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByText("送りかけの動画があります")).toHaveCount(0);
+  });
 });
 
 async function loginAs(page: Page, email: string) {

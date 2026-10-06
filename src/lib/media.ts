@@ -2,6 +2,7 @@ import "server-only";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { eq } from "drizzle-orm";
 import type { DB } from "@/db";
@@ -15,6 +16,15 @@ import * as s from "@/db/schema";
  */
 export type Provider = "local" | "bunny";
 export type Upload = typeof s.uploads.$inferSelect;
+/** 切り取り（トリミング）の範囲 */
+export type Trim = { startMs: number; endMs: number };
+/**
+ * 切り取りができる保存先か。
+ * local は ffmpeg で実際に切るので、切り落とした部分は残らない。
+ * Bunny Stream には切り取りの機能がなく、「再生だけ範囲を狭める」のは
+ * 元の映像が取り出せてしまうため、安全上おこなわない。
+ */
+export const canTrim = () => mediaProvider() === "local";
 
 /** 1チャンクの大きさ。スマホ回線で1回の送信が数秒で終わる程度 */
 export const CHUNK_SIZE = Number(process.env.UPLOAD_CHUNK_KB || 8192) * 1024;
@@ -172,7 +182,8 @@ export async function completeUpload(conn: DB, u: Upload, meta: { width?: number
   if (meta.poster?.byteLength) await writeFile(path.join(dir, "poster.jpg"), meta.poster);
   await conn.update(s.uploads).set({ ...base, status: "processing" }).where(eq(s.uploads.id, u.id));
   // 変換は時間がかかるので待たない（状態は GET /api/v1/uploads/:id で確認）
-  void transcodeLocal(conn, u.id, sourceName(u.mime), !!meta.poster?.byteLength).catch(async (e) => {
+  const trim = trimOf(u, meta.durationMs ?? u.durationMs);
+  void transcodeLocal(conn, u.id, sourceName(u.mime), !!meta.poster?.byteLength, trim).catch(async (e) => {
     console.error("[glow] 動画の変換に失敗しました", e);
     await markUpload(conn, u.id, { status: "failed", error: String(e instanceof Error ? e.message : e).slice(0, 500) });
   });
@@ -235,6 +246,46 @@ export async function deleteFromProvider(u: Upload) {
   } catch (e) {
     console.error("[glow] 動画ファイルを削除できませんでした", u.id, e);
   }
+}
+
+/** 行に入っている切り取りの範囲を、動画の長さに収まるように整える */
+function trimOf(u: Upload, durationMs: number | null): Trim | undefined {
+  if (u.trimStartMs == null && u.trimEndMs == null) return undefined;
+  const dur = durationMs ?? u.durationMs ?? 0;
+  const start = Math.max(0, u.trimStartMs ?? 0);
+  const end = u.trimEndMs ?? (dur || start + MIN_TRIM_MS);
+  if (end - start < MIN_TRIM_MS) return undefined;
+  return { startMs: Math.round(start), endMs: Math.round(end) };
+}
+
+/** 切り取れる最短の長さ（これより短くはできない） */
+export const MIN_TRIM_MS = 1000;
+
+/**
+ * 切り取る範囲を決める。変換が済んでいれば、元ファイルから変換をやり直す。
+ * 元ファイルは動画に紐づいた時点で消すので、そのあとは変えられない。
+ */
+export async function setTrim(conn: DB, u: Upload, t: Trim | null): Promise<{ ok: boolean; error?: string }> {
+  if (u.provider !== "local") return { ok: false, error: "この保存先では切り取りできません" };
+  if (u.videoId) return { ok: false, error: "投稿したあとは切り取りを変えられません" };
+  if (t && t.endMs - t.startMs < MIN_TRIM_MS) return { ok: false, error: "切り取りが短すぎます" };
+  const set = { trimStartMs: t ? Math.round(t.startMs) : null, trimEndMs: t ? Math.round(t.endMs) : null, updatedAt: new Date() };
+  const [row] = await conn.update(s.uploads).set(set).where(eq(s.uploads.id, u.id)).returning();
+  if (row.status === "uploading") return { ok: true }; // まだ送信中。変換のときに反映される
+  const srcName = sourceName(u.mime);
+  if (!existsSync(path.join(mediaDir(), u.id, srcName))) return { ok: false, error: "元の動画が残っていないため、切り取りを変えられません" };
+  await conn.update(s.uploads).set({ status: "processing", error: null }).where(eq(s.uploads.id, u.id));
+  void transcodeLocal(conn, u.id, srcName, false, trimOf(row, row.durationMs)).catch(async (e) => {
+    console.error("[glow] 切り取りの変換に失敗しました", e);
+    await markUpload(conn, u.id, { status: "failed", error: String(e instanceof Error ? e.message : e).slice(0, 500) });
+  });
+  return { ok: true };
+}
+
+/** 元ファイルを消す（動画に紐づいたら、もう切り取り直さないので置いておく意味がない） */
+export async function dropSource(u: Upload) {
+  if (u.provider !== "local") return;
+  await rm(path.join(mediaDir(), u.id, sourceName(u.mime)), { force: true }).catch(() => {});
 }
 
 /**
@@ -342,9 +393,11 @@ async function probe(file: string) {
 
 const sourceName = (mime: string) => `source.${mime.includes("webm") ? "webm" : mime.includes("quicktime") ? "mov" : "mp4"}`;
 
-async function transcodeLocal(conn: DB, id: string, srcName: string, hasPoster: boolean) {
+async function transcodeLocal(conn: DB, id: string, srcName: string, hasPoster: boolean, trim?: Trim) {
   const dir = path.join(mediaDir(), id);
   const src = path.join(dir, srcName);
+  // 切り取りは「入力の前に -ss、後に -to」で指定する。実際に切るので、残りの部分は配信されない
+  const cut = trim ? ["-ss", (trim.startMs / 1000).toFixed(3), "-to", (trim.endMs / 1000).toFixed(3)] : [];
   if (!(await hasFfmpeg())) {
     // ffmpeg がない環境：元のファイルをそのまま配信（MP4 は Range で少しずつ読み込まれる）
     return markUpload(conn, id, { status: "ready", playbackUrl: localUrl(`${id}/${srcName}`), thumbnailUrl: hasPoster ? localUrl(`${id}/poster.jpg`) : null });
@@ -359,7 +412,7 @@ async function transcodeLocal(conn: DB, id: string, srcName: string, hasPoster: 
     const out = path.join(dir, `${r.short}p`);
     await mkdir(out, { recursive: true });
     await run("ffmpeg", [
-      "-y", "-v", "error", "-i", src, "-map", "0:v:0", "-map", "0:a:0?",
+      "-y", "-v", "error", ...cut, "-i", src, "-map", "0:v:0", "-map", "0:a:0?",
       "-vf", portrait ? `scale=${r.short}:-2` : `scale=-2:${r.short}`,
       "-c:v", "libx264", "-preset", "veryfast", "-profile:v", "main", "-pix_fmt", "yuv420p",
       "-b:v", `${r.kbps}k`, "-maxrate", `${Math.round(r.kbps * 1.07)}k`, "-bufsize", `${r.kbps * 2}k`,
@@ -374,12 +427,13 @@ async function transcodeLocal(conn: DB, id: string, srcName: string, hasPoster: 
   }
   await writeFile(path.join(dir, "master.m3u8"), lines.join("\n") + "\n");
   if (!hasPoster) {
-    await run("ffmpeg", ["-y", "-v", "error", "-ss", String(Math.min(1, info.durationMs / 2000)), "-i", src, "-frames:v", "1", "-vf", "scale='min(540,iw)':-2", "-q:v", "4", path.join(dir, "poster.jpg")]).catch(() => {});
+    const at = trim ? trim.startMs / 1000 + Math.min(1, (trim.endMs - trim.startMs) / 2000) : Math.min(1, info.durationMs / 2000);
+    await run("ffmpeg", ["-y", "-v", "error", "-ss", String(at), "-i", src, "-frames:v", "1", "-vf", "scale='min(540,iw)':-2", "-q:v", "4", path.join(dir, "poster.jpg")]).catch(() => {});
   }
-  // 元ファイルは配信しないので消す（容量の節約）
-  await rm(src, { force: true });
+  // 元ファイルは配信しない。切り取りをやり直せるよう、動画に紐づくまでは残しておく（dropSource で消す）
+  const outMs = trim ? trim.endMs - trim.startMs : info.durationMs;
   return markUpload(conn, id, {
-    status: "ready", width: info.width, height: info.height, durationMs: info.durationMs,
+    status: "ready", width: info.width, height: info.height, durationMs: outMs,
     playbackUrl: localUrl(`${id}/master.m3u8`), thumbnailUrl: localUrl(`${id}/poster.jpg`),
   });
 }

@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { rateLimits } from "@/db/schema";
 import { ageGateOk, regionBlocked } from "./auth";
@@ -34,6 +34,14 @@ export async function clientIpHash(): Promise<string> {
 }
 
 /** 固定ウィンドウのレート制限。超えたら false */
+/** いま何回めかを数えずに、上限に達しているかだけを見る（失敗したときだけ数えたいときに使う） */
+export async function rateLimitPeek(key: string, limit: number, windowSec: number): Promise<boolean> {
+  const conn = await db();
+  const windowStart = new Date(Math.floor(Date.now() / 1000 / windowSec) * windowSec * 1000);
+  const [row] = await conn.select({ count: rateLimits.count }).from(rateLimits).where(eq(rateLimits.key, `${key}|${windowStart.getTime()}`));
+  return (row?.count ?? 0) < limit;
+}
+
 export async function rateLimit(key: string, limit: number, windowSec: number): Promise<boolean> {
   const conn = await db();
   const now = new Date();

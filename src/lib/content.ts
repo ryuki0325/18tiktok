@@ -115,7 +115,7 @@ export async function videosByTag(tag: string, o: Opts) {
   const d = await db();
   const rows = await d.select({ id: s.videos.id }).from(s.videos)
     .innerJoin(s.videoTags, eq(s.videoTags.videoId, s.videos.id)).innerJoin(s.tags, eq(s.tags.id, s.videoTags.tagId))
-    .where(and(eq(s.tags.name, tag), eq(s.videos.status, "published"))).orderBy(desc(s.videos.publishedAt)).limit(60);
+    .where(and(eq(s.tags.name, tag), eq(s.tags.status, "approved"), eq(s.videos.status, "published"))).orderBy(desc(s.videos.publishedAt)).limit(60);
   return hydrate(rows.map((r) => r.id), o, d);
 }
 
@@ -132,7 +132,7 @@ export async function search(q: string, o: Opts) {
   const d = await db();
   const like = `%${q.replace(/[%_\\]/g, (m) => "\\" + m)}%`;
   const [tagHits, creatorHits, videoRows] = await Promise.all([
-    d.select().from(s.tags).where(sql`${s.tags.name} ilike ${like}`).limit(10),
+    d.select().from(s.tags).where(and(eq(s.tags.status, "approved"), sql`${s.tags.name} ilike ${like}`)).limit(10),
     d.select({ id: s.users.id, handle: s.users.handle, displayName: s.users.displayName, avatarHue: s.users.avatarHue, avatarUrl: s.users.avatarUrl, bio: s.users.bio })
       .from(s.users).innerJoin(s.creatorProfiles, eq(s.creatorProfiles.userId, s.users.id))
       .where(and(sql`(${s.users.handle} ilike ${like} or ${s.users.displayName} ilike ${like})`, eq(s.creatorProfiles.status, "approved"), eq(s.users.status, "active"))).limit(20),
@@ -177,5 +177,6 @@ export async function rookies() {
 export async function popularTags() {
   const d = await db();
   return d.select({ name: s.tags.name, n: sql<number>`count(${s.videoTags.videoId})::int` }).from(s.tags)
-    .leftJoin(s.videoTags, eq(s.videoTags.tagId, s.tags.id)).groupBy(s.tags.id).orderBy(desc(sql`2`), s.tags.id).limit(16);
+    .leftJoin(s.videoTags, eq(s.videoTags.tagId, s.tags.id)).where(eq(s.tags.status, "approved"))
+    .groupBy(s.tags.id).orderBy(desc(sql`2`), s.tags.id).limit(16);
 }

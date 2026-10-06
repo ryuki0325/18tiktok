@@ -25,5 +25,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   const poster = p.data.poster ? Buffer.from(p.data.poster.split(",")[1], "base64") : null;
   const u = await completeUpload(r.conn, r.upload, { ...p.data, poster });
-  return json({ id: u.id, status: u.status });
+  return json({ id: u.id, status: u.status, durationMs: u.durationMs, width: u.width, height: u.height });
 }

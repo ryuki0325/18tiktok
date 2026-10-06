@@ -8,7 +8,7 @@ import { blocks, emailTokens, favorites, likes, notInterested, userPreferences, 
 import { absoluteUrl, sendMail } from "./mail";
 import { authenticate, createSession, currentUser, destroySession, DEVICE_COOKIE, isAdminRole, registerUser } from "./auth";
 import { randomToken, sha256 } from "./crypto";
-import { clientIpHash, rateLimit } from "./http";
+import { clientIpHash, rateLimit, rateLimitPeek } from "./http";
 import { parsePref } from "./theme";
 import { isAudience } from "./audience";
 import { THEME_COOKIE } from "./theme-server";
@@ -75,12 +75,28 @@ export async function signupAction(_: FormState, form: FormData): Promise<FormSt
   return { info: "登録しました。メールアドレスの確認をお願いします。", devLink: link ?? undefined };
 }
 
+/**
+ * 同じ回線からのログイン試行の上限（15分あたり）。
+ * 自動テストは1つの回線から何度もログインするため、そこだけ環境変数で上げる。
+ */
+const LOGIN_MAX_PER_IP = Number(process.env.LOGIN_MAX_PER_IP || 20);
+/**
+ * 同じアカウントに対して、続けて失敗してよい回数（15分あたり）。
+ * 数えるのは「失敗」だけ。成功まで数えると、端末をいくつも使う本人が締め出されてしまう。
+ * 総当たりはすべて失敗なので、守りの強さは変わらない。
+ */
+const LOGIN_MAX_FAILS = 8;
+
 export async function loginAction(_: FormState, form: FormData): Promise<FormState> {
   const email = String(form.get("email") ?? "");
-  if (!(await rateLimit(`login:${await clientIpHash()}`, 20, 900)) || !(await rateLimit(`login-acct:${email.toLowerCase()}`, 8, 900)))
+  const acct = `login-acct:${email.toLowerCase()}`;
+  if (!(await rateLimit(`login:${await clientIpHash()}`, LOGIN_MAX_PER_IP, 900)) || !(await rateLimitPeek(acct, LOGIN_MAX_FAILS, 900)))
     return { error: "ログインの試行が多すぎます。15分ほどしてからお試しください" };
   const u = await authenticate(email, String(form.get("password") ?? ""));
-  if (!u) return { error: "メールアドレスまたはパスワードが正しくありません" };
+  if (!u) {
+    await rateLimit(acct, LOGIN_MAX_FAILS, 900); // 失敗したときだけ数える
+    return { error: "メールアドレスまたはパスワードが正しくありません" };
+  }
   await createSession(u.id, isAdminRole(u.role));
   await afterLogin(u.id);
   redirect(safeNext(form.get("next")));

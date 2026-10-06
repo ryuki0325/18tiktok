@@ -41,7 +41,11 @@ export function useUpload({ maxMb, maxSec, onReady }: { maxMb: number; maxSec: n
       if (stop) return;
       const r = await fetch(`/api/v1/uploads/${processingId}`).then((x) => x.json()).catch(() => null);
       if (stop) return;
-      if (r?.status === "ready") setState({ k: "ready", id: processingId });
+      if (r?.status === "ready") {
+        // 端末で動画を読めなかったとき（コーデック非対応など）は、サーバーが調べた長さを使う
+        if (r.durationMs) setInfo((i) => ({ width: i?.width ?? r.width ?? 0, height: i?.height ?? r.height ?? 0, durationMs: r.durationMs, poster: i?.poster ?? null }));
+        setState({ k: "ready", id: processingId });
+      }
       else if (r?.status === "failed") { setState({ k: "failed", message: r.error || "動画を変換できませんでした" }); readyRef.current(null); }
       else setTimeout(tick, 3000);
     };
@@ -70,6 +74,9 @@ export function useUpload({ maxMb, maxSec, onReady }: { maxMb: number; maxSec: n
       }
       const j = await done.json();
       readyRef.current(id);
+      if (j.status === "ready" && j.durationMs) {
+        setInfo((i) => ({ width: i?.width ?? j.width ?? 0, height: i?.height ?? j.height ?? 0, durationMs: j.durationMs, poster: i?.poster ?? null }));
+      }
       setState(j.status === "ready" ? { k: "ready", id } : { k: "processing", id });
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
@@ -110,9 +117,14 @@ export function useUpload({ maxMb, maxSec, onReady }: { maxMb: number; maxSec: n
     setState({ k: "idle" });
   }, []);
 
+  // 切り取りのように、サーバー側でもう一度変換が走るときに使う
+  const recheck = useCallback(() => {
+    setState((s) => (s.k === "ready" ? { k: "processing", id: s.id } : s));
+  }, []);
+
   const pct = state.k === "uploading" || state.k === "paused"
     ? Math.floor((state.sent / Math.max(1, state.total)) * 100)
     : state.k === "processing" || state.k === "ready" ? 100 : 0;
 
-  return { state, file, previewUrl, info, cover, setCover, pick, pause, resume: send, reset, pct };
+  return { state, file, previewUrl, info, cover, setCover, pick, pause, resume: send, reset, recheck, pct };
 }

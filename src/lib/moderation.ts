@@ -114,8 +114,11 @@ export async function createVideo(conn: DB, input: {
       if (!moved) return { ok: false as const, error: "下書きを審査に出せませんでした" };
       v = moved;
     }
-    const tagRows = input.tags.length ? await tx.select().from(s.tags).where(inArray(s.tags.name, input.tags)) : [];
-    if (tagRows.length) await tx.insert(s.videoTags).values(tagRows.map((r) => ({ videoId: v.id, tagId: r.id })));
+    // 自由入力のタグは、ないものを作る（運営が見るまでは候補や検索に出ない）
+    const { resolveTags } = await import("./tags");
+    const tg = input.tags.length ? await resolveTags(t, input.tags, input.creatorId) : { ids: [], created: [], refused: [] };
+    if (tg.refused.length) return { ok: false as const, error: `使えないタグがあります：${tg.refused.join("、")}` };
+    if (tg.ids.length) await tx.insert(s.videoTags).values(tg.ids.map((id) => ({ videoId: v.id, tagId: id })));
     if (input.asDraft) {
       if (link) await tx.insert(s.outboundLinks).values({ id: crypto.randomUUID().replace(/-/g, "").slice(0, 16), videoId: v.id, destinationId: link.destinationId, url: link.url, domain: link.domain, status: link.status });
       return { ok: true as const, video: v, linkPending: link?.status === "pending_domain_review", draft: true as const };

@@ -198,17 +198,31 @@ export const uploads = pgTable("uploads", {
   durationMs: integer(),
   /** 表紙に選んだ位置（ミリ秒） */
   coverTimeMs: integer(),
+  /** 切り取り（トリミング）の範囲。null は切り取らない。変換のときに実際に切る */
+  trimStartMs: integer(),
+  trimEndMs: integer(),
   error: text(),
   createdAt: now(),
   updatedAt: now(),
   expiresAt: timestamp({ withTimezone: true }).notNull(),
 }, (t) => [index("uploads_user_idx").on(t.userId, t.createdAt), index("uploads_video_idx").on(t.videoId)]);
 
+export const TAG_STATUS = ["approved", "pending", "rejected"] as const;
+export type TagStatus = (typeof TAG_STATUS)[number];
+
 export const tags = pgTable("tags", {
   id: serial().primaryKey(),
   slug: text().notNull(),
   name: text().notNull(),
-}, (t) => [uniqueIndex("tags_name_uq").on(t.name)]);
+  /**
+   * 投稿者が自由に作ったタグは pending から始める。
+   * 動画には付くが、候補一覧や検索には出さない（運営が見てから広げる）。
+   */
+  status: text().$type<TagStatus>().notNull().default("approved"),
+  /** 誰が作ったか（運営が見るときの手がかり。既定のタグは null） */
+  createdBy: uuid().references(() => users.id, { onDelete: "set null" }),
+  createdAt: now(),
+}, (t) => [uniqueIndex("tags_name_uq").on(t.name), index("tags_status_idx").on(t.status)]);
 
 export const videoTags = pgTable("video_tags", {
   videoId: uuid().notNull().references(() => videos.id, { onDelete: "cascade" }),

@@ -117,3 +117,35 @@ describe("データベース接続の設定", () => {
     expect(connectionOptions("postgres://u:p@host/db?sslmode=require").ssl).toBe("require");
   });
 });
+
+describe("自由入力のタグ", () => {
+  it("全角・＃・空白をそろえる", async () => {
+    const { normalizeTag } = await import("@/lib/tags");
+    expect(normalizeTag("＃ホテル")).toBe("ホテル");
+    expect(normalizeTag("  ラブ ラブ ")).toBe("ラブラブ");
+    expect(normalizeTag("ＡＢＣ")).toBe("ABC");
+  });
+  it("年齢を偽る言葉・同意のない撮影を指す言葉は断る", async () => {
+    const { checkTag } = await import("@/lib/tags");
+    for (const t of ["女子高生", "JK", "ロリ", "盗撮", "リベンジポルノ", "未成年"]) {
+      expect(checkTag(t).ok, t).toBe(false);
+    }
+  });
+  it("身元をさらす言葉も断る", async () => {
+    const { checkTag } = await import("@/lib/tags");
+    expect(checkTag("本名").ok).toBe(false);
+    expect(checkTag("住所").ok).toBe(false);
+  });
+  it("リンクや連絡先はタグにできない", async () => {
+    const { checkTag } = await import("@/lib/tags");
+    expect(checkTag("https://example.com").ok).toBe(false);
+    expect(checkTag("@myline").ok).toBe(false);
+    expect(checkTag("t.me/abc").ok).toBe(false);
+  });
+  it("ふつうの言葉は通り、長すぎるものと空は断る", async () => {
+    const { checkTag } = await import("@/lib/tags");
+    const ok = checkTag("夜景デート");
+    expect(ok.ok && ok.name).toBe("夜景デート");
+    expect(checkTag("   ").ok).toBe(false);
+  });
+});

@@ -18,6 +18,35 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class UploadError extends Error {}
 
+/** 送りかけのまま残っている動画（ページを閉じても端末に覚えている） */
+export type Unfinished = { filename: string; size: number; sent: number; at: number };
+
+/**
+ * 前に送りかけた動画が残っていれば返す。
+ * ファイルの中身は端末の外に出せないので、同じファイルをもう一度選んでもらって続きから送る。
+ */
+export async function findUnfinished(): Promise<Unfinished | null> {
+  const store = readStore();
+  const rows = Object.entries(store).sort((a, b) => b[1].at - a[1].at);
+  for (const [fp, saved] of rows) {
+    if (Date.now() - saved.at > 20 * 3600_000) { delete store[fp]; continue; }
+    const head = await fetch(saved.location, { method: "HEAD", headers: { "Tus-Resumable": "1.0.0", ...saved.tus.headers } }).catch(() => null);
+    if (!head?.ok) { delete store[fp]; continue; }
+    const sent = Number(head.headers.get("Upload-Offset") ?? 0);
+    const [filename, size] = [fp.slice(0, fp.indexOf("|")), Number(fp.split("|")[1] || 0)];
+    writeStore(store);
+    if (sent >= size) continue; // 送り終わっている
+    return { filename, size, sent, at: saved.at };
+  }
+  writeStore(store);
+  return null;
+}
+
+/** 覚えている続きを捨てる（「やめる」を押したとき） */
+export function forgetUnfinished() {
+  writeStore({});
+}
+
 export type Progress = { sent: number; total: number };
 
 export async function uploadFile(file: File, opts: { onProgress: (p: Progress) => void; signal: AbortSignal }): Promise<{ id: string }> {

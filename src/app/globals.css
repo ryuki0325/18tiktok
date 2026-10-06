@@ -513,3 +513,24 @@ html.standalone .pager { touch-action: none; }
 .cover-strip img { height: 72px; display: block; }
 .bottom-fixed .btn { flex: 1; }
 .cover-strip .t-only { min-width: 64px; height: 72px; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); font-size: 12px; }
+
+/* ---- 長さを切り取る（トリミング） ---- */
+.trim-prev { height: 220px; border-radius: var(--r-md); overflow: hidden; background: #000; display: grid; place-items: center; }
+.trim-prev video { max-width: 100%; max-height: 100%; object-fit: contain; }
+.trim-bar { position: relative; height: 44px; border-radius: 10px; background: var(--surface-2); margin-top: 14px; touch-action: none; }
+.trim-sel { position: absolute; top: 0; bottom: 0; background: color-mix(in oklab, var(--accent) 30%, transparent); border-top: 2px solid var(--accent); border-bottom: 2px solid var(--accent); }
+.trim-h { position: absolute; top: -4px; width: 22px; height: 52px; margin-left: -11px; border-radius: 7px; background: var(--accent); border: 0; cursor: ew-resize; touch-action: none; }
+.trim-h::after { content: ""; position: absolute; inset: 0; margin: auto; width: 2px; height: 18px; background: #fff; opacity: .9; border-radius: 2px; }
+.trim-h:focus-visible { outline: 2px solid var(--on); outline-offset: 2px; }
+.trim-nums { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+
+/* ---- タグの入力（自由入力＋候補） ---- */
+.taginput { display: flex; flex-direction: column; gap: 10px; }
+.taginput .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.taginput .chip.on { background: var(--fill); color: var(--on); padding-right: 6px; }
+.taginput .chip.on button { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 999px; background: color-mix(in oklab, var(--on) 22%, transparent); color: inherit; border: 0; }
+.taginput .chip.new { background: color-mix(in oklab, var(--accent) 24%, var(--surface-2)); color: var(--text); border: 1px dashed var(--accent); }
+.taginput .chip:disabled { opacity: .45; }
+
+/* ---- 送りかけの動画を知らせる ---- */
+.notice.resume { flex-direction: column; align-items: flex-start; text-align: left; }

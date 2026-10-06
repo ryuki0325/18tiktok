@@ -6,7 +6,8 @@ import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { affiliateDomains, creatorProfiles, outboundLinks, tags, uploads, videoTags, videos } from "@/db/schema";
-import { applyUploadToVideo, isUuid, mediaProvider } from "./media";
+import { applyUploadToVideo, dropSource, isUuid, mediaProvider } from "./media";
+import { checkTag } from "./tags";
 import { transition } from "./video-state";
 import { activeLimits } from "./safety";
 import { canPublish, submitVerification } from "./verification";
@@ -114,6 +115,8 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
   if (upload) {
     const [linked] = await conn.update(uploads).set({ videoId: r.video.id }).where(eq(uploads.id, upload.id)).returning();
     await applyUploadToVideo(conn, linked);
+    // ここから先は切り取り直さないので、元ファイルを消す（保存料の節約）
+    await dropSource(linked);
   }
   revalidatePath("/creator/videos");
   redirect(asDraft ? "/creator/videos?saved=1" : `/creator/videos?submitted=1${r.linkPending ? "&linkPending=1" : ""}`);
@@ -156,6 +159,9 @@ export async function updateVideoAction(_: FormState, form: FormData): Promise<F
   const conn = await db();
   const [v] = await conn.select().from(videos).where(and(eq(videos.id, d.id), eq(videos.creatorId, u.id)));
   if (!v || v.status === "deleted") return { error: "動画が見つかりません" };
+  // 使えないタグはここで断る（作ってから消すのではなく、作らせない）
+  const bad = d.tags.map((t) => checkTag(t)).find((c) => !c.ok);
+  if (bad && !bad.ok) return { error: bad.error };
   const [old] = await conn.select().from(outboundLinks).where(eq(outboundLinks.videoId, v.id));
   let linkChange: null | { url: string; domain: string; status: "active" | "pending_domain_review" } | "remove" = null;
   if ((old?.url ?? "") !== d.link) {
@@ -177,8 +183,10 @@ export async function updateVideoAction(_: FormState, form: FormData): Promise<F
       ...(rereview ? { status: "pending_review" as const, statusReason: d.intensity > v.intensity ? "刺激の強さの変更による再審査" : "外部リンクの変更による再審査" } : {}),
     }).where(eq(videos.id, v.id));
     await tx.delete(videoTags).where(eq(videoTags.videoId, v.id));
-    const tagRows = await tx.select().from(tags).where(inArray(tags.name, d.tags));
-    if (tagRows.length) await tx.insert(videoTags).values(tagRows.map((t) => ({ videoId: v.id, tagId: t.id })));
+    // 編集でも新しいタグを作れる（運営が見るまでは候補や検索に出ない）
+    const { resolveTags } = await import("./tags");
+    const tg = await resolveTags(tx as unknown as typeof conn, d.tags, u.id);
+    if (tg.ids.length) await tx.insert(videoTags).values(tg.ids.map((id) => ({ videoId: v.id, tagId: id })));
     if (linkChange === "remove") await tx.delete(outboundLinks).where(eq(outboundLinks.videoId, v.id));
     else if (linkChange) {
       await tx.delete(outboundLinks).where(eq(outboundLinks.videoId, v.id));
