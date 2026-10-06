@@ -35,8 +35,17 @@ export default async function Reviews() {
           return (
             <div key={v.id} className="card" style={{ padding: 16, display: "flex", flexWrap: "wrap", gap: 16 }}>
               <div style={{ width: 180, height: 320, flexShrink: 0, borderRadius: 12, position: "relative", overflow: "hidden", background: "#000" }}>
-                {v.playbackUrl && v.mediaStatus === "ready" ? <ReviewPlayer src={v.playbackUrl} poster={v.thumbnailUrl} /> : <VideoBackdrop hue={v.hue} />}
-                {v.mediaStatus !== "ready" && <span className="badge" style={{ position: "absolute", left: 8, top: 8 }}>{v.mediaStatus === "processing" ? "変換中" : v.mediaStatus === "failed" ? "変換失敗" : "動画なし"}</span>}
+                {v.kind === "photo" && v.images?.length
+                  ? <div style={{ position: "absolute", inset: 0, display: "flex", overflowX: "auto", scrollSnapType: "x mandatory" }}>
+                      {v.images.map((im, i) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img key={i} src={im.url} alt="" style={{ flex: "0 0 100%", width: "100%", height: "100%", objectFit: "contain", scrollSnapAlign: "center" }} />
+                      ))}
+                    </div>
+                  : v.playbackUrl && v.mediaStatus === "ready" ? <ReviewPlayer src={v.playbackUrl} poster={v.thumbnailUrl} /> : <VideoBackdrop hue={v.hue} />}
+                {v.kind === "photo"
+                  ? <span className="badge" style={{ position: "absolute", left: 8, top: 8 }}>写真{v.images?.length ?? 0}枚</span>
+                  : v.mediaStatus !== "ready" && <span className="badge" style={{ position: "absolute", left: 8, top: 8 }}>{v.mediaStatus === "processing" ? "変換中" : v.mediaStatus === "failed" ? "変換失敗" : "動画なし"}</span>}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0, flex: "1 1 280px" }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}><b style={{ fontSize: 16 }}>{v.title}</b><span className="cap">@{handle}・承認済み{approved}本・違反{violations}・{ago(v.createdAt)}</span></div>

@@ -172,6 +172,10 @@ export type HiddenReason = (typeof HIDDEN_REASONS)[number];
 export const videos = pgTable("videos", {
   id: uuid().primaryKey().defaultRandom(),
   creatorId: uuid().notNull().references(() => users.id),
+  /** 投稿の種類。video＝動画1本、photo＝写真（複数枚） */
+  kind: text().$type<"video" | "photo">().notNull().default("video"),
+  /** 写真投稿のときの画像（順番どおり）。動画のときは null */
+  images: jsonb().$type<{ url: string; w: number; h: number }[]>(),
   title: text().notNull(),
   description: text().notNull().default(""),
   status: text().$type<VideoStatus>().notNull().default("pending_review"),

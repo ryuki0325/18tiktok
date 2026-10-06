@@ -42,6 +42,7 @@ export function usePager(count: number, handlers: PagerHandlers, opts: { disable
     startX: 0, startY: 0, startPos: 0, samples: [] as { y: number; t: number }[],
     longTimer: 0 as unknown as ReturnType<typeof setTimeout>, pointerId: -1,
     wheelAcc: 0, wheelLock: false, wheelTimer: 0 as unknown as ReturnType<typeof setTimeout>, refreshing: false,
+    noH: false,
   });
   const h = useRef(handlers);
   const countRef = useRef(count);
@@ -154,6 +155,8 @@ export function usePager(count: number, handlers: PagerHandlers, opts: { disable
       st.mode = "pending";
       st.pointerId = e.pointerId;
       st.startX = e.clientX; st.startY = e.clientY; st.startPos = st.pos;
+      // 写真の横スワイプ領域で始めた指は、横に動かしても「投稿者ページへ」にしない（写真の送りを優先）
+      st.noH = !!(e.target as HTMLElement | null)?.closest?.("[data-hswipe]");
       st.samples = [{ y: e.clientY, t: e.timeStamp }];
       clearTimeout(st.longTimer);
       st.longTimer = setTimeout(() => {
@@ -203,7 +206,7 @@ export function usePager(count: number, handlers: PagerHandlers, opts: { disable
         const vy = first && lastS.t - first.t > 0 ? (lastS.y - first.y) / (lastS.t - first.t) : 0;
         release(vy);
       } else if (mode === "h") {
-        if (e.clientX - st.startX < -60 && Math.abs(e.clientY - st.startY) < 60) h.current.onSwipeLeft?.(st.index);
+        if (!st.noH && e.clientX - st.startX < -60 && Math.abs(e.clientY - st.startY) < 60) h.current.onSwipeLeft?.(st.index);
       } else if (mode === "long") {
         h.current.onLongPress?.(false);
       } else if (mode === "pending" && e.type === "pointerup") {

@@ -8,6 +8,7 @@ import { CoverPicker } from "@/components/upload/CoverPicker";
 import { TrimBar } from "@/components/upload/TrimBar";
 import { TagInput } from "@/components/upload/TagInput";
 import { useUpload } from "@/components/upload/useUpload";
+import { usePhotos } from "@/components/upload/usePhotos";
 import { findUnfinished, forgetUnfinished, type Unfinished } from "@/components/upload/tus";
 import { INTENSITIES, VIDEO_CATEGORIES } from "@/lib/audience";
 
@@ -29,7 +30,7 @@ type Resume = {
 };
 
 export function PostForm({ tags, destinations, upload, drafts, resume, myLink }: {
-  tags: string[]; destinations: Dest[]; upload: { maxMb: number; maxSec: number; canTrim: boolean } | null; drafts: Draft[];
+  tags: string[]; destinations: Dest[]; upload: { maxMb: number; maxSec: number; canTrim: boolean; maxImages: number } | null; drafts: Draft[];
   /** 下書きの続きから書くとき、その中身 */
   resume?: Resume | null;
   /** 申請のときに登録した自分の販売ページ（初期値に使う） */
@@ -50,6 +51,8 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
   const [linkUrl, setLinkUrl] = useState(resume?.linkUrl ?? myLink?.url ?? "");
   const [checks, setChecks] = useState({ c1: false, c2: false, c3: false });
   const [coverOpen, setCoverOpen] = useState(false);
+  // 下書きの続きは、動画がもう付いているので最初から内容を書く画面に入る
+  const kept = !!resume?.hasMedia;
   // 前に送りかけた動画。もう一度同じファイルを選べば、続きから送れる
   const [left, setLeft] = useState<Unfinished | null>(null);
   useEffect(() => {
@@ -58,15 +61,38 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
     void findUnfinished().then((u) => { if (!dead) setLeft(u); });
     return () => { dead = true; };
   }, [upload]);
+  // 投稿画面を開いたら、すぐ端末の選択画面を出す（iOS では1タップ必要なことがある）
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current || !upload || resume?.hasMedia) return;
+    opened.current = true;
+    const t = setTimeout(() => input.current?.click(), 150);
+    return () => clearTimeout(t);
+  }, [upload, resume]);
   const canTrim = !!upload?.canTrim;
   const [trimOpen, setTrimOpen] = useState(false);
   const [trim, setTrim] = useState<{ startMs: number; endMs: number } | null>(null);
 
+  // 写真投稿（複数枚）。動画が選ばれていなければこちら
+  const [images, setImages] = useState<{ url: string; w: number; h: number }[]>([]);
+  const ph = usePhotos({ max: upload?.maxImages ?? 0, onChange: setImages });
+  const photoInput = useRef<HTMLInputElement>(null);
+  const isPhoto = ph.photos.length > 0 && !up.file && !kept;
+
+  // 「動画を選ぶ」ボタンから、動画と写真のどちらが来ても振り分ける
+  const pickFiles = (files: FileList | null) => {
+    const arr = files ? Array.from(files) : [];
+    if (!arr.length) return;
+    const vid = arr.find((f) => f.type.startsWith("video/"));
+    if (vid) void up.pick(vid);
+    else void ph.add(arr);
+  };
+
   // 保存先が未設定のときは、動画なしで先に内容だけ登録できる（運営が設定するまでの間）
   // 下書きの続きは、動画がもう付いているので最初から内容を書く画面に入る
-  const kept = !!resume?.hasMedia;
-  const chosen = !upload || !!up.file || kept;
-  const hasVideo = !upload || !!uploadId || kept;
+  const chosen = !upload || !!up.file || kept || ph.photos.length > 0;
+  // 動画は変換完了、写真は1枚以上アップロード済みで「本体あり」とみなす
+  const hasVideo = !upload || !!uploadId || kept || (isPhoto && ph.readyCount > 0 && !ph.uploading);
   // 「完全版を見る」のリンクは必須（サンプル動画として投稿してもらうため）
   const ready = hasVideo && !!cat && !!lv && caption.trim().length > 0 && sel.length > 0
     && !!destId && linkUrl.trim().length > 0
@@ -77,18 +103,18 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
   const toggleTag = (t: string) =>
     setSel((s) => (s.includes(t) ? s.filter((x) => x !== t) : s.length < MAX_TAGS ? [...s, t] : s));
 
-  /* ---------- 1) 動画を選ぶ画面 ---------- */
+  /* ---------- 1) 動画・写真を選ぶ画面（開くとすぐ端末の選択が出る） ---------- */
   if (!chosen) {
     return (
       <div className="pick-screen">
-        <input ref={input} type="file" accept="video/*" hidden aria-label="動画ファイル"
-          onChange={(e) => void up.pick(e.target.files?.[0])} />
+        <input ref={input} type="file" accept="video/*,image/*" multiple hidden aria-label="動画・写真を選ぶ"
+          onChange={(e) => pickFiles(e.target.files)} />
         <button type="button" className="pick-main" onClick={() => input.current?.click()}>
           <span className="ic"><Icon name="upload" size={34} /></span>
-          <b>動画を選ぶ</b>
+          <b>動画・写真を選ぶ</b>
           <span className="cap">
             縦長がおすすめ（横長もそのまま表示されます）<br />
-            {upload && <>{Math.floor(upload.maxSec / 60)}分・{upload.maxMb >= 1024 ? `${upload.maxMb / 1024}GB` : `${upload.maxMb}MB`}まで</>}
+            {upload && <>動画は1本（{Math.floor(upload.maxSec / 60)}分・{upload.maxMb >= 1024 ? `${upload.maxMb / 1024}GB` : `${upload.maxMb}MB`}まで）／写真は何枚でも</>}
           </span>
         </button>
         {left && up.state.k === "idle" && (
@@ -135,8 +161,9 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
   const st = up.state;
   // 下書きの続きのときは、保存してある表紙を出す（手元に動画ファイルはない）
   const coverSrc = up.cover ?? (kept ? resume!.poster : null);
-  const statusLine =
-    st.k === "uploading" ? `アップロード中 ${up.pct}%（${mb(st.sent)} / ${mb(st.total)}）`
+  const statusLine = isPhoto
+    ? (ph.uploading ? "写真を取り込み中です…" : `写真 ${ph.readyCount} 枚の準備ができました`)
+    : st.k === "uploading" ? `アップロード中 ${up.pct}%（${mb(st.sent)} / ${mb(st.total)}）`
       : st.k === "paused" ? `一時停止中 ${up.pct}%`
         : st.k === "processing" ? "画質ごとに変換中です（このまま投稿できます）"
           : st.k === "ready" ? "動画の準備ができました"
@@ -146,6 +173,8 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
   return (
     <form action={action} className="composer">
       <input type="hidden" name="uploadId" value={uploadId ?? ""} />
+      <input type="hidden" name="kind" value={isPhoto ? "photo" : "video"} />
+      {isPhoto && <input type="hidden" name="images" value={JSON.stringify(images)} />}
       {resume && <input type="hidden" name="draftId" value={resume.id} />}
       <input type="hidden" name="visibility" value={visibility} />
       <input type="hidden" name="commentsEnabled" value={comments ? "on" : "off"} />
@@ -159,11 +188,11 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
       {/* 送信の進み具合は常に上に出す */}
       {statusLine && (
         <div className={`up-head${st.k === "failed" ? " bad" : ""}`}>
-          <div className="up-bar"><i style={{ transform: `scaleX(${up.pct / 100})` }} /></div>
+          <div className="up-bar"><i style={{ transform: `scaleX(${isPhoto ? (ph.uploading ? 0.5 : 1) : up.pct / 100})` }} /></div>
           <div className="up-row">
             <span className="cap num">{statusLine}</span>
-            {st.k === "uploading" && <button type="button" className="btn btn-sm btn-secondary" onClick={up.pause}>一時停止</button>}
-            {st.k === "paused" && <button type="button" className="btn btn-sm btn-primary" onClick={() => void up.resume()}>再開</button>}
+            {!isPhoto && st.k === "uploading" && <button type="button" className="btn btn-sm btn-secondary" onClick={up.pause}>一時停止</button>}
+            {!isPhoto && st.k === "paused" && <button type="button" className="btn btn-sm btn-primary" onClick={() => void up.resume()}>再開</button>}
           </div>
           {st.k === "paused" && st.message && <span className="cap" style={{ color: "var(--warn)" }}>{st.message}</span>}
         </div>
@@ -177,11 +206,33 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
           </div>
         )}
 
+        {/* 写真投稿のときは、選んだ写真を横に並べて足したり外したりできる */}
+        {isPhoto && (
+          <div className="photo-strip" role="list" aria-label="選んだ写真">
+            {ph.photos.map((pt) => (
+              <div key={pt.key} className="photo-item" role="listitem">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={pt.previewUrl} alt="" />
+                {pt.state === "uploading" && <span className="ph-busy"><span className="spinner spin dark" /></span>}
+                {pt.state === "failed" && <span className="ph-busy" style={{ color: "var(--bad)", fontSize: 11 }}>失敗</span>}
+                <button type="button" className="ph-x" aria-label="この写真を外す" onClick={() => ph.remove(pt.key)}><Icon name="x" size={14} /></button>
+              </div>
+            ))}
+            {ph.photos.length < (upload?.maxImages ?? 0) && (
+              <button type="button" className="photo-add" onClick={() => photoInput.current?.click()} aria-label="写真を追加">
+                <Icon name="plus" size={24} /><span>追加</span>
+              </button>
+            )}
+            <input ref={photoInput} type="file" accept="image/*" multiple hidden aria-label="写真を追加する"
+              onChange={(e) => { void ph.add(e.target.files ? Array.from(e.target.files) : []); e.currentTarget.value = ""; }} />
+          </div>
+        )}
+
         {/* 説明＋表紙（TikTok と同じ並び） */}
         <div className="cap-row">
           <textarea className="cap-input" value={caption} onChange={(e) => setCaption(e.target.value)}
             maxLength={300} rows={5} placeholder="説明を書く…　#タグ をつけると見つけてもらいやすくなります" aria-label="説明" />
-          {upload && (
+          {upload && !isPhoto && (
             <button type="button" className="cover-btn" onClick={() => setCoverOpen(true)} disabled={!up.file || st.k !== "ready"}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {coverSrc ? <img src={coverSrc} alt="" /> : <span className="ph"><Icon name="video" size={22} /></span>}
@@ -192,12 +243,16 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
         <div className="cap-meta">
           <span className="cap num">{caption.length}/300</span>
           <button type="button" className="cap-chip" onClick={() => setCaption((c) => `${c}#`)}>#タグを入れる</button>
-          {canTrim && up.file && (
+          {canTrim && up.file && !isPhoto && (
             <button type="button" className="cap-chip" onClick={() => setTrimOpen(true)} disabled={st.k === "uploading" || st.k === "reading"}>
               <Icon name="scissors" size={14} />{trim ? `${Math.round((trim.endMs - trim.startMs) / 1000)}秒に切り取り済み` : "長さを切り取る"}
             </button>
           )}
-          {upload && <button type="button" className="cap-chip" onClick={up.reset}>動画を選び直す</button>}
+          {upload && (
+            <button type="button" className="cap-chip" onClick={() => { up.reset(); ph.reset(); }}>
+              {isPhoto ? "選び直す" : "動画を選び直す"}
+            </button>
+          )}
         </div>
 
         {/* タグ */}

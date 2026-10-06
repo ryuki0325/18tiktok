@@ -11,6 +11,7 @@ import { api } from "./api";
 import { CommentSheet, MoreSheet, RATES, ShareSheet } from "./Sheets";
 import { ReportSheet } from "../ReportSheet";
 import { FeedVideo, loadHls } from "./FeedVideo";
+import { PhotoCarousel } from "./PhotoCarousel";
 import { FullscreenView } from "./FullscreenView";
 import { usePager } from "./usePager";
 
@@ -191,7 +192,9 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
               return (
                 <article key={c.id} className={`item${active ? " active" : ""}${paused[c.id] ? " paused" : ""}${c.src ? " real" : ""}`} data-vid={c.id} style={{ top: `${i * 100}%` }}
                   aria-hidden={!active} onContextMenu={(e) => e.preventDefault()}>
-                  {c.src
+                  {c.kind === "photo" && c.images?.length
+                    ? <PhotoCarousel images={c.images} active={active} />
+                    : c.src
                     ? <FeedVideo src={c.src} poster={c.poster} width={c.width} height={c.height} active={active} paused={!!paused[c.id] || !!fs} muted={muted} rate={rate}
                         preload={active ? "active" : i === index + 1 ? "next" : "idle"}
                         onTime={(t) => { const bar = trackRef.current?.querySelector<HTMLElement>(`.item[data-vid="${c.id}"] .progress i`); if (bar) bar.style.transform = `scaleX(${t})`; }} />
@@ -213,7 +216,7 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
                       <button className={c.liked ? "on" : ""} aria-pressed={c.liked} aria-label="いいね" onClick={() => like(c)}><span className="hit"><Icon name="heart" size={30} filled={c.liked} /></span><span className="num">{fmt(c.likes)}</span></button>
                       <button aria-label="コメント" onClick={() => setSheet({ kind: "comment", card: c })}><span className="hit"><Icon name="msg" size={28} /></span><span className="num">{fmt(c.comments)}</span></button>
                       <button className={c.saved ? "on" : ""} aria-pressed={c.saved} aria-label="保存" onClick={() => save(c)}><span className="hit"><Icon name="bookmark" size={28} filled={c.saved} /></span><span>保存</span></button>
-                      <button aria-label="全画面で見る" onClick={() => openFullscreen(c)}><span className="hit"><Icon name="expand" size={26} /></span><span>全画面</span></button>
+                      {c.kind !== "photo" && <button aria-label="全画面で見る" onClick={() => openFullscreen(c)}><span className="hit"><Icon name="expand" size={26} /></span><span>全画面</span></button>}
                       <button aria-label="その他" onClick={() => setSheet({ kind: "more", card: c })}><span className="hit"><Icon name="more" size={28} /></span></button>
                     </div>
                     <div className={`vinfo${expanded === c.id ? " open" : ""}`}>

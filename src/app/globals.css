@@ -546,3 +546,23 @@ html.standalone .pager { touch-action: none; }
 .aff-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
 .aff-row .input { height: 46px; min-width: 0; }
 @media (max-width: 420px) { .aff-row { grid-template-columns: 1fr auto; } .aff-row select { grid-column: 1 / -1; } }
+
+/* ---- 投稿画面：選んだ写真の帯 ---- */
+.photo-strip { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.photo-strip::-webkit-scrollbar { display: none; }
+.photo-item { position: relative; flex-shrink: 0; width: 92px; height: 128px; border-radius: 10px; overflow: hidden; background: #111; }
+.photo-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-item .ph-busy { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.4); }
+.photo-item .ph-x { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; display: grid; place-items: center; border: 0; }
+.photo-add { flex-shrink: 0; width: 92px; height: 128px; border-radius: 10px; border: 1px dashed var(--border); background: var(--surface-2); color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 12px; }
+
+/* ---- フィード：写真投稿（横スワイプ） ---- */
+.photo-feed { position: absolute; inset: 0; background: #000; }
+.photo-rail { position: absolute; inset: 0; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+.photo-rail::-webkit-scrollbar { display: none; }
+.photo-slide { position: relative; flex: 0 0 100%; width: 100%; height: 100%; scroll-snap-align: center; }
+.photo-slide .fv { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+.photo-dots { position: absolute; left: 0; right: 0; bottom: calc(var(--nav-h, 56px) + 96px); display: flex; gap: 6px; align-items: center; justify-content: center; z-index: 3; pointer-events: none; }
+.photo-dots span { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.4); }
+.photo-dots span.on { background: #fff; width: 7px; height: 7px; }
+.photo-dots .photo-count { position: absolute; right: 14px; bottom: -2px; width: auto; height: auto; border-radius: 10px; background: rgba(0,0,0,.5); color: #fff; font-size: 12px; padding: 2px 8px; }

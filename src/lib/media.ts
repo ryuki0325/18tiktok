@@ -29,9 +29,44 @@ export const canTrim = () => mediaProvider() === "local";
 /** 1チャンクの大きさ。スマホ回線で1回の送信が数秒で終わる程度 */
 export const CHUNK_SIZE = Number(process.env.UPLOAD_CHUNK_KB || 8192) * 1024;
 export const maxUploadBytes = () => Number(process.env.UPLOAD_MAX_MB || 2048) * 1024 * 1024;
-/** 長い動画は保存も配信も高くつくので上限を決める（既定5分） */
-export const maxUploadSec = () => Number(process.env.UPLOAD_MAX_SEC || 300);
+/** 長い動画は保存も配信も高くつくので上限を決める（既定6分） */
+export const maxUploadSec = () => Number(process.env.UPLOAD_MAX_SEC || 360);
 export const UPLOAD_TTL_MS = 24 * 3600_000;
+
+/* ---------------- 写真投稿の画像（サーバー保存） ---------------- */
+
+/** 1投稿に入れられる画像の枚数の上限（荒らし対策。既定30枚） */
+export const maxImages = () => Number(process.env.UPLOAD_MAX_IMAGES || 30);
+/** 1枚あたりの上限バイト数（端末で縮めた後のJPEGを想定。既定6MB） */
+const MAX_IMAGE_BYTES = Number(process.env.UPLOAD_MAX_IMAGE_MB || 6) * 1024 * 1024;
+
+const imageDir = () => path.join(mediaDir(), "photos");
+
+/** data URL（端末で縮めたJPEG）を1枚保存し、配信URLを返す */
+export async function saveImage(userId: string, dataUrl: string, w: number, h: number): Promise<{ url: string; w: number; h: number } | { error: string }> {
+  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+  if (!m) return { error: "画像の形式が正しくありません（JPEGのみ）" };
+  const buf = Buffer.from(m[1], "base64");
+  if (buf.byteLength > MAX_IMAGE_BYTES) return { error: "画像が大きすぎます" };
+  // 先頭のしるしで本当にJPEGかを確かめる（拡張子やMIMEの自己申告は信用しない）
+  if (!(buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff)) return { error: "画像が正しくありません" };
+  if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1 || w > 8000 || h > 8000) return { error: "画像の大きさが正しくありません" };
+  const id = crypto.randomUUID();
+  const dir = path.join(imageDir(), userId);
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, `${id}.jpg`), buf);
+  return { url: `/media/photos/${userId}/${id}.jpg`, w, h };
+}
+
+/** 写真投稿の画像ファイルを消す（投稿が消えたときの後片付け） */
+export async function deleteImages(images: { url: string }[] | null) {
+  if (!images?.length) return;
+  for (const im of images) {
+    const m = /^\/media\/photos\/([0-9a-f-]+)\/([0-9a-f-]+\.jpg)$/.exec(im.url);
+    if (!m) continue;
+    await rm(path.join(imageDir(), m[1], m[2]), { force: true }).catch(() => {});
+  }
+}
 
 const bunnyEnv = () => {
   const lib = process.env.BUNNY_STREAM_LIBRARY_ID, key = process.env.BUNNY_STREAM_API_KEY, cdn = process.env.BUNNY_STREAM_CDN_HOST;
@@ -351,7 +386,11 @@ export async function purgeRemovedMedia(conn: DB, graceDays = 7) {
     await deleteFromProvider(u);
     await conn.delete(s.uploads).where(eqq(s.uploads.id, u.id));
   }
-  await conn.update(s.videos).set({ playbackUrl: null, thumbnailUrl: null, mediaStatus: "none" }).where(inArray(s.videos.id, ids));
+  // 写真投稿の画像ファイルも消す
+  const photos = await conn.select({ images: s.videos.images }).from(s.videos)
+    .where(and(inArray(s.videos.id, ids), eqq(s.videos.kind, "photo")));
+  for (const p of photos) await deleteImages(p.images);
+  await conn.update(s.videos).set({ playbackUrl: null, thumbnailUrl: null, mediaStatus: "none", images: null }).where(inArray(s.videos.id, ids));
   return ups.length;
 }
 

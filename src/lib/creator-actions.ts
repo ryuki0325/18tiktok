@@ -115,8 +115,26 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
   if (draftId && !isUuid(draftId)) return { error: "下書きが見つかりません" };
   const consents = (["c1", "c2", "c3"] as const).map((k) => form.get(k) === "on") as [boolean, boolean, boolean];
   const conn = await db();
-  // 動画ファイル（チャンクアップロード済み）。保存先が設定されている場合は必須
-  const uploadId = String(form.get("uploadId") ?? "");
+
+  // 写真投稿：保存済みの画像URLを受け取る（サーバーに保存された自分のものだけ）
+  const kind = form.get("kind") === "photo" ? "photo" : "video";
+  let images: { url: string; w: number; h: number }[] | undefined;
+  if (kind === "photo") {
+    try {
+      const raw = JSON.parse(String(form.get("images") ?? "[]")) as { url: string; w: number; h: number }[];
+      const ok = Array.isArray(raw) && raw.every((x) => typeof x.url === "string"
+        && new RegExp(`^/media/photos/${u.id}/[0-9a-f-]+\\.jpg$`).test(x.url)
+        && Number.isInteger(x.w) && Number.isInteger(x.h));
+      if (!ok) return { error: "画像が正しくありません。選び直してください" };
+      images = raw;
+    } catch { return { error: "画像が正しくありません。選び直してください" }; }
+    if (!asDraft && !images.length) return { error: "画像を1枚以上選んでください" };
+    const { maxImages } = await import("./media");
+    if (images.length > maxImages()) return { error: `画像は${maxImages()}枚までです` };
+  }
+
+  // 動画ファイル（チャンクアップロード済み）。保存先が設定されている場合は必須（写真投稿では不要）
+  const uploadId = kind === "photo" ? "" : String(form.get("uploadId") ?? "");
   let upload: typeof uploads.$inferSelect | undefined;
   if (uploadId) {
     if (!isUuid(uploadId)) return { error: "動画ファイルが見つかりません" };
@@ -124,7 +142,7 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
     if (!upload || upload.videoId) return { error: "動画ファイルが見つかりません。もう一度アップロードしてください" };
     if (upload.status === "uploading") return { error: "動画のアップロードがまだ終わっていません" };
     if (upload.status === "failed") return { error: "動画の変換に失敗しました。別のファイルでお試しください" };
-  } else if (mediaProvider()) {
+  } else if (kind === "video" && mediaProvider()) {
     // 下書きの続きは、動画がもう付いているので選び直さなくてよい
     if (!draftId) return { error: "動画ファイルを選んでください" };
     const [d] = await conn.select({ media: videos.mediaStatus }).from(videos)
@@ -138,7 +156,7 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
     category: (parsed.data.category ?? "women") as "women" | "men" | "couple",
     intensity: parsed.data.intensity || 1,
     consents, ipHash: await clientIpHash(), userAgent: (await headers()).get("user-agent") ?? "",
-    asDraft, draftId,
+    asDraft, draftId, kind, images,
   });
   if (!r.ok) return { error: r.error };
   if (upload) {

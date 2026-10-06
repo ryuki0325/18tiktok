@@ -249,7 +249,7 @@ test.describe("動画のアップロードと配信", () => {
     await page.goto("/creator/new");
     // 1) 動画を選ぶ画面 → 選ぶと 2) 内容を書く画面に切り替わり、裏で送信が進む
     await expect(page.locator(".pick-main")).toBeVisible();
-    await page.locator('input[aria-label="動画ファイル"]').setInputFiles(file);
+    await page.locator('input[aria-label="動画・写真を選ぶ"]').setInputFiles(file);
     await expect(page.locator(".composer")).toBeVisible();
     await expect(page.getByText("動画の準備ができました")).toBeVisible({ timeout: 90_000 });
     await page.getByRole("radio", { name: /女性/ }).click();
@@ -307,7 +307,7 @@ test.describe("動画のアップロードと配信", () => {
     await passGate(page);
     await loginAs(page, "luna_night@demo.example");
     await page.goto("/creator/new");
-    await page.locator('input[aria-label="動画ファイル"]').setInputFiles(file);
+    await page.locator('input[aria-label="動画・写真を選ぶ"]').setInputFiles(file);
     await expect(page.getByText("動画の準備ができました")).toBeVisible({ timeout: 90_000 });
     await page.getByRole("radio", { name: /女性/ }).click();
     await page.getByRole("radio", { name: "ソフト" }).click();
@@ -354,6 +354,62 @@ test.describe("動画のアップロードと配信", () => {
     await expect(page.locator(".item.active").getByRole("button", { name: "いいね" })).toBeVisible();
   });
 
+  test("写真投稿：複数の画像を選んで投稿 → 審査で公開 → フィードで横スワイプで見られる", async ({ page, browser }) => {
+    test.skip(!hasFfmpeg || !adminSecret, "ffmpeg と管理者が必要");
+    test.setTimeout(150_000);
+    const img1 = path.join(tmpdir(), `glow-e2e-p1-${process.pid}.jpg`);
+    const img2 = path.join(tmpdir(), `glow-e2e-p2-${process.pid}.jpg`);
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=720x1280", "-frames:v", "1", img1]);
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:s=1280x720", "-frames:v", "1", img2]);
+    await passGate(page);
+    await loginAs(page, "luna_night@demo.example");
+    await page.goto("/creator/new");
+    // 動画・写真の選択に、画像を2枚渡す → 写真モードになる
+    await page.locator('input[aria-label="動画・写真を選ぶ"]').setInputFiles([img1, img2]);
+    await expect(page.getByText(/写真 2 枚の準備ができました/)).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".photo-item")).toHaveCount(2);
+
+    const title = `写真テスト${Date.now() % 100000}`;
+    await page.fill('[aria-label="説明"]', title);
+    await page.getByLabel("タグ", { exact: true }).fill("ホテル");
+    await page.getByRole("button", { name: "#ホテル" }).click();
+    await page.getByRole("radio", { name: /女性/ }).click();
+    await page.getByRole("radio", { name: "ソフト" }).click();
+    await fillLink(page);
+    for (const t of ["自分が撮影・出演し", "出演者全員が18歳以上", "他人の動画の転載"]) await page.getByText(t).click();
+    await page.getByRole("button", { name: "審査に提出" }).click();
+    await page.waitForURL(/creator\/videos\?submitted=1/);
+
+    const admin = await browser.newPage();
+    await admin.goto("/admin/login");
+    await admin.fill("#email", "admin@example.com");
+    await admin.fill("#password", "glow-admin-e2e");
+    await admin.getByRole("button", { name: /次へ/ }).click();
+    await admin.fill('[aria-label="6桁のコード"]', totp(adminSecret));
+    await admin.getByRole("button", { name: "確認" }).click();
+    await admin.waitForURL(/\/admin$/);
+    await admin.goto("/admin/reviews");
+    const card = admin.locator(".card", { hasText: title });
+    await expect(card.getByText("写真2枚")).toBeVisible();
+    await card.getByRole("button", { name: "承認して公開" }).click();
+    await admin.close();
+
+    const all: { title: string; id: string; kind: string; images: unknown[] }[] = [];
+    for (let off: number | null = 0; off !== null;) {
+      const j = await (await page.request.get(`/api/v1/feed?tab=recommended&offset=${off}`)).json();
+      all.push(...j.videos); off = j.nextOffset;
+    }
+    const v = all.find((x) => x.title === title)!;
+    expect(v.kind).toBe("photo");
+    expect(v.images.length).toBe(2);
+
+    // フィードで、写真が2枚横に並んでいて、いいね等のボタンも出る
+    await page.goto(`/?v=${v.id}`);
+    await expect(page.locator(".item.active .photo-slide img")).toHaveCount(2);
+    await expect(page.locator(".item.active").getByRole("button", { name: "いいね" })).toBeVisible();
+    await expect(page.locator(".item.active .photo-dots")).toBeVisible();
+  });
+
   test("投稿画面：下書き保存・公開範囲・コメント許可・表紙選び", async ({ page }) => {
     test.skip(!hasFfmpeg, "ffmpeg が必要");
     test.setTimeout(150_000);
@@ -362,7 +418,7 @@ test.describe("動画のアップロードと配信", () => {
     await passGate(page);
     await loginAs(page, "luna_night@demo.example");
     await page.goto("/creator/new");
-    await page.locator('input[aria-label="動画ファイル"]').setInputFiles(file);
+    await page.locator('input[aria-label="動画・写真を選ぶ"]').setInputFiles(file);
     await expect(page.getByText("動画の準備ができました")).toBeVisible({ timeout: 90_000 });
 
     // 公開範囲とコメント許可は切り替えられる
@@ -416,7 +472,7 @@ test.describe("動画のアップロードと配信", () => {
     await passGate(page);
     await loginAs(page, "luna_night@demo.example");
     await page.goto("/creator/new");
-    await page.locator('input[aria-label="動画ファイル"]').setInputFiles(file);
+    await page.locator('input[aria-label="動画・写真を選ぶ"]').setInputFiles(file);
     await expect(page.getByText("動画の準備ができました")).toBeVisible({ timeout: 120_000 });
 
     // 切り取る前の長さを控えておく
@@ -459,7 +515,7 @@ test.describe("動画のアップロードと配信", () => {
     await passGate(page);
     await loginAs(page, "luna_night@demo.example");
     await page.goto("/creator/new");
-    await page.locator('input[aria-label="動画ファイル"]').setInputFiles(file);
+    await page.locator('input[aria-label="動画・写真を選ぶ"]').setInputFiles(file);
     await expect(page.locator(".composer")).toBeVisible();
     const box = page.getByLabel("タグ", { exact: true });
 
@@ -492,7 +548,7 @@ test.describe("動画のアップロードと配信", () => {
     await passGate(page);
     await loginAs(page, "luna_night@demo.example");
     await page.goto("/creator/new");
-    await page.locator('input[aria-label="動画ファイル"]').setInputFiles(file);
+    await page.locator('input[aria-label="動画・写真を選ぶ"]').setInputFiles(file);
     await expect(page.getByText("動画の準備ができました")).toBeVisible({ timeout: 120_000 });
 
     // リンク以外をすべて埋めても、提出はできないまま

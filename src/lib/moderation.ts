@@ -68,8 +68,13 @@ export async function createVideo(conn: DB, input: {
   asDraft?: boolean;
   /** 下書きを上書きするとき */
   draftId?: string;
+  /** 投稿の種類。写真投稿のときは images を渡す（動画は使わない） */
+  kind?: "video" | "photo";
+  images?: { url: string; w: number; h: number }[];
 }) {
   if (!input.asDraft && !input.consents.every(Boolean)) return { ok: false as const, error: "3つの確認事項すべてにチェックが必要です" };
+  const isPhoto = input.kind === "photo";
+  if (isPhoto && !input.asDraft && !(input.images && input.images.length)) return { ok: false as const, error: "画像を1枚以上選んでください" };
   const [cp] = await conn.select().from(s.creatorProfiles).where(eq(s.creatorProfiles.userId, input.creatorId));
   if (!cp || cp.status !== "approved") return { ok: false as const, error: "投稿者として承認されていません" };
   if (cp.restrictedUntil && cp.restrictedUntil > new Date()) return { ok: false as const, error: "投稿制限中のため投稿できません" };
@@ -85,9 +90,15 @@ export async function createVideo(conn: DB, input: {
 
   return conn.transaction(async (tx) => {
     const t = tx as unknown as DB;
+    // 写真投稿は変換が要らないので、できた時点で見られる状態（mediaStatus=ready）にする
+    const photo = isPhoto && input.images?.length
+      ? { kind: "photo" as const, images: input.images, mediaStatus: "ready" as const,
+          thumbnailUrl: input.images[0].url, width: input.images[0].w, height: input.images[0].h, playbackUrl: null }
+      : {};
     const common = {
       title: input.title, description: input.description, category: input.category, intensity: input.intensity,
       visibility: input.visibility ?? "public", commentsEnabled: input.commentsEnabled ?? true,
+      ...photo,
     };
     // 段階審査：最初のN本は必ず審査。実績ランクも「今は」全件審査（自動チェックの実装後に緩める）
     const statusReason = input.asDraft ? null

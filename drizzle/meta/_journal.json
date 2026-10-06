@@ -99,6 +99,13 @@
       "when": 1791278486800,
       "tag": "0013_affiliates",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791282505630,
+      "tag": "0014_photo",
+      "breakpoints": true
     }
   ]
 }

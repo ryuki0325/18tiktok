@@ -21,6 +21,9 @@ export type VideoCard = {
   intensity: number;
   /** 公開状態（自分の投稿一覧で「審査中」などを出すため） */
   status: string;
+  /** 投稿の種類。photo なら images を写真として横スワイプで見せる */
+  kind: "video" | "photo";
+  images: { url: string; w: number; h: number }[] | null;
 };
 
 type Opts = {
@@ -66,6 +69,7 @@ export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublis
       liked: liked.has(v.id), saved: saved.has(v.id), following: fol.has(v.creatorId),
       publishedAt: v.publishedAt?.toISOString() ?? null, commentsEnabled: v.commentsEnabled,
       src: v.mediaStatus === "ready" ? v.playbackUrl : null, poster: v.thumbnailUrl, width: v.width, height: v.height, category: v.category, intensity: v.intensity, status: v.status,
+      kind: v.kind, images: v.images,
     };
     return [v.id, card];
   }));
