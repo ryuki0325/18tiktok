@@ -1,10 +1,10 @@
 import "server-only";
 import { desc } from "drizzle-orm";
 import type { DB } from "@/db";
-import { adminAuditLogs, creatorPenalties, reportActions, userSanctions, videoConsents } from "@/db/schema";
+import { adminAuditLogs, creatorAttestations, creatorPenalties, reportActions, userSanctions, videoConsents } from "@/db/schema";
 import { chainHash, GENESIS } from "./crypto";
 
-type Chained = typeof adminAuditLogs | typeof reportActions | typeof videoConsents | typeof creatorPenalties | typeof userSanctions;
+type Chained = typeof adminAuditLogs | typeof reportActions | typeof videoConsents | typeof creatorPenalties | typeof userSanctions | typeof creatorAttestations;
 
 /**
  * 追記型テーブルに、直前の行のハッシュをつないで1行追加する。

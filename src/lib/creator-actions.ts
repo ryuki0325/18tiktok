@@ -16,36 +16,74 @@ import { checkAffiliateUrl } from "./url";
 import { getSetting } from "./settings";
 import { currentUser } from "./auth";
 import { clientIpHash, rateLimit } from "./http";
-import { checkDestinationUrl, createVideo } from "./moderation";
+import { createVideo } from "./moderation";
+import { ATTEST_KEYS, addAffiliate, recordAttestation } from "./affiliates";
 import type { FormState } from "./account-actions";
 
+/**
+ * 投稿者の登録。運営の承認は置かず、登録できたらすぐ投稿できる。
+ *
+ * そのかわり入口で次を満たしてもらう：
+ *  - メールアドレスの確認が済んでいること
+ *  - 生年月日（18歳以上）
+ *  - 承認済みのサービスのアフィリエイトID（1つ以上。ほかの人が登録済みのIDは使えない）
+ *  - 確認事項すべてへの同意（内容と版を、書き換えられない形で記録する）
+ */
 export async function applyCreatorAction(_: FormState, form: FormData): Promise<FormState> {
   const u = await currentUser();
   if (!u) redirect("/login?next=/creator/apply");
   if (!u.emailVerifiedAt) return { error: "先にメールアドレスの確認をお願いします（マイページから再送できます）" };
-  if (form.get("rules") !== "on" || form.get("rights") !== "on" || form.get("sample") !== "on") return { error: "3つの確認事項すべてにチェックしてください" };
-  if (!(await rateLimit(`apply:${u.id}`, 5, 86400))) return { error: "申請が多すぎます。しばらくしてからお試しください" };
-  const bio = String(form.get("bio") ?? "").trim().slice(0, 300);
+  if (!(await rateLimit(`apply:${u.id}`, 5, 86400))) return { error: "やり直しが多すぎます。しばらくしてからお試しください" };
+
+  // 確認事項は1つでも欠けたら進めない
+  const checked = ATTEST_KEYS.filter((k) => form.get(`at.${k}`) === "on");
+  if (checked.length !== ATTEST_KEYS.length) return { error: "確認事項すべてにチェックしてください" };
+
   const conn = await db();
   const [cp] = await conn.select().from(creatorProfiles).where(eq(creatorProfiles.userId, u.id));
-  if (cp && cp.status !== "rejected") return { error: "すでに申請済みです" };
+  if (cp && cp.status === "approved") return { error: "すでに登録されています" };
+  if (cp && (cp.status === "suspended" || cp.status === "banned")) return { error: "現在このアカウントでは登録できません" };
 
-  // 自分の販売ページ（アフィリエイトURL）を持っていることを、投稿者になる条件にしている。
-  // 承認済みの送客先のURLだけを受け付け、短縮URLや転送はここで弾く。
-  const chk = await checkDestinationUrl(conn, String(form.get("affiliateUrl") ?? "").trim());
-  if (!chk.ok) return { error: chk.error };
-  if (chk.link.status !== "active") return { error: "この送客先はまだ使えません。運営の確認が終わるまでお待ちください" };
+  // アフィリエイト（サービス＋ID）。画面からは複数行が送られてくる
+  const dests = form.getAll("destinationId").map(String);
+  const ids = form.getAll("affiliateId").map(String);
+  const pairs = dests.map((d, i) => ({ destinationId: d, affiliateId: ids[i] ?? "" }))
+    .filter((p) => p.destinationId && p.affiliateId.trim());
+  if (!pairs.length) return { error: "アフィリエイトのサービスとIDを1つ以上入力してください" };
 
   // 年齢の確認を先に通す（結果だけを残し、方式は lib/verification.ts に閉じている）
   const v = await submitVerification(conn, u.id, String(form.get("birthDate") ?? ""));
   if (!v.ok) return { error: v.error };
-  const link = { destinationId: chk.link.destinationId, affiliateUrl: chk.link.url };
-  await conn.insert(creatorProfiles).values({ userId: u.id, bio, status: "pending", ...link })
-    .onConflictDoUpdate({ target: creatorProfiles.userId, set: { status: "pending", bio, appliedAt: new Date(), ...link } });
+
+  for (const p of pairs) {
+    const r = await addAffiliate(conn, u.id, p.destinationId, p.affiliateId);
+    if (!r.ok) return { error: r.error };
+  }
+
+  // 同意の内容を、書き換えられない形で残す
+  await recordAttestation(conn, u.id, checked, await clientIpHash(), (await headers()).get("user-agent") ?? "");
+
+  // 運営の承認は置かない。年齢の確認が済んでいればそのまま投稿できる
+  const status = v.status === "verified" ? "approved" : "pending";
+  await conn.insert(creatorProfiles).values({ userId: u.id, status, approvedAt: status === "approved" ? new Date() : null })
+    .onConflictDoUpdate({ target: creatorProfiles.userId, set: { status, appliedAt: new Date(), approvedAt: status === "approved" ? new Date() : null } });
   revalidatePath("/creator/apply");
-  return { info: v.status === "verified"
-    ? "申請を受け付けました。運営の確認後にお知らせします。"
-    : "申請を受け付けました。年齢の確認が済みしだいお知らせします。" };
+  revalidatePath("/creator/new");
+  if (status === "approved") redirect("/creator/new");
+  return { info: "年齢の確認が済みしだい投稿できるようになります。" };
+}
+
+/** 設定画面から、アフィリエイトを1つ足す（登録済みのものは変えられない） */
+export async function addAffiliateAction(_: FormState, form: FormData): Promise<FormState> {
+  const u = await currentUser();
+  if (!u) redirect("/login?next=/settings/affiliates");
+  if (!(await rateLimit(`aff:${u.id}`, 10, 86400))) return { error: "追加が多すぎます。しばらくしてからお試しください" };
+  const conn = await db();
+  const r = await addAffiliate(conn, u.id, String(form.get("destinationId") ?? ""), String(form.get("affiliateId") ?? ""));
+  if (!r.ok) return { error: r.error };
+  revalidatePath("/settings/affiliates");
+  revalidatePath("/creator/new");
+  return { info: "追加しました。" };
 }
 
 /** フォームの中身を1か所で読む（投稿と下書きで同じものを使う） */

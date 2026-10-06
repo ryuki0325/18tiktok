@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { creatorProfiles, destinations, outboundLinks, tags, videoTags, videos } from "@/db/schema";
+import { outboundLinks, tags, videoTags, videos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { NavBar } from "@/components/NavBar";
 import { canTrim, maxUploadBytes, maxUploadSec, mediaProvider } from "@/lib/media";
 import { canPublish } from "@/lib/verification";
+import { postableDestinations } from "@/lib/affiliates";
 import { activeLimits } from "@/lib/safety";
 import { Icon } from "@/components/Icon";
 import { PostForm } from "./PostForm";
@@ -25,14 +26,10 @@ export default async function NewVideo({ searchParams }: { searchParams: Promise
     : limits.postBanned ? "投稿を停止されています。解除まで投稿できません。"
       : !v.ok ? v.reason : null;
 
-  // 申請のときに登録した販売ページを、投稿画面の初期値に使う
-  const [me] = await conn.select({ destinationId: creatorProfiles.destinationId, affiliateUrl: creatorProfiles.affiliateUrl })
-    .from(creatorProfiles).where(eq(creatorProfiles.userId, u.id));
-
   const [allTags, dests, drafts] = await Promise.all([
     conn.select({ name: tags.name }).from(tags).orderBy(tags.id),
-    conn.select({ id: destinations.id, serviceName: destinations.serviceName, domain: destinations.domain })
-      .from(destinations).where(eq(destinations.status, "approved")).orderBy(destinations.serviceName),
+    // 送客先は、自分がアフィリエイトIDを登録しているサービスだけ
+    postableDestinations(conn, u.id),
     conn.select({ id: videos.id, title: videos.title, poster: videos.thumbnailUrl, hue: videos.hue })
       .from(videos).where(and(eq(videos.creatorId, u.id), eq(videos.status, "draft"))).orderBy(desc(videos.createdAt)).limit(10),
   ]);
@@ -80,7 +77,6 @@ export default async function NewVideo({ searchParams }: { searchParams: Promise
           destinations={dests}
           drafts={drafts}
           resume={resume}
-          myLink={me?.destinationId && me.affiliateUrl ? { destId: me.destinationId, url: me.affiliateUrl } : null}
           upload={mediaProvider() ? { maxMb: Math.round(maxUploadBytes() / 1024 / 1024), maxSec: maxUploadSec(), canTrim: canTrim() } : null}
         />
       )}

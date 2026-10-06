@@ -79,6 +79,13 @@ export async function seed(db: DB, opts: { demo: boolean }) {
       verifiedAt: new Date(), retentionUntil: new Date(Date.now() + 3 * 365 * 86400_000),
     }).onConflictDoNothing();
     await db.update(s.users).set({ ageStatus: "age_verified" }).where(eq(s.users.id, u.id));
+    // 投稿にはアフィリエイトの登録が必要なので、デモの投稿者にも入れておく
+    const [approvedDest] = await db.select().from(s.destinations).where(eq(s.destinations.status, "approved"));
+    if (approvedDest) {
+      await db.insert(s.creatorAffiliates)
+        .values({ userId: u.id, destinationId: approvedDest.id, affiliateId: `demo-${u.handle}` })
+        .onConflictDoNothing();
+    }
     for (const v of c.videos) {
       const shift = videoIds.length * 17;
       const [row] = await db.insert(s.videos).values({

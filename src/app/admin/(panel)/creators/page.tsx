@@ -1,6 +1,6 @@
 import { desc, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { creatorProfiles, userSanctions, users } from "@/db/schema";
+import { creatorAffiliates, creatorProfiles, destinations, userSanctions, users } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { creatorDecisionAction, sanctionAction } from "@/lib/admin-actions";
 import { SANCTION_LABEL } from "@/lib/safety";
@@ -16,23 +16,32 @@ export default async function Creators() {
   const rows = await conn.select({ p: creatorProfiles, u: users }).from(creatorProfiles).innerJoin(users, eq(users.id, creatorProfiles.userId)).orderBy(desc(creatorProfiles.appliedAt)).limit(200);
   const pending = rows.filter((r) => r.p.status === "pending");
   const others = rows.filter((r) => r.p.status !== "pending");
+  // 登録しているアフィリエイト（なりすましの申告があったとき、ここから確かめる）
+  const affRows = await conn.select({
+    userId: creatorAffiliates.userId, id: creatorAffiliates.id, affiliateId: creatorAffiliates.affiliateId,
+    serviceName: destinations.serviceName,
+  }).from(creatorAffiliates).innerJoin(destinations, eq(destinations.id, creatorAffiliates.destinationId));
+  const affs = new Map<string, typeof affRows>();
+  for (const a of affRows) affs.set(a.userId, [...(affs.get(a.userId) ?? []), a]);
+
   const penalties = await conn.select().from(userSanctions).where(ne(userSanctions.kind, "warning")).orderBy(desc(userSanctions.id)).limit(20);
   const levels = (Object.keys(SANCTION_LABEL) as (keyof typeof SANCTION_LABEL)[]).filter((l) => me.role === "super_admin" || (l !== "ban" && l !== "lift"));
   return (
     <>
       <h1>投稿者</h1>
-      <div className="notice info" style={{ marginBottom: 16 }}>本人確認書類の提出は、運用方針の決定待ちのため停止中です。申請内容・メール確認の状態・<b>販売ページが本人のものか</b>で判断してください。</div>
-      <h2 style={{ fontSize: 16 }}>申請 <span className="muted num">{pending.length}件</span></h2>
-      <div className="tbl-wrap" style={{ marginBottom: 28 }}><table className="tbl"><thead><tr><th>ユーザー</th><th>メール確認</th><th>販売ページ</th><th>自己紹介</th><th>申請</th><th>判断</th></tr></thead><tbody>
-        {pending.length === 0 && <tr><td colSpan={6} className="muted">申請はありません。</td></tr>}
+      <div className="notice info" style={{ marginBottom: 16 }}>
+        <b>投稿者の登録に運営の承認はありません。</b>年齢の確認が済めば、そのまま投稿できます（投稿された動画は全件を審査します）。
+        下の「年齢の確認待ち」は、自己申告以外の方式に切り替えたときだけ出ます。
+      </div>
+      <h2 style={{ fontSize: 16 }}>年齢の確認待ち <span className="muted num">{pending.length}件</span></h2>
+      <div className="tbl-wrap" style={{ marginBottom: 28 }}><table className="tbl"><thead><tr><th>ユーザー</th><th>メール確認</th><th>アフィリエイト</th><th>申請</th><th>判断</th></tr></thead><tbody>
+        {pending.length === 0 && <tr><td colSpan={5} className="muted">確認待ちはありません。</td></tr>}
         {pending.map(({ p, u }) => (
           <tr key={u.id}><td>@{u.handle}<div className="cap">{u.email}</div></td><td>{u.emailVerifiedAt ? "済" : <span style={{ color: "var(--bad)" }}>未</span>}</td>
-            <td style={{ maxWidth: 260 }}>
-              {p.affiliateUrl
-                ? <a href={p.affiliateUrl} target="_blank" rel="noreferrer nofollow noopener" className="cap" style={{ wordBreak: "break-all", color: "var(--accent)" }}>{p.affiliateUrl}</a>
-                : <span className="cap">—</span>}
-            </td>
-            <td style={{ maxWidth: 280 }}>{p.bio || "—"}</td><td className="cap">{ago(p.appliedAt)}</td>
+            <td style={{ maxWidth: 280 }}>
+              {(affs.get(u.id) ?? []).map((a) => <div key={a.id} className="cap num">{a.serviceName}：{a.affiliateId}</div>)}
+              {!affs.get(u.id)?.length && <span className="cap">—</span>}
+            </td><td className="cap">{ago(p.appliedAt)}</td>
             <td><form action={creatorDecisionAction} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><input type="hidden" name="id" value={u.id} />
               <button className="btn btn-sm btn-primary" name="decision" value="approve">承認</button>
               <input className="input" name="note" placeholder="却下理由" style={{ height: 36, width: 140, fontSize: 13 }} aria-label="却下理由" />

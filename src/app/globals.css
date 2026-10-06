@@ -534,3 +534,8 @@ html.standalone .pager { touch-action: none; }
 
 /* ---- 送りかけの動画を知らせる ---- */
 .notice.resume { flex-direction: column; align-items: flex-start; text-align: left; }
+
+/* ---- アフィリエイトの登録（サービス名＋ID） ---- */
+.aff-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
+.aff-row .input { height: 46px; min-width: 0; }
+@media (max-width: 420px) { .aff-row { grid-template-columns: 1fr auto; } .aff-row select { grid-column: 1 / -1; } }

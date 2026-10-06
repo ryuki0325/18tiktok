@@ -93,6 +93,48 @@ export const creatorProfiles = pgTable("creator_profiles", {
   approvedAt: ts(),
 });
 
+/**
+ * 投稿者が登録したアフィリエイト（サイト名＋ID）。いくつでも足せる。
+ * いちど登録したものは原則変えられない（後から別人のIDに差し替える不正を防ぐため）。
+ * 変更が必要なときは問い合わせから運営が対応する。
+ */
+export const creatorAffiliates = pgTable("creator_affiliates", {
+  id: uuid().primaryKey().defaultRandom(),
+  userId: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+  destinationId: uuid().notNull().references(() => destinations.id, { onDelete: "restrict" }),
+  /** そのサービスでのアフィリエイトID（会員IDやサイトIDなど） */
+  affiliateId: text().notNull(),
+  /** 運営が止めたとき（なりすましの申告があった場合など） */
+  status: text().$type<"active" | "disabled">().notNull().default("active"),
+  createdAt: now(),
+}, (t) => [
+  uniqueIndex("creator_affiliates_uq").on(t.destinationId, t.affiliateId),
+  index("creator_affiliates_user_idx").on(t.userId),
+]);
+
+/**
+ * 🔒 追記専用（トリガーで UPDATE/DELETE 禁止）
+ *
+ * 投稿者になるときに同意した内容の記録。
+ * 「いつ・どの文面に・どの端末から同意したか」を、後から書き換えられない形で残す。
+ * 問題が起きたときに、本人が何に同意していたかを示せるようにするため。
+ */
+export const creatorAttestations = pgTable("creator_attestations", {
+  id: bigserial({ mode: "number" }).primaryKey(),
+  userId: uuid().notNull(),
+  /** 同意した文面の版。文面を変えたら上げる */
+  version: integer().notNull(),
+  /** 同意した文面そのもののハッシュ（文面が後から差し替えられていないことの裏付け） */
+  textHash: text().notNull(),
+  /** チェックした項目のキー */
+  items: jsonb().$type<string[]>().notNull(),
+  ipHash: text().notNull(),
+  userAgent: text().notNull(),
+  createdAt: now(),
+  prevHash: text().notNull(),
+  rowHash: text().notNull(),
+});
+
 export const creatorPenalties = pgTable("creator_penalties", {
   id: bigserial({ mode: "number" }).primaryKey(),
   creatorId: uuid().notNull(),

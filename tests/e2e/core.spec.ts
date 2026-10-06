@@ -118,6 +118,44 @@ test.describe("権限", () => {
     await page.goto("/creator/new");
     await expect(page).toHaveURL(/\/creator\/apply/);
   });
+
+  test("登録すれば運営の承認なしですぐ投稿できる（アフィリエイトと同意が必須）", async ({ page }) => {
+    await passGate(page);
+    await page.goto("/login");
+    await page.fill("#email", "viewer@demo.example");
+    await page.fill("#password", "glow-demo-password");
+    await page.getByRole("button", { name: "ログイン" }).click();
+    await page.waitForURL(/\/me$/);
+    await page.goto("/creator/apply");
+
+    // 確認事項をすべてチェックするまで、登録ボタンは押せない
+    const submit = page.getByRole("button", { name: /登録して投稿をはじめる/ });
+    await expect(submit).toBeDisabled();
+
+    // 18歳以上の生年月日とアフィリエイトIDを入れる
+    await page.fill("#birthDate", "1995-04-01");
+    await page.getByLabel("アフィリエイトID 1").fill(`viewer-aff-${Date.now() % 100000}`);
+    for (const c of await page.locator('input[name^="at."]').all()) await c.check({ force: true });
+    await expect(submit).toBeEnabled();
+
+    // 登録すると、運営の承認を挟まずそのまま投稿画面へ
+    await submit.click();
+    // 承認待ちの画面を挟まず、そのまま投稿画面（動画を選ぶ）に入れる
+    await page.waitForURL(/\/creator\/new/);
+    await expect(page.locator(".pick-main")).toBeVisible();
+  });
+
+  test("登録したアフィリエイトは本人では変えられない（追加だけできる）", async ({ page }) => {
+    await passGate(page);
+    await loginAs(page, "luna_night@demo.example");
+    await page.goto("/settings/affiliates");
+    // 既存の登録には「変更不可」と出る
+    await expect(page.getByText("変更不可").first()).toBeVisible();
+    // 追加はできる
+    await page.getByLabel("アフィリエイトID").fill(`luna-extra-${Date.now() % 100000}`);
+    await page.getByRole("button", { name: /追加する/ }).click();
+    await expect(page.getByText("追加しました。")).toBeVisible();
+  });
 });
 
 /** 「完全版を見る」のリンクは必須。承認済みの送客先を選んで自分のページのURLを入れる */
