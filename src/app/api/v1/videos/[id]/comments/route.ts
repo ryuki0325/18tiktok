@@ -78,7 +78,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (blocked) return blocked;
   const me = await currentUser();
   if (!me) return fail("LOGIN_REQUIRED", "コメントするにはログインしてください", 401);
-  if (!me.emailVerifiedAt) return fail("EMAIL_UNVERIFIED", "メールアドレスの確認後にコメントできます", 403);
   if (me.status !== "active") return fail("FORBIDDEN", "現在コメントできません", 403);
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return fail("INVALID", "コメントは1〜300文字で入力してください");

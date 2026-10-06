@@ -50,3 +50,16 @@ test("管理画面：特集枠・管理者・定期処理の画面が開ける",
   await page.goto("/admin/featured");
   await expect(page).toHaveURL(/\/admin\/(login|mfa)/);
 });
+
+test("メール未確認でもコメントできる（投稿と同じく確認は後でよい）", async ({ page }) => {
+  await passGate(page);
+  const h = "cmt_" + Date.now().toString().slice(-6);
+  await signup(page, h);
+  // 登録直後はメール未確認。フィードの最初の動画にコメントできる
+  await page.goto("/");
+  await page.locator(".item.active").getByRole("button", { name: "コメント" }).click();
+  const body = `未確認コメント${Date.now() % 10000}`;
+  await page.fill('[aria-label="コメントを入力"]', body);
+  await page.getByRole("button", { name: "送信" }).click();
+  await expect(page.getByText(body).first()).toBeVisible();
+});

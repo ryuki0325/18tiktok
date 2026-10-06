@@ -21,7 +21,11 @@ export function ProfileGrid({ cards, empty, showStatus = false }: { cards: Video
         return (
           <Link key={c.id} className="thumb" href={`/?v=${c.id}`} aria-label={c.title}>
             <Thumb card={c} />
-            <span className="meta"><Icon name="play" size={12} filled /><span className="num">{fmt(c.views)}</span></span>
+            <span className="meta">
+              {c.kind === "photo"
+                ? <><Icon name="images" size={12} />{c.images && c.images.length > 1 && <span className="num">{c.images.length}</span>}</>
+                : <><Icon name="play" size={12} filled /><span className="num">{fmt(c.views)}</span></>}
+            </span>
             {st && <span className={`badge ${st[1]}`} style={{ position: "absolute", left: 5, top: 5 }}>{st[0]}</span>}
           </Link>
         );
