@@ -149,3 +149,24 @@ describe("自由入力のタグ", () => {
     expect(checkTag("   ").ok).toBe(false);
   });
 });
+
+describe("お知らせメール", () => {
+  it("メールの設定がないときは、サイト内のお知らせだけで止まる", async () => {
+    const before = process.env.MAIL_PROVIDER;
+    delete process.env.MAIL_PROVIDER;
+    const { mailConfigured } = await import("@/lib/mail");
+    expect(mailConfigured()).toBe(false);
+    if (before) process.env.MAIL_PROVIDER = before;
+  });
+  it("3つそろって初めて送れる状態になる", async () => {
+    const { mailConfigured } = await import("@/lib/mail");
+    const keep = { p: process.env.MAIL_PROVIDER, k: process.env.RESEND_API_KEY, f: process.env.MAIL_FROM };
+    process.env.MAIL_PROVIDER = "resend";
+    process.env.RESEND_API_KEY = "";
+    process.env.MAIL_FROM = "a@example.com";
+    expect(mailConfigured()).toBe(false);
+    process.env.RESEND_API_KEY = "re_test";
+    expect(mailConfigured()).toBe(true);
+    Object.assign(process.env, { MAIL_PROVIDER: keep.p ?? "", RESEND_API_KEY: keep.k ?? "", MAIL_FROM: keep.f ?? "" });
+  });
+});

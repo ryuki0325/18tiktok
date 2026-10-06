@@ -2,7 +2,10 @@ import { requireAdmin } from "@/lib/auth";
 import { bumpAgeGateVersionAction, runJobAction, settingsAction } from "@/lib/admin-actions";
 import { mediaStatus } from "@/lib/media";
 import { MediaCheck } from "./MediaCheck";
-import { getSetting } from "@/lib/settings";
+import { MailCheck } from "./MailCheck";
+import { getSetting, requestTime } from "@/lib/settings";
+import { mailConfigured } from "@/lib/mail";
+import { ago } from "@/components/format";
 
 export const metadata = { title: "設定" };
 
@@ -14,6 +17,12 @@ export default async function Settings() {
     g("comments.auto_hide_threshold"), g("comments.rate_limit_per_hour"), g("clicks.dedupe_window_sec"), g("age_gate.ttl_days"), g("age_gate.version"),
     g("operator.display_mode"), g("operator.contact_email"), g("operator.name"), g("geo.blocked_regions"), g("ng_words"),
   ]);
+  const [lastPurge, lastLink] = await Promise.all([g("cron.last_run.purge"), g("cron.last_run.link-health")]);
+  const mailOk = mailConfigured();
+  const hookOk = !!process.env.BUNNY_WEBHOOK_SECRET;
+  const cronOk = !!(process.env.CRON_SECRET && process.env.CRON_SECRET.length >= 16);
+  // 1日1回の想定なので、2日を超えたら設定し忘れを疑う
+  const stale = (iso: string) => !iso || requestTime() - new Date(iso).getTime() > 48 * 3600_000;
   const m = mediaStatus();
   const num = (k: string, label: string, v: number, hint?: string) => (
     <label style={{ display: "flex", flexDirection: "column", gap: 6 }}><span className="label">{label}{hint && <small>{hint}</small>}</span><input className="input num" type="number" min={0} name={k} defaultValue={v} style={{ height: 40 }} /></label>
@@ -64,16 +73,42 @@ export default async function Settings() {
           Bunny Stream の設定：ライブラリID <b>{m.bunny.libraryId}</b>／APIキー <b>{m.bunny.apiKey}</b>／配信元 <b>{m.bunny.cdnHost}</b>
         </span>
         <MediaCheck />
-        <span className="cap">変換が終わったことをすぐ反映するには、Bunny のライブラリ設定の Webhook URL に <code>/api/v1/webhooks/bunny</code> を入れてください。</span>
+        <span className="cap">
+          変換が終わったことをすぐ反映するには、Bunny のライブラリ設定の Webhook URL に <code>/api/v1/webhooks/bunny</code> を入れてください。
+          {hookOk
+            ? <> 鍵が設定されているので、URL の末尾に <code>?t=（BUNNY_WEBHOOK_SECRET の値）</code> も付けてください。</>
+            : <b style={{ color: "var(--warn)" }}> いまは鍵（BUNNY_WEBHOOK_SECRET）がないため、誰でも呼べる状態です。設定をおすすめします。</b>}
+        </span>
       </section>
       <section className="card" style={{ padding: 16, marginTop: 24, maxWidth: 760, display: "flex", flexDirection: "column", gap: 10 }}>
         <b>定期処理</b>
-        <span className="cap">外部のcronサービスから <code>POST /api/cron/link-health</code> と <code>POST /api/cron/purge</code> を呼ぶと自動化できます（環境変数 CRON_SECRET が必要）。ここから今すぐ実行することもできます。</span>
+        <span className="cap">外部のcronサービスから <code>POST /api/cron/link-health</code> と <code>POST /api/cron/purge</code> を呼ぶと自動化できます。ここから今すぐ実行することもできます。</span>
+        <span className="cap">
+          CRON_SECRET：<b style={{ color: cronOk ? "var(--ok)" : "var(--bad)" }}>{cronOk ? "設定済み" : "未設定（外部から呼べません）"}</b>
+        </span>
+        <ul className="cap" style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 }}>
+          <li>
+            期限切れデータの削除：{lastPurge ? `最後に実行 ${ago(new Date(lastPurge))}` : "まだ一度も実行されていません"}
+            {stale(lastPurge) && <b style={{ color: "var(--bad)" }}>　← 1日1回の自動実行が設定されていない可能性があります</b>}
+          </li>
+          <li>
+            外部リンクの死活確認：{lastLink ? `最後に実行 ${ago(new Date(lastLink))}` : "まだ一度も実行されていません"}
+          </li>
+        </ul>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <form action={runJobAction}><input type="hidden" name="job" value="link-health" /><button className="btn btn-sm btn-secondary">外部リンクの死活確認を実行</button></form>
           <form action={runJobAction}><input type="hidden" name="job" value="purge" /><button className="btn btn-sm btn-secondary">期限切れデータの削除を実行</button></form>
         </div>
       </section>
+      <section className="card" style={{ padding: 16, marginTop: 24, maxWidth: 760, display: "flex", flexDirection: "column", gap: 10 }}>
+        <b>通知メール</b>
+        <span className="cap">
+          いまの状態：<b style={{ color: mailOk ? "var(--ok)" : "var(--bad)" }}>{mailOk ? "設定済み（Resend）" : "未設定"}</b>
+          {!mailOk && "　審査結果や措置のお知らせは、サイト内の「お知らせ」だけに届きます。パスワード再設定のメールも送れません。"}
+        </span>
+        <MailCheck />
+      </section>
+
       <form action={bumpAgeGateVersionAction} className="card" style={{ padding: 16, marginTop: 24, maxWidth: 760, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <span style={{ flex: 1, minWidth: 240 }}><b>年齢確認の文言を変えたとき</b><br /><span className="cap">版を上げると、全員にもう一度年齢確認を表示します（現在 v{ver}）。</span></span>
         <button className="btn btn-sm btn-danger">版を上げる</button>

@@ -1,0 +1,30 @@
+# 定期処理を1日1回呼ぶ（期限切れデータの削除・措置の自動解除・外部リンクの死活確認）。
+#
+# 【準備】GitHub のリポジトリ → Settings → Secrets and variables → Actions で2つ登録する
+#   SITE_URL     例：https://vybe.example（末尾のスラッシュなし）
+#   CRON_SECRET  Render の環境変数 CRON_SECRET と同じ値
+#
+# Render の Cron Job は有料プラン向けのため、無料で動かすならこちらを使う。
+# 「Actions」タブの Run workflow から手動でも実行できる。
+name: 定期処理
+
+on:
+  schedule:
+    # 毎日 日本時間 4:10（UTC 19:10）。混みにくい時間にずらしてある
+    - cron: "10 19 * * *"
+  workflow_dispatch:
+
+jobs:
+  cron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 期限切れデータの削除・措置の自動解除
+        run: |
+          curl -fsS --retry 3 --retry-delay 10 --max-time 300 \
+            -X POST -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.SITE_URL }}/api/cron/purge"
+      - name: 外部リンクの死活確認
+        run: |
+          curl -fsS --retry 3 --retry-delay 10 --max-time 300 \
+            -X POST -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.SITE_URL }}/api/cron/link-health"

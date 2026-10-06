@@ -157,6 +157,21 @@ npm run lint && npm run typecheck
 - `POST /api/cron/link-health`：外部リンクの死活確認（転送先が許可外のドメインなら無効化、3回失敗で無効化）
 - `POST /api/cron/purge`：期限切れのセッション・トークン・古い閲覧記録などを削除
 - `Authorization: Bearer $CRON_SECRET` を付けて外部のcronサービスから呼ぶ。管理画面の「設定」から今すぐ実行もできる
+- **自動実行は `.github/workflows/cron.yml`**（GitHub Actions、毎日 日本時間4:10）。リポジトリの Secrets に `SITE_URL` と `CRON_SECRET` を入れると動く。Render の Cron Job は有料プラン向けなので、無料ならこちらを使う
+- 管理画面の「設定」に**最後に実行した日時**が出る。2日以上空くと警告が出るので、設定し忘れに気づける
+
+## 外部サービスのつなぎ方
+| サービス | 何に使うか | 必要な環境変数 |
+| --- | --- | --- |
+| Bunny Stream | 動画の保存・変換・配信 | `BUNNY_STREAM_LIBRARY_ID` / `BUNNY_STREAM_API_KEY` / `BUNNY_STREAM_CDN_HOST` |
+| Bunny の Webhook | 変換完了をすぐ反映する | `BUNNY_WEBHOOK_SECRET`（Bunny 側の URL に `?t=（値）` を付ける） |
+| Resend | 審査結果・措置・本人確認のメール | `MAIL_PROVIDER=resend` / `RESEND_API_KEY` / `MAIL_FROM` / `APP_URL` |
+| GitHub Actions | 定期処理の自動実行 | リポジトリの Secrets に `SITE_URL` / `CRON_SECRET` |
+
+- **Bunny の Webhook は中身を信用しない**：送られてきた内容ではなく、GUID で Bunny の API に状態を聞き直す。そのうえで `BUNNY_WEBHOOK_SECRET` で鍵をかける（未設定でも動くが、呼べる回数を制限する）
+- **メールは本人確認済みのアドレスにだけ送る**。件名と本文に動画の題名や措置の理由は書かず、詳しい内容はサイトで見てもらう（メールは本人以外の目に触れることがあるため）
+- **メールが送れなくても運用は止まらない**。サイト内の「お知らせ」は必ず残る
+- 管理画面の「設定」から、Bunny の接続確認とメールのテスト送信ができる
 
 ## まだ入っていないもの
 - 動画の保存先（Bunny Stream など）のアカウント設定（設定するまで本番の投稿画面は「準備中」表示。デモ動画は抽象的なプレースホルダー）

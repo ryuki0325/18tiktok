@@ -4,6 +4,7 @@ import { db, type DB } from "@/db";
 import * as s from "@/db/schema";
 import type { Priority, ReportReason, ReportTarget, SanctionKind } from "@/db/schema";
 import { appendChained, audit } from "./ledger";
+import { notifyUser } from "./notify";
 import { REASON_SPEC, reasonLabel } from "./report-reasons";
 import { transition } from "./video-state";
 
@@ -255,9 +256,13 @@ export async function sanction(conn: DB, adminId: string, userId: string, kind: 
   }
 
   await appendChained(conn, s.userSanctions, { userId, kind, reason: reason.slice(0, 500), endsAt, adminId, caseId: caseId ?? null });
-  await conn.insert(s.notifications).values({
+  await notifyUser(conn, {
     userId, kind: `sanction.${kind}`,
     body: kind === "lift" ? "制限を解除しました。" : `${SANCTION_LABEL[kind]}の措置を行いました。理由：${reason}${endsAt ? `（${endsAt.toLocaleDateString("ja-JP")}まで）` : ""}`,
+    mailSubject: kind === "lift" ? "【VYBE】制限の解除についてのお知らせ" : "【VYBE】アカウントについての大切なお知らせ",
+    mailLead: kind === "lift"
+      ? "アカウントにかかっていた制限を解除しました。"
+      : "アカウントについて、運営からお知らせがあります。内容と理由、異議申し立ての方法をサイトでご確認ください。",
   });
   await audit(conn, adminId, `sanction.${kind}`, "user", userId, { reason, days: days ?? null });
   return { ok: true as const, handle: u.handle };

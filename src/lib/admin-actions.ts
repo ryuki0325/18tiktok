@@ -231,13 +231,35 @@ export async function setAdminRoleAction(form: FormData) {
 /* ---------- 定期処理を今すぐ実行 ---------- */
 export async function runJobAction(form: FormData) {
   const a = await need(["super_admin"]);
-  const { linkHealthcheck, purgeExpired } = await import("./jobs");
+  const { linkHealthcheck, markJobRun, purgeExpired } = await import("./jobs");
   const conn = await db();
   const job = str(form, "job");
+  if (job !== "link-health" && job !== "purge") return;
   if (job === "link-health") await linkHealthcheck(conn);
-  if (job === "purge") await purgeExpired(conn);
+  else await purgeExpired(conn);
+  await markJobRun(job, conn);
   await audit(conn, a.id, `job.manual.${job}`, "job", job);
   revalidatePath("/admin/settings");
+}
+
+/** 通知メールが本当に届くか確かめる（Resend の設定もれに気づくため） */
+export async function testMailAction(): Promise<{ ok: boolean; message: string }> {
+  const a = await need(["super_admin"]);
+  const { mailConfigured, sendMail } = await import("./mail");
+  if (!mailConfigured()) {
+    return { ok: false, message: "メールの設定がありません。MAIL_PROVIDER=resend・RESEND_API_KEY・MAIL_FROM を設定してください（いまは画面のお知らせだけが届きます）" };
+  }
+  const conn = await db();
+  const [me] = await conn.select({ email: users.email }).from(users).where(eq(users.id, a.id));
+  if (!me?.email) return { ok: false, message: "自分のメールアドレスが登録されていません" };
+  const r = await sendMail({
+    to: me.email,
+    subject: "VYBE：メール送信のテスト",
+    text: "このメールが届いていれば、審査結果や措置のお知らせが利用者に届く状態です。",
+  });
+  return r.delivered
+    ? { ok: true, message: `${me.email} に送りました。迷惑メールに入っていないかもご確認ください` }
+    : { ok: false, message: "送れませんでした。RESEND_API_KEY と MAIL_FROM（送信元ドメインの認証）をご確認ください" };
 }
 
 /** 動画の保存先（Bunny Stream）につながるか確かめる */

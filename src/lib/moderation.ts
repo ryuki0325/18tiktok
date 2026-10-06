@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DB } from "@/db";
 import * as s from "@/db/schema";
 import { appendChained, audit } from "./ledger";
+import { notifyUser } from "./notify";
 import { getSetting } from "./settings";
 import { checkAffiliateUrl, containsUrl } from "./url";
 import { sha256 } from "./crypto";
@@ -158,14 +159,22 @@ export async function reviewVideo(conn: DB, adminId: string, videoId: string, de
       : await approveAndPublish(conn, videoId, adminId);
     if (!row) return false;
     await conn.update(s.creatorProfiles).set({ approvedPosts: sql`${s.creatorProfiles.approvedPosts} + 1` }).where(eq(s.creatorProfiles.userId, v.creatorId));
-    await conn.insert(s.notifications).values({
+    await notifyUser(conn, {
       userId: v.creatorId, kind: "video_approved",
       body: v.visibility === "private" ? `「${v.title}」の審査が通りました（自分だけに公開の設定です）` : `「${v.title}」が公開されました`,
+      mailSubject: "【VYBE】審査の結果をお知らせします",
+      mailLead: "お送りいただいた動画の審査が終わりました。",
+      path: "/creator/videos",
     });
   } else {
     const reason = note || "ガイドラインに沿っていません";
     await transition(conn, { videoId, to: "rejected", statusReason: reason, actorId: adminId });
-    await conn.insert(s.notifications).values({ userId: v.creatorId, kind: "video_rejected", body: `「${v.title}」を差し戻しました。理由：${reason}` });
+    await notifyUser(conn, {
+      userId: v.creatorId, kind: "video_rejected", body: `「${v.title}」を差し戻しました。理由：${reason}`,
+      mailSubject: "【VYBE】審査の結果をお知らせします",
+      mailLead: "お送りいただいた動画の審査が終わりました。内容をご確認のうえ、必要なら直してもう一度お送りください。",
+      path: "/creator/videos",
+    });
   }
   await conn.insert(s.videoReviews).values({ videoId, adminId, decision, note: note || null });
   // 審査キューの案件を閉じる

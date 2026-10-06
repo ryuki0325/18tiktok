@@ -23,6 +23,9 @@ export const DEFAULT_SETTINGS = {
   "operator.name": "",
   "geo.blocked_regions": [] as string[],
   "ng_words": ["死ね", "殺す", "未成年", "JK", "JC", "ロリ"],
+  /** 定期処理が最後に走った時刻（ISO文字列）。外部cronの設定忘れに気づくために残す */
+  "cron.last_run.purge": "",
+  "cron.last_run.link-health": "",
   "shortener_domains": ["bit.ly", "t.co", "goo.gl", "tinyurl.com", "ow.ly", "is.gd", "buff.ly", "x.gd", "lnkd.in", "rebrand.ly", "cutt.ly", "shorturl.at"],
 } as const;
 

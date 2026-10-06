@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { db } from "@/db";
-import { linkHealthcheck, purgeExpired } from "@/lib/jobs";
+import { linkHealthcheck, markJobRun, purgeExpired } from "@/lib/jobs";
 
 /**
  * 定期実行用（外部のcronサービスから呼ぶ）。CRON_SECRET が必要。
@@ -15,7 +15,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ job: st
   if (got.length !== exp.length || !timingSafeEqual(got, exp)) return Response.json({ error: "unauthorized" }, { status: 401 });
   const { job } = await params;
   const conn = await db();
-  if (job === "link-health") return Response.json(await linkHealthcheck(conn));
-  if (job === "purge") return Response.json(await purgeExpired(conn));
+  if (job === "link-health" || job === "purge") {
+    const r = job === "purge" ? await purgeExpired(conn) : await linkHealthcheck(conn);
+    await markJobRun(job, conn);
+    return Response.json(r);
+  }
   return Response.json({ error: "unknown job" }, { status: 404 });
 }

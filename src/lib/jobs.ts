@@ -14,6 +14,12 @@ import { registrableDomain } from "./url";
  * - 3回続けて開けなければ無効化
  * - 社内のIPやローカルホストに向かう転送はたどらない
  */
+/** 定期処理が走ったことを残す（管理画面で「設定し忘れ」に気づけるように） */
+export async function markJobRun(job: "purge" | "link-health", conn?: DB) {
+  const { setSetting } = await import("./settings");
+  await setSetting(`cron.last_run.${job}`, new Date().toISOString(), conn);
+}
+
 export async function linkHealthcheck(conn: DB, limit = 200) {
   const allowed = new Set((await conn.select({ d: s.affiliateDomains.domain }).from(s.affiliateDomains).where(eq(s.affiliateDomains.isActive, true))).map((r) => r.d));
   const links = await conn.select().from(s.outboundLinks).where(eq(s.outboundLinks.status, "active")).orderBy(sql`${s.outboundLinks.lastCheckedAt} nulls first`).limit(limit);

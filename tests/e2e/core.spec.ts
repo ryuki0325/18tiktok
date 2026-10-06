@@ -120,7 +120,36 @@ test.describe("権限", () => {
   });
 });
 
+const CRON_SECRET = "e2e-cron-secret-0123456789";
+const WEBHOOK_SECRET = "e2e-bunny-hook-0123456789";
+
 const hasFfmpeg = (() => { try { execFileSync("ffmpeg", ["-version"], { stdio: "ignore" }); return true; } catch { return false; } })();
+
+test.describe("外部サービスとのつなぎ目", () => {
+  test("定期処理は鍵がないと呼べない。正しい鍵で呼ぶと実行され、記録が残る", async ({ page }) => {
+    const url = "/api/cron/purge";
+    // 鍵なし／違う鍵は断る
+    expect((await page.request.post(url)).status()).toBe(401);
+    expect((await page.request.post(url, { headers: { authorization: "Bearer wrong-secret-0000000" } })).status()).toBe(401);
+    // 正しい鍵なら実行される
+    const ok = await page.request.post(url, { headers: { authorization: `Bearer ${CRON_SECRET}` } });
+    expect(ok.status()).toBe(200);
+    // 知らない仕事は404
+    expect((await page.request.post("/api/cron/nope", { headers: { authorization: `Bearer ${CRON_SECRET}` } })).status()).toBe(404);
+  });
+
+  test("Bunny の Webhook は鍵がないと受け付けない", async ({ page }) => {
+    const url = "/api/v1/webhooks/bunny";
+    const guid = "00000000-0000-4000-8000-000000000000";
+    expect((await page.request.post(url, { data: { VideoGuid: guid } })).status()).toBe(401);
+    expect((await page.request.post(`${url}?t=wrong`, { data: { VideoGuid: guid } })).status()).toBe(401);
+    // 正しい鍵でも、中身は信用せず GUID で問い合わせ直すだけ（知らない GUID は何もしない）
+    const ok = await page.request.post(`${url}?t=${WEBHOOK_SECRET}`, { data: { VideoGuid: guid } });
+    expect(ok.status()).toBe(200);
+    // 形が違う GUID は断る
+    expect((await page.request.post(`${url}?t=${WEBHOOK_SECRET}`, { data: { VideoGuid: "../etc/passwd" } })).status()).toBe(400);
+  });
+});
 
 test.describe("動画のアップロードと配信", () => {
   test("分割アップロード（tus）：位置がずれたチャンクは拒否され、HEADで続きの位置が分かる", async ({ page }) => {

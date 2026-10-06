@@ -34,6 +34,19 @@ services:
         sync: false
       - key: BUNNY_STREAM_CDN_HOST
         sync: false
+      # Bunny の Webhook にかける鍵。Bunny 側の Webhook URL の末尾に ?t=（この値）を付ける
+      - key: BUNNY_WEBHOOK_SECRET
+        generateValue: true
+      # 通知メール（Resend）。3つとも入れると、審査結果や措置の知らせがメールでも届く
+      - key: MAIL_PROVIDER
+        value: resend
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      # メールのリンクに使う自分のURL（例：https://vybe.example）
+      - key: APP_URL
+        sync: false
 
 databases:
   - name: glow-db
