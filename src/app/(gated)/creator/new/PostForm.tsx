@@ -113,13 +113,18 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
         <input ref={input} type="file" accept="video/*,image/*" multiple hidden aria-label="動画・写真を選ぶ"
           onChange={(e) => pickFiles(e.target.files)} />
         <button type="button" className="pick-main" onClick={() => input.current?.click()}>
-          <span className="ic"><Icon name="upload" size={34} /></span>
-          <b>動画・写真を選ぶ</b>
-          <span className="cap">
-            縦長がおすすめ（横長もそのまま表示されます）<br />
-            {upload && <>動画は1本（{Math.floor(upload.maxSec / 60)}分・{upload.maxMb >= 1024 ? `${upload.maxMb / 1024}GB` : `${upload.maxMb}MB`}まで）／写真は何枚でも</>}
+          <span className="pick-glow" aria-hidden="true" />
+          <span className="pick-ic"><Icon name="upload" size={30} /></span>
+          <b className="pick-title">動画・写真を選ぶ</b>
+          <span className="pick-sub">タップして端末から選ぶ</span>
+          <span className="pick-chips" aria-hidden="true">
+            <span className="pick-chip"><Icon name="video" size={13} />動画 1本</span>
+            <span className="pick-chip"><Icon name="images" size={13} />写真 何枚でも</span>
           </span>
         </button>
+        <p className="pick-note cap">
+          縦長がおすすめ（横長もそのまま表示）・動画は{upload ? `${Math.floor(upload.maxSec / 60)}分・${upload.maxMb >= 1024 ? `${upload.maxMb / 1024}GB` : `${upload.maxMb}MB`}` : "6分・2GB"}まで
+        </p>
         {left && up.state.k === "idle" && (
           <div className="notice info resume" role="status">
             <Icon name="upload" size={18} />
@@ -152,10 +157,13 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
           </section>
         )}
 
-        <p className="cap" style={{ textAlign: "center", maxWidth: 320, lineHeight: 1.7 }}>
-          投稿できるのは、<b>自分が権利を持ち、出演者全員が18歳以上で公開に同意している動画</b>だけです。
-          <Link href="/legal/guidelines" style={{ color: "var(--accent)" }}>投稿ガイドライン</Link>を必ずお読みください。
-        </p>
+        <Link href="/legal/guidelines" className="pick-guide">
+          <span className="pick-guide-ic"><Icon name="shield" size={18} /></span>
+          <span>
+            投稿できるのは、<b>自分が権利を持ち、出演者全員が18歳以上で公開に同意している</b>ものだけです。
+            <span className="pick-guide-link">投稿ガイドラインを読む<Icon name="chev" size={14} /></span>
+          </span>
+        </Link>
       </div>
     );
   }
