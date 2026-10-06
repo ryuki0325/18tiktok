@@ -26,6 +26,7 @@ export function ProfileGrid({ cards, empty, showStatus = false }: { cards: Video
                 ? <><Icon name="images" size={12} />{c.images && c.images.length > 1 && <span className="num">{c.images.length}</span>}</>
                 : <><Icon name="play" size={12} filled /><span className="num">{fmt(c.views)}</span></>}
             </span>
+            {c.pinned && <span className="badge" style={{ position: "absolute", right: 5, top: 5, background: "rgba(0,0,0,.6)", color: "#fff" }}>固定</span>}
             {st && <span className={`badge ${st[1]}`} style={{ position: "absolute", left: 5, top: 5 }}>{st[0]}</span>}
           </Link>
         );

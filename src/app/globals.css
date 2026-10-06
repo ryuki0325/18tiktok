@@ -566,3 +566,7 @@ html.standalone .pager { touch-action: none; }
 .photo-dots span { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.4); }
 .photo-dots span.on { background: #fff; width: 7px; height: 7px; }
 .photo-dots .photo-count { position: absolute; right: 14px; bottom: -2px; width: auto; height: auto; border-radius: 10px; background: rgba(0,0,0,.5); color: #fff; font-size: 12px; padding: 2px 8px; }
+
+/* ---- 投稿ごとの数字（アナリティクスの表） ---- */
+.an-tbl td, .an-tbl th { padding: 8px 10px; }
+.an-tbl td a { color: var(--text); }

@@ -9,6 +9,7 @@ import { Icon } from "@/components/Icon";
 import { Thumb } from "@/components/VideoBackdrop";
 import { ago } from "@/components/format";
 import { statusLabel } from "@/components/status";
+import { pinVideoAction } from "@/lib/social-actions";
 
 export const metadata = { title: "自分の投稿" };
 
@@ -35,7 +36,14 @@ export default async function MyVideos({ searchParams }: { searchParams: Promise
                     <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between" }}><b style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.title}</b><span className={`badge ${cls}`}>{label}</span></div>
                     <span className="cap">{ago(v.createdAt)}{v.mediaStatus === "processing" && "・動画を変換中"}{v.mediaStatus === "failed" && "・動画の変換に失敗"}{link === "pending_domain_review" && "・リンク審査中"}{!v.commentsEnabled && "・コメントオフ"}</span>
                     {v.statusReason && v.status !== "published" && <span className="cap" style={{ color: v.status === "pending_review" ? undefined : "var(--bad)" }}>{v.status === "pending_review" ? "" : "理由："}{v.statusReason}</span>}
-                    <form action={myVideoAction} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+                    {v.status === "published" && (
+                      <form action={pinVideoAction}>
+                        <input type="hidden" name="id" value={v.id} />
+                        <button className={`btn btn-sm ${v.pinnedAt ? "btn-primary" : "btn-secondary"}`} name="op" value={v.pinnedAt ? "unpin" : "pin"}>{v.pinnedAt ? "固定を外す" : "上部に固定"}</button>
+                      </form>
+                    )}
+                    <form action={myVideoAction} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <input type="hidden" name="id" value={v.id} />
                       {v.status === "published" && <button className="btn btn-sm btn-secondary" name="op" value="hide">非公開にする</button>}
                       {v.status === "hidden" && <button className="btn btn-sm btn-secondary" name="op" value="show">公開に戻す</button>}
@@ -45,6 +53,7 @@ export default async function MyVideos({ searchParams }: { searchParams: Promise
                         : <Link className="btn btn-sm btn-secondary" href={`/creator/videos/${v.id}/edit`}>編集</Link>}
                       <button className="btn btn-sm btn-danger" name="op" value="delete">削除</button>
                     </form>
+                    </div>
                   </div>
                 </div>
               );

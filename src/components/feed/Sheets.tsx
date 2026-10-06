@@ -180,20 +180,22 @@ export const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 /**
  * 「…」メニュー：共有・興味がない・通報・動画速度設定をここにまとめる
  */
-export function MoreSheet({ card, rate, onClose, onShare, onNotInterested, onHideCreator, onReport, onRate }: {
-  card: VideoCard; rate: number; onClose: () => void; onShare: () => void; onNotInterested: () => void; onHideCreator: () => void; onReport: () => void; onRate: (r: number) => void;
+export function MoreSheet({ card, rate, loggedIn, onClose, onShare, onNotInterested, onHideCreator, onReport, onRate }: {
+  card: VideoCard; rate: number; loggedIn: boolean; onClose: () => void; onShare: () => void; onNotInterested: () => void; onHideCreator: () => void; onReport: () => void; onRate: (r: number) => void;
 }) {
-  const [view, setView] = useState<"main" | "ni" | "speed">("main");
+  const [view, setView] = useState<"main" | "ni" | "speed" | "collect">("main");
   return (
-    <Sheet title={view === "speed" ? "動画速度" : view === "ni" ? "興味がない" : "その他"} onClose={onClose}>
+    <Sheet title={view === "speed" ? "動画速度" : view === "ni" ? "興味がない" : view === "collect" ? "コレクションに追加" : "その他"} onClose={onClose}>
       {view === "main" && (
         <div className="acts" role="group" aria-label="操作">
           <button onClick={onShare}><span className="ic"><Icon name="share" size={24} /></span>共有</button>
+          {loggedIn && <button onClick={() => setView("collect")}><span className="ic"><Icon name="bookmark" size={24} /></span>コレクション</button>}
           <button onClick={() => setView("ni")}><span className="ic"><Icon name="eyeoff" size={24} /></span>興味がない</button>
           <button onClick={onReport}><span className="ic bad"><Icon name="flag" size={24} /></span>通報</button>
           <button onClick={() => setView("speed")}><span className="ic"><Icon name="gauge" size={24} /></span>動画速度<small className="num">{rate}x</small></button>
         </div>
       )}
+      {view === "collect" && <CollectPicker videoId={card.id} />}
       {view === "ni" && (
         <div className="list" style={{ background: "var(--surface-2)" }}>
           <button className="row" onClick={onNotInterested}><Icon name="eyeoff" size={20} /><span className="grow">この動画に興味がない<span className="cap" style={{ display: "block" }}>おすすめに表示されなくなります</span></span></button>
@@ -206,5 +208,39 @@ export function MoreSheet({ card, rate, onClose, onShare, onNotInterested, onHid
         </div>
       )}
     </Sheet>
+  );
+}
+
+
+/** コレクション（フォルダ）に入れる・外す。開いたときに一覧を取りにいく */
+function CollectPicker({ videoId }: { videoId: string }) {
+  const [cols, setCols] = useState<{ id: string; name: string; count: number; has: boolean }[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = async () => {
+    const r = await fetch(`/api/v1/collections?video=${videoId}`).then((x) => x.json()).catch(() => null);
+    setCols(r?.collections ?? []);
+  };
+  useEffect(() => { void load(); }, []);
+  const toggle = async (id: string) => {
+    setBusy(id);
+    const r = await fetch("/api/v1/collections", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ collectionId: id, videoId }) }).then((x) => x.json()).catch(() => null);
+    if (r && typeof r.added === "boolean") setCols((cs) => cs?.map((c) => (c.id === id ? { ...c, has: r.added, count: c.count + (r.added ? 1 : -1) } : c)) ?? null);
+    setBusy(null);
+  };
+  if (cols === null) return <span className="cap">読み込み中…</span>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {cols.length === 0 && <span className="cap">コレクションがありません。「作成・管理」から作れます。</span>}
+      <div className="list" style={{ background: "var(--surface-2)" }}>
+        {cols.map((c) => (
+          <button key={c.id} className="row" onClick={() => void toggle(c.id)} disabled={busy === c.id} aria-pressed={c.has}>
+            <Icon name="bookmark" size={20} filled={c.has} />
+            <span className="grow" style={{ textAlign: "left" }}><b>{c.name}</b><span className="cap num" style={{ marginLeft: 8 }}>{c.count}件</span></span>
+            <Icon name={c.has ? "check" : "plus"} size={18} />
+          </button>
+        ))}
+      </div>
+      <a className="btn btn-secondary pill" href="/collections">コレクションを作成・管理</a>
+    </div>
   );
 }

@@ -46,6 +46,17 @@ export default async function Dashboard() {
     days.push({ d: key, n: daily.find((x) => x.d === key)?.n ?? 0 });
   }
   const max = Math.max(1, ...days.map((x) => x.n));
+  // 投稿ごとの内訳（公開中のものを再生数の多い順に）。CTR＝リンククリック÷再生数
+  const pub = mine.filter((v) => v.status === "published");
+  const pubIds = pub.map((v) => v.id);
+  const perView = pubIds.length ? await conn.select({ id: views.videoId, n: sql<number>`count(*) filter (where ${views.isValid})::int` }).from(views).where(inArray(views.videoId, pubIds)).groupBy(views.videoId) : [];
+  const perClick = pubIds.length ? await conn.select({ id: linkClicks.videoId, n: sql<number>`count(*) filter (where ${linkClicks.isValid})::int` }).from(linkClicks).where(inArray(linkClicks.videoId, pubIds)).groupBy(linkClicks.videoId) : [];
+  const vMap = new Map(perView.map((r) => [r.id, r.n]));
+  const kMap = new Map(perClick.map((r) => [r.id, r.n]));
+  const perVideo = pub.map((v) => ({
+    v, views: vMap.get(v.id) ?? 0, clicks: kMap.get(v.id) ?? 0,
+    likes: v.likeCount + v.baseLikes,
+  })).sort((a, b) => b.views - a.views).slice(0, 20);
   const delta = (a: number, b: number) => (b === 0 ? (a > 0 ? "新規" : "—") : `${a >= b ? "▲" : "▼"} ${Math.abs(Math.round(((a - b) / b) * 100))}%`);
   const stats: [string, number, string][] = [["再生数", totViews, delta(v7, vPrev)], ["リンククリック", totClicks, delta(c7, cPrev)], ["お気に入り", totFavs + totLikes, ""], ["フォロワー", followers, ""]];
   return (
@@ -80,6 +91,28 @@ export default async function Dashboard() {
               </div>); })}
             {mine.length === 0 && <div className="row"><span className="cap">まだ投稿はありません。</span><Link className="chip" href="/creator/new"><Icon name="plus" size={14} />投稿する</Link></div>}
           </div>
+        </section>
+        <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <h2 className="label" style={{ margin: 0 }}>投稿ごとの数字<small>公開中・再生の多い順</small></h2>
+          {perVideo.length === 0 ? <p className="cap">公開中の投稿がありません。</p> : (
+            <div className="tbl-wrap">
+              <table className="tbl an-tbl">
+                <thead><tr><th>投稿</th><th className="num">再生</th><th className="num">いいね</th><th className="num">クリック</th><th className="num">CTR</th></tr></thead>
+                <tbody>
+                  {perVideo.map(({ v, views: vw, clicks, likes: lk }) => (
+                    <tr key={v.id}>
+                      <td style={{ maxWidth: 160 }}><Link href={`/?v=${v.id}`} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>{v.title}</Link></td>
+                      <td className="num">{fmt(vw)}</td>
+                      <td className="num">{fmt(lk)}</td>
+                      <td className="num">{fmt(clicks)}</td>
+                      <td className="num">{vw > 0 ? `${Math.round((clicks / vw) * 100)}%` : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <span className="cap">CTR＝「完全版を見る」のクリック数 ÷ 再生数。数字は本人の投稿のぶんだけです。</span>
         </section>
       </div>
     </div>

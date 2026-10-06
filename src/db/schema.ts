@@ -198,6 +198,8 @@ export const videos = pgTable("videos", {
   intensity: integer().notNull().default(1),
   reviewRequired: boolean().notNull().default(true),
   commentsEnabled: boolean().notNull().default(true),
+  /** プロフィール上部に固定表示する位置（新しいほど先。null は固定なし） */
+  pinnedAt: ts(),
   /*
    * 動画本体はDBに入れない。DBには「場所」と軽い情報だけを持ち、実ファイルはオブジェクトストレージ、配信はCDN。
    * 一覧：スマホ → API → DB（このテーブル）／ 本体：スマホ → CDN（playbackUrl）
@@ -340,6 +342,27 @@ export const follows = pgTable("follows", {
   creatorId: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
   createdAt: now(),
 }, (t) => [primaryKey({ columns: [t.followerId, t.creatorId] })]);
+
+/** 視聴履歴（ログイン中の人だけ。動画ごとに最後に見た日時を上書き） */
+export const watchHistory = pgTable("watch_history", {
+  userId: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+  videoId: uuid().notNull().references(() => videos.id, { onDelete: "cascade" }),
+  viewedAt: now(),
+}, (t) => [primaryKey({ columns: [t.userId, t.videoId] }), index("watch_history_user_idx").on(t.userId, t.viewedAt)]);
+
+/** 保存のコレクション（フォルダ）。ログイン中の人だけ */
+export const collections = pgTable("collections", {
+  id: uuid().primaryKey().defaultRandom(),
+  userId: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text().notNull(),
+  createdAt: now(),
+}, (t) => [index("collections_user_idx").on(t.userId, t.createdAt)]);
+
+export const collectionItems = pgTable("collection_items", {
+  collectionId: uuid().notNull().references(() => collections.id, { onDelete: "cascade" }),
+  videoId: uuid().notNull().references(() => videos.id, { onDelete: "cascade" }),
+  addedAt: now(),
+}, (t) => [primaryKey({ columns: [t.collectionId, t.videoId] }), index("collection_items_video_idx").on(t.videoId)]);
 
 export const views = pgTable("views", {
   id: bigserial({ mode: "number" }).primaryKey(),

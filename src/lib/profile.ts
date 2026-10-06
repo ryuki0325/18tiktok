@@ -52,7 +52,7 @@ export async function profileVideos(tab: ProfileTab, p: Profile, v: Viewer, limi
   if (tab === "posts" || tab === "private") {
     const rows = await d.select({ id: s.videos.id }).from(s.videos)
       .where(and(eq(s.videos.creatorId, p.id), tab === "posts" ? eq(s.videos.status, "published") : inArray(s.videos.status, CREATOR_PRIVATE)))
-      .orderBy(desc(s.videos.publishedAt), desc(s.videos.createdAt)).limit(limit);
+      .orderBy(tab === "posts" ? sql`${s.videos.pinnedAt} desc nulls last` : sql`1`, desc(s.videos.publishedAt), desc(s.videos.createdAt)).limit(limit);
     return hydrate(rows.map((r) => r.id), v, d, tab === "private");
   }
   const t = tab === "liked" ? s.likes : s.favorites;

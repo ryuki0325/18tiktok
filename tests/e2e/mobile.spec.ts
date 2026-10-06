@@ -325,3 +325,19 @@ test("検索はタブで絞り込める", async ({ page }) => {
   await page.getByRole("tab", { name: "タグ" }).click();
   await expect(page.getByText("一致するものはありません")).toBeVisible();
 });
+
+test.describe("プロフィールの固定（ピン留め）", () => {
+  test("公開中の投稿を上部に固定でき、プロフィールに「固定」が出る", async ({ page }) => {
+    await passGate(page);
+    await login(page, "luna_night@demo.example");
+    await page.goto("/creator/videos");
+    const pinBtn = page.getByRole("button", { name: "上部に固定" }).first();
+    await expect(pinBtn).toBeVisible();
+    await pinBtn.click();
+    // 固定を外すボタンに変わる
+    await expect(page.getByRole("button", { name: "固定を外す" }).first()).toBeVisible();
+    // プロフィールの投稿一覧に「固定」バッジが出る
+    await page.goto("/me");
+    await expect(page.locator(".thumbs .badge", { hasText: "固定" }).first()).toBeVisible();
+  });
+});

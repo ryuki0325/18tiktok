@@ -264,7 +264,7 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
       {sheet?.kind === "comment" && <CommentSheet card={sheet.card} loggedIn={loggedIn} onClose={() => setSheet(null)} onPosted={() => patch(sheet.card.id, (x) => ({ comments: x.comments + 1 }))} />}
       {sheet?.kind === "share" && <ShareSheet card={sheet.card} onClose={() => setSheet(null)} />}
       {sheet?.kind === "more" && (
-        <MoreSheet card={sheet.card} rate={rate} onClose={() => setSheet(null)} onShare={() => share(sheet.card)} onNotInterested={() => notInterested(sheet.card)}
+        <MoreSheet card={sheet.card} rate={rate} loggedIn={loggedIn} onClose={() => setSheet(null)} onShare={() => share(sheet.card)} onNotInterested={() => notInterested(sheet.card)}
           onHideCreator={() => block(sheet.card)} onReport={() => setSheet({ kind: "report", card: sheet.card })} onRate={changeRate} />
       )}
       {fs && <FullscreenView card={fs.card} startAt={fs.t} muted={muted} rate={rate} onClose={closeFullscreen} />}

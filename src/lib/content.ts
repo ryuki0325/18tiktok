@@ -24,6 +24,8 @@ export type VideoCard = {
   /** 投稿の種類。photo なら images を写真として横スワイプで見せる */
   kind: "video" | "photo";
   images: { url: string; w: number; h: number }[] | null;
+  /** プロフィール上部に固定しているか */
+  pinned: boolean;
 };
 
 type Opts = {
@@ -69,7 +71,7 @@ export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublis
       liked: liked.has(v.id), saved: saved.has(v.id), following: fol.has(v.creatorId),
       publishedAt: v.publishedAt?.toISOString() ?? null, commentsEnabled: v.commentsEnabled,
       src: v.mediaStatus === "ready" ? v.playbackUrl : null, poster: v.thumbnailUrl, width: v.width, height: v.height, category: v.category, intensity: v.intensity, status: v.status,
-      kind: v.kind, images: v.images,
+      kind: v.kind, images: v.images, pinned: !!v.pinnedAt,
     };
     return [v.id, card];
   }));
@@ -103,15 +105,42 @@ export async function feed(tab: FeedTab, o: Opts, limit = 20, offset = 0): Promi
     idRows = idRows.filter((r) => f.has(r.creatorId));
     return hydrate(idRows.slice(offset, offset + limit).map((r) => r.id), o, d);
   }
+  // すでに見た動画は「おすすめ」では下げる（毎回同じ動画が続かないように）。ログイン中だけ
+  let watched = new Set<string>();
+  if (o.userId) {
+    watched = new Set((await d.select({ id: s.watchHistory.videoId }).from(s.watchHistory).where(eq(s.watchHistory.userId, o.userId))).map((r) => r.id));
+  }
   const cards = await hydrate(idRows.map((r) => r.id), o, d);
   const formula = await getSetting("ranking.popular_formula", d);
   const age = (c: VideoCard) => (Date.now() - new Date(c.publishedAt ?? Date.now()).getTime()) / 3600_000;
   const pop = (c: VideoCard) =>
     (formula.wViews * Math.log1p(c.views) + formula.wClicks * Math.log1p(c.clicks) + formula.wLikes * Math.log1p(c.likes)) * 0.5 ** (age(c) / (formula.halfLifeHours * 4));
   const pref = new Set(o.preferredTags ?? []);
-  const rec = (c: VideoCard) => (1 + c.tags.filter((t) => pref.has(t)).length * 0.6 + (c.following ? 0.5 : 0)) * 0.5 ** (age(c) / 72) + pop(c) * 0.02;
-  const score = tab === "popular" ? pop : rec;
-  return cards.sort((a, b) => score(b) - score(a)).slice(offset, offset + limit);
+  // ゆらぎは「視聴者 × 動画 × 日付」で決まる固定値にする。
+  // こうすると同じ読み込み中（ページ送り）では並びが安定し、日が変わると変化する。
+  const dayBucket = Math.floor(Date.now() / 86400_000);
+  const jitterOf = (id: string) => {
+    let h = 2166136261;
+    for (const ch of `${o.viewerKey}|${id}|${dayBucket}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+    return 0.85 + ((h >>> 0) % 1000) / 1000 * 0.3; // 0.85〜1.15
+  };
+  // おすすめ：好みのタグ・フォロー・新しさ・人気に、少しのゆらぎを足し、見た動画は強く下げる
+  const rec = (c: VideoCard) => {
+    const base = (1 + c.tags.filter((t) => pref.has(t)).length * 0.6 + (c.following ? 0.6 : 0)) * 0.5 ** (age(c) / 72) + pop(c) * 0.02;
+    return base * jitterOf(c.id) * (watched.has(c.id) ? 0.12 : 1);
+  };
+  const score = tab === "popular" ? (c: VideoCard) => pop(c) * (watched.has(c.id) ? 0.4 : 1) : rec;
+  const sorted = cards.sort((a, b) => score(b) - score(a));
+  // 同じ投稿者が連続しないように散らす（多様性）。先頭から、直前と同じ投稿者なら後ろの別人を繰り上げる
+  const spread: VideoCard[] = [];
+  const pool = [...sorted];
+  while (pool.length) {
+    const last = spread[spread.length - 1]?.creator.id;
+    let i = pool.findIndex((c) => c.creator.id !== last);
+    if (i < 0) i = 0;
+    spread.push(pool.splice(i, 1)[0]);
+  }
+  return spread.slice(offset, offset + limit);
 }
 
 export async function videosByTag(tag: string, o: Opts) {

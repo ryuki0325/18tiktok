@@ -27,6 +27,8 @@ export function MeMenu({ isCreator, isAdmin }: { isCreator: boolean; isAdmin: bo
   const rows: Row[] = [
     ...creator,
     ["user", "プロフィールを編集", "/me/edit"],
+    ["bookmark", "コレクション", "/collections"],
+    ["gauge", "視聴履歴", "/history"],
     ["bell", "お知らせ", "/notifications"],
     ["palette", "アプリの見た目", "/settings/theme"],
     ["sliders", "設定とプライバシー", "/settings"],

@@ -63,3 +63,38 @@ test("メール未確認でもコメントできる（投稿と同じく確認�
   await page.getByRole("button", { name: "送信" }).click();
   await expect(page.getByText(body).first()).toBeVisible();
 });
+
+test("視聴履歴：見た動画が並び、消せる", async ({ page }) => {
+  await passGate(page);
+  const h = "hist_" + Date.now().toString().slice(-6);
+  await signup(page, h);
+  // 動画を1本見る（再生イベントを発生させる）
+  await page.goto("/");
+  const first = page.locator(".item.active");
+  await expect(first).toBeVisible();
+  await page.waitForTimeout(2500); // 視聴としてカウントされる
+  await page.goto("/history");
+  await expect(page.locator(".thumbs .thumb").first()).toBeVisible();
+  // すべて消す
+  await page.getByRole("button", { name: "履歴をすべて消す" }).click();
+  await expect(page.getByText("視聴履歴はまだありません")).toBeVisible();
+});
+
+test("コレクション：作成して、動画を入れて、一覧に出る", async ({ page }) => {
+  await passGate(page);
+  const h = "col_" + Date.now().toString().slice(-6);
+  await signup(page, h);
+  await page.goto("/collections");
+  const name = `あとで見る${Date.now() % 10000}`;
+  await page.getByLabel("コレクション名").fill(name);
+  await page.getByRole("button", { name: "作成" }).click();
+  await expect(page.getByText(name)).toBeVisible();
+  // フィードの「…」→ コレクション → そのコレクションに追加
+  await page.goto("/");
+  await page.locator(".item.active").getByRole("button", { name: "その他" }).click();
+  await page.getByRole("button", { name: "コレクション" }).click();
+  const row = page.locator(".sheet .row", { hasText: name });
+  await expect(row).toBeVisible();
+  await row.click();
+  await expect(row).toHaveAttribute("aria-pressed", "true");
+});
