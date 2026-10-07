@@ -37,6 +37,17 @@ services:
       # Bunny の Webhook にかける鍵。Bunny 側の Webhook URL の末尾に ?t=（この値）を付ける
       - key: BUNNY_WEBHOOK_SECRET
         generateValue: true
+      # 写真の保存・配信（Bunny Storage）。4つ入れると写真が Bunny に保存され、再起動でも消えない
+      - key: BUNNY_STORAGE_ZONE
+        sync: false
+      - key: BUNNY_STORAGE_API_KEY
+        sync: false
+      # 保存エンドポイント。地域により sg.storage.bunnycdn.com 等（未設定なら storage.bunnycdn.com）
+      - key: BUNNY_STORAGE_HOST
+        sync: false
+      # 配信に使う Pull Zone のホスト（xxxx.b-cdn.net）
+      - key: BUNNY_STORAGE_CDN_HOST
+        sync: false
       # 通知メール（Resend）。3つとも入れると、審査結果や措置の知らせがメールでも届く
       - key: MAIL_PROVIDER
         value: resend

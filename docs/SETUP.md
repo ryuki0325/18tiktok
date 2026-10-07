@@ -52,20 +52,35 @@
 - 設定前は投稿画面の「動画」が「準備中」表示になります（写真は保存先に関係なく使えます）。
 - 管理画面 → 設定 → 「動画の保存・配信」の **接続を確認する** で疎通を確かめられます。
 
-## 3. 写真（サーバー保存・要 有料ディスク）
+## 3. 写真
 
-写真は Bunny ではなく**このアプリのサーバー**（`/media/photos/...`）に保存します。
-Render の通常インスタンスはディスクが揮発性のため、**再起動で写真が消えます**。
+写真の保存先は2通り。**本番は Bunny Storage を推奨**（Renderの有料ディスク不要・CDN配信・再起動で消えない）。
+
+### 3-A. Bunny Storage（推奨）
+
+1. Bunny で **Storage Zone** を作る（地域を選ぶ）。
+2. その Storage Zone に **Pull Zone を接続**する（配信用。`xxxx.b-cdn.net` ができる）。
+3. Render の Environment に4つ入れる：
+   - `BUNNY_STORAGE_ZONE`（Storage Zone 名）
+   - `BUNNY_STORAGE_API_KEY`（Storage の Password／FTP & API Access の Password）
+   - `BUNNY_STORAGE_HOST`（地域のエンドポイント。例：`sg.storage.bunnycdn.com`。未設定なら `storage.bunnycdn.com`）
+   - `BUNNY_STORAGE_CDN_HOST`（接続した Pull Zone のホスト。`xxxx.b-cdn.net`）
+4. 4つそろうと、写真は自動で Bunny Storage に保存・配信されます（推測できないUUIDのパス）。
+
+### 3-B. このアプリのサーバーに保存（開発・小規模向け・要 有料ディスク）
+
+Bunny Storage を設定しない場合は**このアプリのサーバー**（`/media/photos/...`）に保存します。
+Render の通常インスタンスはディスクが揮発性のため、**再起動・デプロイで写真が消えます**。
 
 1. Render のサービスに **Disk（永続ディスク）** を追加する（有料）。
 2. マウント先を決め、Render の Environment に `MEDIA_DIR` を
    そのマウント先＋`/media`（例：`/data/media`）に設定する。
-3. 必要なら枚数・サイズの上限を調整：
-   - `UPLOAD_MAX_IMAGES`（1投稿の枚数、既定30）
-   - `UPLOAD_MAX_IMAGE_MB`（1枚の上限MB、既定6）
 
-> 将来、写真もCDN配信にしたくなったら Bunny Storage への切り替え口を用意できます
-> （今はサーバー保存のみ）。
+### 共通：枚数・サイズの上限（任意）
+- `UPLOAD_MAX_IMAGES`（1投稿の枚数、既定30）
+- `UPLOAD_MAX_IMAGE_MB`（1枚の上限MB、既定6）
+
+> ⚠️ 成人向けコンテンツを置けるかは、保存先サービスの利用規約を必ずご確認ください（専門家確認が必要）。
 
 ## 4. メール（Resend）
 
