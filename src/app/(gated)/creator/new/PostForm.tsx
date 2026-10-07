@@ -102,6 +102,16 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
   // 下書きは、動画さえ送れていれば保存できる
   const canDraft = hasVideo && !pending;
 
+  // 投稿に足りていない項目を、分かりやすく画面に出すためのリスト
+  const missing = [
+    !hasVideo && (isPhoto ? "写真を選ぶ" : "動画を選ぶ"),
+    !cat && "ジャンルを選ぶ",
+    caption.trim().length === 0 && "説明を書く",
+    sel.length === 0 && "タグを1つ以上つける",
+    (!destId || linkUrl.trim().length === 0) && "「完全版を見る」のリンクを入れる",
+    !(checks.c1 && checks.c2 && checks.c3 && checks.c4) && "確認事項にすべてチェックする",
+  ].filter(Boolean) as string[];
+
   const toggleTag = (t: string) =>
     setSel((s) => (s.includes(t) ? s.filter((x) => x !== t) : s.length < MAX_TAGS ? [...s, t] : s));
 
@@ -340,6 +350,21 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
           </span>
           <span className="cap" style={{ marginTop: 4 }}>同意の内容と日時は、変更できない記録として保存されます。虚偽の同意は、アカウント停止・法的措置の対象になります。</span>
         </div>
+
+        {/* 足りない項目を、投稿ボタンの手前にはっきり出す */}
+        {!pending && missing.length > 0 && (
+          <div className="notice warn" role="status" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+            <b style={{ fontSize: 14 }}>投稿するには、あと{missing.length}つ必要です</b>
+            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
+              {missing.map((m) => (
+                <li key={m} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14 }}>
+                  <span aria-hidden style={{ color: "var(--bad)", fontWeight: 800 }}>✕</span>
+                  <span>{m}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <FormMessage state={state} />
       </div>
