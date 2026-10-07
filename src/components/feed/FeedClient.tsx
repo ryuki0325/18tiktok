@@ -13,6 +13,7 @@ import { ReportSheet } from "../ReportSheet";
 import { FeedVideo, loadHls } from "./FeedVideo";
 import { PhotoCarousel } from "./PhotoCarousel";
 import { FullscreenView } from "./FullscreenView";
+import { PhotoFullscreen } from "./PhotoFullscreen";
 import { usePager } from "./usePager";
 
 type Sheet = { kind: "report" | "comment" | "share" | "more"; card: VideoCard } | null;
@@ -48,6 +49,7 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
   const rate = rateOverride ?? storedRate;
   const [paused, setPaused] = useState<Record<string, boolean>>({});
   const [fs, setFs] = useState<{ card: VideoCard; t: number } | null>(null);
+  const [photoFs, setPhotoFs] = useState<{ images: { url: string; w: number; h: number }[] } | null>(null);
   const searchFocus = useRef<HTMLInputElement>(null);
   const [uiHidden, setUiHidden] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -93,7 +95,8 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
       lt.timer = setTimeout(() => setPaused((p) => ({ ...p, [c.id]: !p[c.id] })), DOUBLE_TAP_MS);
     },
     onLongPress: (down) => setUiHidden(down),
-    onSwipeLeft: (i) => { const c = cardsRef.current[i]; if (c) router.push(`/u/${encodeURIComponent(c.creator.handle)}`); },
+    // 横スワイプは写真の送り専用にする。投稿者ページはアイコンのタップで開く
+
     onRefresh: refresh,
   }, { disabled: !!sheet || !!fs });
 
@@ -216,7 +219,9 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
                       <button className={c.liked ? "on" : ""} aria-pressed={c.liked} aria-label="いいね" onClick={() => like(c)}><span className="hit"><Icon name="heart" size={30} filled={c.liked} /></span><span className="num">{fmt(c.likes)}</span></button>
                       <button aria-label="コメント" onClick={() => setSheet({ kind: "comment", card: c })}><span className="hit"><Icon name="msg" size={28} /></span><span className="num">{fmt(c.comments)}</span></button>
                       <button className={c.saved ? "on" : ""} aria-pressed={c.saved} aria-label="保存" onClick={() => save(c)}><span className="hit"><Icon name="bookmark" size={28} filled={c.saved} /></span><span>保存</span></button>
-                      {c.kind !== "photo" && <button aria-label="全画面で見る" onClick={() => openFullscreen(c)}><span className="hit"><Icon name="expand" size={26} /></span><span>全画面</span></button>}
+                      {c.kind === "photo"
+                        ? (c.images?.length ? <button aria-label="全画面で見る" onClick={() => setPhotoFs({ images: c.images! })}><span className="hit"><Icon name="expand" size={26} /></span><span>全画面</span></button> : null)
+                        : <button aria-label="全画面で見る" onClick={() => openFullscreen(c)}><span className="hit"><Icon name="expand" size={26} /></span><span>全画面</span></button>}
                       <button aria-label="その他" onClick={() => setSheet({ kind: "more", card: c })}><span className="hit"><Icon name="more" size={28} /></span></button>
                     </div>
                     <div className={`vinfo${expanded === c.id ? " open" : ""}`}>
@@ -268,6 +273,7 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
           onHideCreator={() => block(sheet.card)} onReport={() => setSheet({ kind: "report", card: sheet.card })} onRate={changeRate} />
       )}
       {fs && <FullscreenView card={fs.card} startAt={fs.t} muted={muted} rate={rate} onClose={closeFullscreen} />}
+      {photoFs && <PhotoFullscreen images={photoFs.images} onClose={() => setPhotoFs(null)} />}
     </div>
   );
 }

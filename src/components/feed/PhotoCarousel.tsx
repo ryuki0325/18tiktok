@@ -37,8 +37,10 @@ export function PhotoCarousel({ images, active }: {
       </div>
       {images.length > 1 && (
         <div className="photo-dots" aria-hidden="true">
-          {images.map((_, i) => <span key={i} className={i === at ? "on" : ""} />)}
           <span className="photo-count">{at + 1}/{images.length}</span>
+          <div className="photo-dotrow">
+            {images.map((_, i) => <span key={i} className={i === at ? "on" : ""} />)}
+          </div>
         </div>
       )}
       {!active && <div className="photo-pausehint" aria-hidden="true" />}

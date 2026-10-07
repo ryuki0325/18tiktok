@@ -377,6 +377,10 @@ test.describe("動画のアップロードと配信", () => {
     await expect(page.locator(".item.active .photo-slide img")).toHaveCount(2);
     await expect(page.locator(".item.active").getByRole("button", { name: "いいね" })).toBeVisible();
     await expect(page.locator(".item.active .photo-dots")).toBeVisible();
+    // 「全画面で見る」ボタンで、写真を切らずに全体表示できる
+    await page.locator(".item.active").getByRole("button", { name: "全画面で見る" }).click();
+    await expect(page.locator(".photo-fs")).toBeVisible();
+    await expect(page.locator(".photo-fs-slide img")).toHaveCount(2);
   });
 
   test("写真の下書き：保存して、続きから開くと写真が戻る", async ({ page }) => {
