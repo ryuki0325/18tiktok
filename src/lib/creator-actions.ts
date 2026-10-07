@@ -122,8 +122,8 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
   if (kind === "photo") {
     try {
       const raw = JSON.parse(String(form.get("images") ?? "[]")) as { url: string; w: number; h: number }[];
-      const ok = Array.isArray(raw) && raw.every((x) => typeof x.url === "string"
-        && new RegExp(`^/media/photos/${u.id}/[0-9a-f-]+\\.jpg$`).test(x.url)
+      const { isOwnImageUrl } = await import("./media");
+      const ok = Array.isArray(raw) && raw.every((x) => isOwnImageUrl(u.id, x.url)
         && Number.isInteger(x.w) && Number.isInteger(x.h));
       if (!ok) return { error: "画像が正しくありません。選び直してください" };
       images = raw;

@@ -58,6 +58,21 @@ const bunnyStorageEnv = () => {
 /** 写真を Bunny Storage に置くかどうか */
 export const photosOnBunny = () => !!bunnyStorageEnv();
 
+/**
+ * その画像URLが「自分が保存した写真」の形かどうか。
+ * ローカル保存（/media/photos/...）と Bunny Storage（設定した配信ホスト）の両方を受け付ける。
+ */
+export function isOwnImageUrl(userId: string, url: string): boolean {
+  if (typeof url !== "string") return false;
+  if (new RegExp(`^/media/photos/${userId}/[0-9a-f-]+\\.jpg$`).test(url)) return true;
+  const b = bunnyStorageEnv();
+  if (b) {
+    const host = b.cdn.replace(/[.]/g, "\\.");
+    if (new RegExp(`^https://${host}/photos/${userId}/[0-9a-f-]+\\.jpg$`).test(url)) return true;
+  }
+  return false;
+}
+
 /** data URL（端末で縮めたJPEG）を1枚保存し、配信URLを返す */
 export async function saveImage(userId: string, dataUrl: string, w: number, h: number): Promise<{ url: string; w: number; h: number } | { error: string }> {
   const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
