@@ -8,7 +8,7 @@ import { comments, creatorProfiles, destinations, featuredSlots, moderationCases
 import { adminOrNull, authenticate, createSession, currentUser, isAdminRole, markMfaVerified } from "./auth";
 import { clientIpHash, rateLimit } from "./http";
 import { audit } from "./ledger";
-import { addDomain, removeDomain, reviewVideo } from "./moderation";
+import { addDomain, removeDomain } from "./moderation";
 import { closeCase, emergencyAction, restoreTarget, sanction, SANCTION_LABEL, type EmergencyAction } from "./safety";
 import { setSetting, type SettingKey } from "./settings";
 import { newTotpSecret, otpauthUri, verifyTotp } from "./totp";
@@ -53,15 +53,6 @@ export async function mfaVerifyAction(_: FormState, form: FormData): Promise<For
   await markMfaVerified();
   await audit(conn, u.id, u.totpEnabled ? "admin.login" : "admin.totp_enabled", "user", u.id);
   redirect("/admin");
-}
-
-/* ---------- 審査 ---------- */
-export async function reviewAction(form: FormData) {
-  const a = await need(["reviewer"]);
-  const approve = str(form, "decision") === "approve";
-  // 差し戻し理由のセレクトは承認時にも送られてくるので、承認のときは使わない
-  await reviewVideo(await db(), a.id, str(form, "id"), approve ? "approve" : "reject", approve ? "" : str(form, "note"));
-  revalidatePath("/admin/reviews");
 }
 
 export async function creatorDecisionAction(form: FormData) {

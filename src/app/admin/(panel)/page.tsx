@@ -24,13 +24,12 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
   const c = sql<number>`count(*)::int`;
   const one = async (q: Promise<{ n: number }[]>) => (await q)[0]?.n ?? 0;
 
-  const [critical, openCases, pendingReview, openReports, overdue, deleted, suspended, v24, k24, pub, incidents] = await Promise.all([
+  const [critical, openCases, openReports, overdue, deleted, suspended, v24, k24, pub, incidents] = await Promise.all([
     // 緊急案件は中身まで出す
     conn.select().from(moderationCases)
       .where(and(eq(moderationCases.priority, "critical"), inArray(moderationCases.status, ["open", "in_progress"])))
       .orderBy(asc(moderationCases.dueAt), asc(moderationCases.createdAt)).limit(10),
     one(conn.select({ n: c }).from(moderationCases).where(inArray(moderationCases.status, ["open", "in_progress"]))),
-    one(conn.select({ n: c }).from(videos).where(eq(videos.status, "pending_review"))),
     one(conn.select({ n: c }).from(reports).where(inArray(reports.status, ["open", "in_progress"]))),
     one(conn.select({ n: c }).from(moderationCases).where(and(inArray(moderationCases.status, ["open", "in_progress"]), sql`${moderationCases.dueAt} < now()`))),
     one(conn.select({ n: c }).from(videos).where(eq(videos.status, "deleted"))),
@@ -47,7 +46,6 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
   const queue: [string, number, string, boolean][] = [
     ["未処理の案件", openCases, "/admin/cases", openCases > 0],
     ["未対応の通報", openReports, "/admin/cases", openReports > 0],
-    ["手動審査待ちの動画", pendingReview, "/admin/reviews", pendingReview > 0],
     ["期限を過ぎた案件", overdue, "/admin/cases", overdue > 0],
     ["停止中の利用者", suspended, "/admin/users", false],
     ["削除済みの動画", deleted, "/admin/videos", false],

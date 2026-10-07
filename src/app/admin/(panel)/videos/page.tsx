@@ -11,7 +11,7 @@ import { EmergencyButtons } from "../EmergencyButtons";
 export const metadata = { title: "動画" };
 
 const TABS: [string, string][] = [
-  ["published", "公開中"], ["hidden", "非公開"], ["pending_review", "審査待ち"], ["rejected", "差し戻し"], ["deleted", "削除済み"], ["all", "すべて"],
+  ["published", "公開中"], ["hidden", "非公開"], ["deleted", "削除済み"], ["all", "すべて"],
 ];
 
 /** 動画の一覧と、ワンクリックの非公開・削除 */
