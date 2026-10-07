@@ -180,19 +180,37 @@ export const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 /**
  * 「…」メニュー：共有・興味がない・通報・動画速度設定をここにまとめる
  */
-export function MoreSheet({ card, rate, loggedIn, onClose, onShare, onNotInterested, onHideCreator, onReport, onRate }: {
-  card: VideoCard; rate: number; loggedIn: boolean; onClose: () => void; onShare: () => void; onNotInterested: () => void; onHideCreator: () => void; onReport: () => void; onRate: (r: number) => void;
+export function MoreSheet({ card, rate, loggedIn, mine, onClose, onShare, onNotInterested, onHideCreator, onReport, onRate, onHidePost, onDeletePost }: {
+  card: VideoCard; rate: number; loggedIn: boolean; mine: boolean; onClose: () => void; onShare: () => void; onNotInterested: () => void; onHideCreator: () => void; onReport: () => void; onRate: (r: number) => void;
+  onHidePost: () => void; onDeletePost: () => void;
 }) {
-  const [view, setView] = useState<"main" | "ni" | "speed" | "collect">("main");
+  const [view, setView] = useState<"main" | "ni" | "speed" | "collect" | "delete">("main");
+  const isPhoto = card.kind === "photo";
   return (
-    <Sheet title={view === "speed" ? "動画速度" : view === "ni" ? "興味がない" : view === "collect" ? "コレクションに追加" : "その他"} onClose={onClose}>
+    <Sheet title={view === "speed" ? "動画速度" : view === "ni" ? "興味がない" : view === "collect" ? "コレクションに追加" : view === "delete" ? "削除の確認" : "その他"} onClose={onClose}>
       {view === "main" && (
-        <div className="acts" role="group" aria-label="操作">
-          <button onClick={onShare}><span className="ic"><Icon name="share" size={24} /></span>共有</button>
-          {loggedIn && <button onClick={() => setView("collect")}><span className="ic"><Icon name="bookmark" size={24} /></span>コレクション</button>}
-          <button onClick={() => setView("ni")}><span className="ic"><Icon name="eyeoff" size={24} /></span>興味がない</button>
-          <button onClick={onReport}><span className="ic bad"><Icon name="flag" size={24} /></span>通報</button>
-          <button onClick={() => setView("speed")}><span className="ic"><Icon name="gauge" size={24} /></span>動画速度<small className="num">{rate}x</small></button>
+        <>
+          {mine && (
+            // 自分の投稿のときは、非公開・削除をいちばん上に出す
+            <div className="list" style={{ background: "var(--surface-2)", marginBottom: 12 }}>
+              <button className="row" onClick={onHidePost}><Icon name="eyeoff" size={20} /><span className="grow">非公開にする<span className="cap" style={{ display: "block" }}>自分だけが見られる状態にします（あとで公開に戻せます）</span></span></button>
+              <button className="row" onClick={() => setView("delete")}><span style={{ color: "var(--bad)", display: "inline-flex" }}><Icon name="trash" size={20} /></span><span className="grow" style={{ color: "var(--bad)" }}>削除する<span className="cap" style={{ display: "block" }}>この{isPhoto ? "写真" : "動画"}を完全に削除します</span></span></button>
+            </div>
+          )}
+          <div className="acts" role="group" aria-label="操作">
+            <button onClick={onShare}><span className="ic"><Icon name="share" size={24} /></span>共有</button>
+            {loggedIn && <button onClick={() => setView("collect")}><span className="ic"><Icon name="bookmark" size={24} /></span>コレクション</button>}
+            {!mine && <button onClick={() => setView("ni")}><span className="ic"><Icon name="eyeoff" size={24} /></span>興味がない</button>}
+            {!mine && <button onClick={onReport}><span className="ic bad"><Icon name="flag" size={24} /></span>通報</button>}
+            {!isPhoto && <button onClick={() => setView("speed")}><span className="ic"><Icon name="gauge" size={24} /></span>動画速度<small className="num">{rate}x</small></button>}
+          </div>
+        </>
+      )}
+      {view === "delete" && (
+        <div className="list" style={{ background: "var(--surface-2)" }}>
+          <p style={{ padding: "4px 14px 10px", margin: 0, fontSize: 14 }}>この{isPhoto ? "写真" : "動画"}を削除します。元に戻せません。よろしいですか？</p>
+          <button className="row" onClick={onDeletePost}><span style={{ color: "var(--bad)", display: "inline-flex" }}><Icon name="trash" size={20} /></span><span className="grow" style={{ color: "var(--bad)", fontWeight: 700 }}>削除する</span></button>
+          <button className="row" onClick={() => setView("main")}><Icon name="back" size={20} /><span className="grow">やめる</span></button>
         </div>
       )}
       {view === "collect" && <CollectPicker videoId={card.id} />}

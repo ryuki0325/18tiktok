@@ -595,7 +595,8 @@ html.standalone .pager { touch-action: none; }
 .photo-rail { position: absolute; inset: 0; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; touch-action: pan-x; }
 .photo-rail::-webkit-scrollbar { display: none; }
 .photo-slide { position: relative; flex: 0 0 100%; width: 100%; height: 100%; scroll-snap-align: center; }
-.photo-slide .fv { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+/* 写真は無理に画面いっぱいにせず、切らずに全体を見せる（横長はそのまま横長で表示） */
+.photo-slide .fv { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
 .photo-dots { position: absolute; left: 0; right: 0; bottom: calc(var(--nav-h, 56px) + 96px); display: flex; flex-direction: column; gap: 7px; align-items: center; justify-content: center; z-index: 3; pointer-events: none; }
 .photo-dotrow { display: flex; gap: 6px; align-items: center; }
 .photo-dotrow span { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.4); }

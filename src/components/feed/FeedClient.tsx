@@ -14,6 +14,7 @@ import { FeedVideo, loadHls } from "./FeedVideo";
 import { PhotoCarousel } from "./PhotoCarousel";
 import { FullscreenView } from "./FullscreenView";
 import { PhotoFullscreen } from "./PhotoFullscreen";
+import { myVideoAction } from "@/lib/creator-actions";
 import { usePager } from "./usePager";
 
 type Sheet = { kind: "report" | "comment" | "share" | "more"; card: VideoCard } | null;
@@ -159,6 +160,21 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
     const r = await api(`/api/v1/videos/${c.id}/not-interested`, { method: "PUT" });
     toast(r.ok ? "この動画を今後おすすめしません" : "設定できませんでした");
   };
+  // 自分の投稿を、フィードの「…」から非公開・削除する
+  const hideMyPost = async (c: VideoCard) => {
+    setSheet(null);
+    setCards((cs) => cs.filter((x) => x.id !== c.id));
+    const fd = new FormData(); fd.set("id", c.id); fd.set("op", "hide");
+    try { await myVideoAction(fd); toast("非公開にしました（プロフィールから戻せます）"); }
+    catch { toast("設定できませんでした"); }
+  };
+  const deleteMyPost = async (c: VideoCard) => {
+    setSheet(null);
+    setCards((cs) => cs.filter((x) => x.id !== c.id));
+    const fd = new FormData(); fd.set("id", c.id); fd.set("op", "delete");
+    try { await myVideoAction(fd); toast("削除しました"); }
+    catch { toast("削除できませんでした"); }
+  };
   const share = async (c: VideoCard) => {
     const url = `${location.origin}/?v=${c.id}`;
     // スマホは OS の共有メニュー、使えない環境ではリンクのコピー画面
@@ -269,8 +285,9 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
       {sheet?.kind === "comment" && <CommentSheet card={sheet.card} loggedIn={loggedIn} onClose={() => setSheet(null)} onPosted={() => patch(sheet.card.id, (x) => ({ comments: x.comments + 1 }))} />}
       {sheet?.kind === "share" && <ShareSheet card={sheet.card} onClose={() => setSheet(null)} />}
       {sheet?.kind === "more" && (
-        <MoreSheet card={sheet.card} rate={rate} loggedIn={loggedIn} onClose={() => setSheet(null)} onShare={() => share(sheet.card)} onNotInterested={() => notInterested(sheet.card)}
-          onHideCreator={() => block(sheet.card)} onReport={() => setSheet({ kind: "report", card: sheet.card })} onRate={changeRate} />
+        <MoreSheet card={sheet.card} rate={rate} loggedIn={loggedIn} mine={!!myId && sheet.card.creator.id === myId} onClose={() => setSheet(null)} onShare={() => share(sheet.card)} onNotInterested={() => notInterested(sheet.card)}
+          onHideCreator={() => block(sheet.card)} onReport={() => setSheet({ kind: "report", card: sheet.card })} onRate={changeRate}
+          onHidePost={() => hideMyPost(sheet.card)} onDeletePost={() => deleteMyPost(sheet.card)} />
       )}
       {fs && <FullscreenView card={fs.card} startAt={fs.t} muted={muted} rate={rate} onClose={closeFullscreen} />}
       {photoFs && <PhotoFullscreen images={photoFs.images} onClose={() => setPhotoFs(null)} />}
