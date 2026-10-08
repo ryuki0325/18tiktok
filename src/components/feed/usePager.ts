@@ -43,7 +43,9 @@ export function usePager(count: number, handlers: PagerHandlers, opts: { disable
     longTimer: 0 as unknown as ReturnType<typeof setTimeout>, pointerId: -1,
     wheelAcc: 0, wheelLock: false, wheelTimer: 0 as unknown as ReturnType<typeof setTimeout>, refreshing: false,
     noH: false,
-    rail: null as HTMLElement | null, railScroll: 0, // 写真の横スワイプ用（data-hswipe の要素を直接スクロール）
+    // 写真の横スワイプ用：data-hswipe の中の .photo-track を transform で動かす
+    rail: null as HTMLElement | null, track: null as HTMLElement | null,
+    railW: 0, railAt: 0, railCount: 1, startT: 0,
   });
   const h = useRef(handlers);
   const countRef = useRef(count);
@@ -162,7 +164,11 @@ export function usePager(count: number, handlers: PagerHandlers, opts: { disable
       const stack = typeof document !== "undefined" ? document.elementsFromPoint(e.clientX, e.clientY) : [];
       st.rail = (stack.find((n) => (n as HTMLElement).matches?.("[data-hswipe]")) as HTMLElement | undefined) ?? null;
       st.noH = !!st.rail;
-      st.railScroll = st.rail?.scrollLeft ?? 0;
+      st.track = st.rail?.querySelector<HTMLElement>(".photo-track") ?? null;
+      st.railW = st.rail?.clientWidth ?? 0;
+      st.railAt = Number(st.rail?.dataset.at ?? 0);
+      st.railCount = Number(st.rail?.dataset.count ?? 1);
+      st.startT = e.timeStamp;
       st.samples = [{ y: e.clientY, t: e.timeStamp }];
       clearTimeout(st.longTimer);
       st.longTimer = setTimeout(() => {
@@ -179,16 +185,20 @@ export function usePager(count: number, handlers: PagerHandlers, opts: { disable
           try { el.setPointerCapture(e.pointerId); } catch {}
         } else if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) {
           st.mode = "h"; clearTimeout(st.longTimer);
-          // 写真列の上なら、ブラウザのスナップを一旦切って指に合わせて動かす
-          if (st.rail) { try { el.setPointerCapture(e.pointerId); } catch {}; st.rail.style.scrollSnapType = "none"; }
+          if (st.track) { try { el.setPointerCapture(e.pointerId); } catch {}; st.track.style.transition = "none"; }
         } else return;
       }
-      // 写真の横スワイプ：その写真列を指の動きぶんスクロールさせる
+      // 写真の横スワイプ：写真トラックを指に合わせて transform で動かす（なめらか）
       if (st.mode === "h") {
-        if (st.rail) {
+        if (st.track && st.railW) {
           e.preventDefault();
-          const max = st.rail.scrollWidth - st.rail.clientWidth;
-          st.rail.scrollLeft = Math.max(0, Math.min(max, st.railScroll - dx));
+          const w = st.railW;
+          let px = -st.railAt * w + dx;
+          const min = -(st.railCount - 1) * w, max = 0;
+          // 端ではゴムのように抵抗
+          if (px > max) px = max + rubberBand(px - max, w);
+          else if (px < min) px = min - rubberBand(min - px, w);
+          st.track.style.transform = `translate3d(${px}px,0,0)`;
         }
         return;
       }
@@ -223,14 +233,22 @@ export function usePager(count: number, handlers: PagerHandlers, opts: { disable
         const vy = first && lastS.t - first.t > 0 ? (lastS.y - first.y) / (lastS.t - first.t) : 0;
         release(vy);
       } else if (mode === "h") {
-        if (st.rail) {
-          // 指を離したら、いちばん近い写真へスナップして止める
-          const w = Math.max(1, st.rail.clientWidth);
-          const i = Math.round(st.rail.scrollLeft / w);
-          st.rail.style.scrollSnapType = "";
-          st.rail.scrollTo({ left: i * w, behavior: "smooth" });
-        } else if (!st.noH && e.clientX - st.startX < -60 && Math.abs(e.clientY - st.startY) < 60) {
-          h.current.onSwipeLeft?.(st.index);
+        if (st.track && st.railW) {
+          // 指を離したら、動かした量と速さで「次の写真／今の写真」を決めてスナップ
+          const w = st.railW;
+          const dx = e.clientX - st.startX;
+          const dt = Math.max(1, e.timeStamp - st.startT);
+          const vx = dx / dt; // px/ms（左向きが負）
+          let target = st.railAt;
+          if (dx < -w * 0.2 || vx < -0.35) target = st.railAt + 1;
+          else if (dx > w * 0.2 || vx > 0.35) target = st.railAt - 1;
+          target = Math.max(0, Math.min(st.railCount - 1, target));
+          st.track.style.transition = "transform .3s cubic-bezier(.22,.61,.36,1)";
+          st.track.style.transform = `translate3d(${-target * w}px,0,0)`;
+          if (st.rail) {
+            st.rail.dataset.at = String(target);
+            st.rail.dispatchEvent(new CustomEvent("photoindex", { detail: target }));
+          }
         }
       } else if (mode === "long") {
         h.current.onLongPress?.(false);
