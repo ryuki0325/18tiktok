@@ -42,7 +42,7 @@ export default async function Collection({ params }: { params: Promise<{ id: str
         </details>
         {cards.length === 0
           ? <div className="prof-empty"><Icon name="bookmark" size={38} /><b>まだ空です</b><span className="cap">動画の「保存」を長押し、またはコレクションに追加から入れられます。</span></div>
-          : <ProfileGrid cards={cards} empty={null} />}
+          : <ProfileGrid cards={cards} empty={null} hrefFor={(c) => `/collections/${col.id}/feed?v=${c.id}`} />}
       </div>
     </div>
   );
