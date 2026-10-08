@@ -23,17 +23,27 @@ export default async function Links() {
   const conn = await db();
   const month = new Date(now - 30 * 86400_000);
 
-  const dests = await conn.select({
-    d: destinations,
-    links: sql<number>`(select count(*) from outbound_links ol where ol.destination_id = ${destinations.id} and ol.status = 'active')::int`,
-    clicks: sql<number>`(select count(*) from link_clicks lc where lc.destination_id = ${destinations.id} and lc.is_valid and lc.created_at >= ${month.toISOString()}::timestamptz)::int`,
-  }).from(destinations).orderBy(desc(destinations.createdAt));
+  // 送客先ごとの「稼働リンク数」「30日クリック数」は、相関サブクエリ（スキーマ修飾で不具合）を避けて
+  // それぞれ集計してからメモリ上で突き合わせる。
+  const [destRows, linkCountRows, destClickRows] = await Promise.all([
+    conn.select().from(destinations).orderBy(desc(destinations.createdAt)),
+    conn.select({ destinationId: outboundLinks.destinationId, n: sql<number>`count(*)::int` })
+      .from(outboundLinks).where(eq(outboundLinks.status, "active")).groupBy(outboundLinks.destinationId),
+    conn.select({ destinationId: linkClicks.destinationId, n: sql<number>`count(*)::int` })
+      .from(linkClicks).where(and(eq(linkClicks.isValid, true), gte(linkClicks.createdAt, month))).groupBy(linkClicks.destinationId),
+  ]);
+  const linkMap = new Map(linkCountRows.map((r) => [r.destinationId, r.n]));
+  const destClickMap = new Map(destClickRows.map((r) => [r.destinationId, r.n]));
+  const dests = destRows.map((d) => ({ d, links: linkMap.get(d.id) ?? 0, clicks: destClickMap.get(d.id) ?? 0 }));
 
-  const recent = await conn.select({
+  const recentRows = await conn.select({
     id: outboundLinks.id, url: outboundLinks.url, status: outboundLinks.status, title: videos.title, handle: users.handle,
-    clicks: sql<number>`(select count(*) from link_clicks lc where lc.link_id = ${outboundLinks.id} and lc.is_valid)::int`,
   }).from(outboundLinks).innerJoin(videos, eq(videos.id, outboundLinks.videoId)).innerJoin(users, eq(users.id, videos.creatorId))
     .orderBy(desc(outboundLinks.createdAt)).limit(40);
+  const linkClickRows = await conn.select({ linkId: linkClicks.linkId, n: sql<number>`count(*)::int` })
+    .from(linkClicks).where(eq(linkClicks.isValid, true)).groupBy(linkClicks.linkId);
+  const linkClickMap = new Map(linkClickRows.map((r) => [r.linkId, r.n]));
+  const recent = recentRows.map((l) => ({ ...l, clicks: linkClickMap.get(l.id) ?? 0 }));
 
   const [{ n: clicks30 }] = await conn.select({ n: sql<number>`count(*)::int` }).from(linkClicks)
     .where(and(gte(linkClicks.createdAt, month), eq(linkClicks.isValid, true)));

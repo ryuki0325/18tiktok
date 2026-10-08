@@ -97,7 +97,7 @@ export async function suggestedCreators(viewerId: string | null, limit = 10): Pr
   const d = await db();
   const rows = await d.select({
     id: s.users.id, handle: s.users.handle, displayName: s.users.displayName, avatarHue: s.users.avatarHue, avatarUrl: s.users.avatarUrl, bio: s.users.bio,
-    n: sql<number>`(select count(*) from follows f where f.creator_id = ${s.users.id})::int`.as("n"),
+    n: sql<number>`(select count(*) from follows f where f.creator_id = "users"."id")::int`.as("n"),
   }).from(s.users).innerJoin(s.creatorProfiles, eq(s.creatorProfiles.userId, s.users.id))
     .where(and(eq(s.creatorProfiles.status, "approved"), eq(s.users.status, "active")))
     .orderBy(desc(sql`"n"`)).limit(limit + 10);

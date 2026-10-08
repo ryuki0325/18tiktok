@@ -29,6 +29,6 @@ export async function myCollections(userId: string) {
   const conn = await db();
   return conn.select({
     id: collections.id, name: collections.name, createdAt: collections.createdAt,
-    count: sql<number>`(select count(*) from collection_items ci where ci.collection_id = ${collections.id})::int`,
+    count: sql<number>`(select count(*) from collection_items ci where ci.collection_id = "collections"."id")::int`,
   }).from(collections).where(eq(collections.userId, userId)).orderBy(desc(collections.createdAt));
 }

@@ -28,7 +28,7 @@ export default async function AdminVideos({ searchParams }: { searchParams: Prom
 
   const rows = await conn.select({
     v: videos, handle: users.handle,
-    reports: sql<number>`(select count(*) from reports r where r.target_id = ${videos.id} and r.status in ('open','in_progress'))::int`,
+    reports: sql<number>`(select count(*) from reports r where r.target_id = "videos"."id" and r.status in ('open','in_progress'))::int`,
   }).from(videos).innerJoin(users, eq(users.id, videos.creatorId))
     .where(where).orderBy(desc(videos.createdAt)).limit(60);
 

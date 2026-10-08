@@ -22,13 +22,13 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
   const where = q
     ? or(ilike(users.handle, `%${q}%`), ilike(users.displayName, `%${q}%`))
     : filter === "sanctioned" ? sql`${users.status} <> 'active' or ${users.postBannedUntil} > now() or ${users.commentBannedUntil} > now()`
-      : filter === "creators" ? sql`exists (select 1 from creator_profiles cp where cp.user_id = ${users.id} and cp.status = 'approved')`
+      : filter === "creators" ? sql`exists (select 1 from creator_profiles cp where cp.user_id = "users"."id" and cp.status = 'approved')`
         : undefined;
 
   const rows = await conn.select({
     u: users,
     creator: creatorProfiles.status,
-    sanctions: sql<number>`(select count(*) from user_sanctions sx where sx.user_id = ${users.id} and sx.kind <> 'lift')::int`,
+    sanctions: sql<number>`(select count(*) from user_sanctions sx where sx.user_id = "users"."id" and sx.kind <> 'lift')::int`,
   }).from(users).leftJoin(creatorProfiles, eq(creatorProfiles.userId, users.id))
     .where(where).orderBy(desc(users.createdAt)).limit(60);
 
