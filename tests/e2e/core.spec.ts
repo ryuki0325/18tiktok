@@ -377,6 +377,17 @@ test.describe("動画のアップロードと配信", () => {
     await expect(page.locator(".item.active .photo-slide img")).toHaveCount(2);
     await expect(page.locator(".item.active").getByRole("button", { name: "いいね" })).toBeVisible();
     await expect(page.locator(".item.active .photo-dots")).toBeVisible();
+    await expect(page.locator(".item.active .photo-count")).toHaveText("1/2");
+    // 横スワイプ（指で送る）で2枚目へ。操作レイヤーが上に重なっていても送れること
+    const rail = page.locator(".item.active .photo-rail");
+    const box = await rail.boundingBox();
+    if (!box) throw new Error("no rail");
+    const cy = box.y + box.height / 2;
+    await page.mouse.move(box.x + box.width * 0.8, cy);
+    await page.mouse.down();
+    for (let i = 1; i <= 12; i++) await page.mouse.move(box.x + box.width * 0.8 - i * (box.width * 0.6 / 12), cy);
+    await page.mouse.up();
+    await expect(page.locator(".item.active .photo-count")).toHaveText("2/2");
     // 「全画面で見る」ボタンで、写真を切らずに全体表示できる
     await page.locator(".item.active").getByRole("button", { name: "全画面で見る" }).click();
     await expect(page.locator(".photo-fs")).toBeVisible();

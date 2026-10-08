@@ -156,8 +156,11 @@ export function usePager(count: number, handlers: PagerHandlers, opts: { disable
       st.mode = "pending";
       st.pointerId = e.pointerId;
       st.startX = e.clientX; st.startY = e.clientY; st.startPos = st.pos;
-      // 写真の横スワイプ領域で始めた指は、その写真列を直接スクロールして送る
-      st.rail = (e.target as HTMLElement | null)?.closest?.("[data-hswipe]") as HTMLElement | null;
+      // 写真の横スワイプ領域で始めた指は、その写真列を直接スクロールして送る。
+      // 操作レイヤー(.ov)が写真の上に重なっているので、e.target ではなく
+      // タッチ座標の“下にある”要素を全部見て、写真列(data-hswipe)を拾う。
+      const stack = typeof document !== "undefined" ? document.elementsFromPoint(e.clientX, e.clientY) : [];
+      st.rail = (stack.find((n) => (n as HTMLElement).matches?.("[data-hswipe]")) as HTMLElement | undefined) ?? null;
       st.noH = !!st.rail;
       st.railScroll = st.rail?.scrollLeft ?? 0;
       st.samples = [{ y: e.clientY, t: e.timeStamp }];
