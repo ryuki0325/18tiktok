@@ -1,6 +1,5 @@
-import { and, eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { comments, creatorProfiles, destinations, moderationCases, outboundLinks, tags, takedownRequests } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { logoutAction } from "@/lib/account-actions";
 import { AdminNav } from "./AdminNav";
@@ -12,17 +11,17 @@ const ROLE: Record<string, string> = { super_admin: "スーパー管理者", rev
 export default async function PanelLayout({ children }: { children: React.ReactNode }) {
   const a = await requireAdmin();
   const conn = await db();
-  const n = async (q: Promise<{ n: number }[]>) => (await q)[0].n;
-  const c = sql<number>`count(*)::int`;
-  const [cases, creators, links, takedowns, cmts, pendingLinks, newTags] = await Promise.all([
-    n(conn.select({ n: c }).from(moderationCases).where(sql`${moderationCases.status} in ('open','in_progress')`)),
-    n(conn.select({ n: c }).from(creatorProfiles).where(eq(creatorProfiles.status, "pending"))),
-    n(conn.select({ n: c }).from(destinations).where(eq(destinations.status, "pending"))),
-    n(conn.select({ n: c }).from(takedownRequests).where(sql`${takedownRequests.status} in ('received','investigating')`)),
-    n(conn.select({ n: c }).from(comments).where(and(sql`${comments.status} in ('pending','hidden_by_report')`))),
-    n(conn.select({ n: c }).from(outboundLinks).where(eq(outboundLinks.status, "pending_domain_review"))),
-    n(conn.select({ n: c }).from(tags).where(eq(tags.status, "pending"))),
-  ]);
+  // ナビのバッジ用の件数は、1回の問い合わせでまとめて取る（往復・接続数を減らす）
+  const [badge] = await conn.select({
+    cases: sql<number>`(select count(*) from moderation_cases where status in ('open','in_progress'))::int`,
+    creators: sql<number>`(select count(*) from creator_profiles where status = 'pending')::int`,
+    links: sql<number>`(select count(*) from destinations where status = 'pending')::int`,
+    takedowns: sql<number>`(select count(*) from takedown_requests where status in ('received','investigating'))::int`,
+    cmts: sql<number>`(select count(*) from comments where status in ('pending','hidden_by_report'))::int`,
+    pendingLinks: sql<number>`(select count(*) from outbound_links where status = 'pending_domain_review')::int`,
+    newTags: sql<number>`(select count(*) from tags where status = 'pending')::int`,
+  }).from(sql`(select 1) as _one`);
+  const { cases, creators, links, takedowns, cmts, pendingLinks, newTags } = badge;
   return (
     <div className="admin">
       <aside>
