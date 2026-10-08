@@ -6,6 +6,7 @@ import { destinationAction } from "@/lib/admin-actions";
 import { requestTime } from "@/lib/settings";
 import { ago, fmt } from "@/components/format";
 import { EmergencyButtons } from "../EmergencyButtons";
+import { ConfirmButton } from "../ConfirmButton";
 
 export const metadata = { title: "送客先" };
 
@@ -74,7 +75,8 @@ export default async function Links() {
                     <input className="input" name="reason" placeholder="理由" style={{ height: 32, width: 110, fontSize: 12 }} aria-label="理由" />
                     {d.status !== "approved" && <button className="btn btn-sm btn-primary" name="op" value="approve">承認</button>}
                     {d.status === "approved" && <button className="btn btn-sm btn-danger" name="op" value="pause">停止</button>}
-                    {d.status !== "rejected" && <button className="btn btn-sm btn-secondary" name="op" value="reject">不可にする</button>}
+                    <ConfirmButton className="btn btn-sm btn-secondary" name="op" value="delete"
+                      message={`「${d.serviceName}」を削除します。よろしいですか？\nこのサービス宛てのリンクはすべて止まり、ひもづく投稿者の登録も外れます。`}>削除</ConfirmButton>
                   </form>
                 </td>
               </tr>

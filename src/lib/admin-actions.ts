@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import QRCode from "qrcode";
 import { db } from "@/db";
-import { comments, creatorProfiles, destinations, featuredSlots, moderationCases, notifications, sessions, takedownRequests, users, videos, type Role } from "@/db/schema";
+import { comments, creatorAffiliates, creatorProfiles, destinations, featuredSlots, moderationCases, notifications, outboundLinks, sessions, takedownRequests, users, videos, type Role } from "@/db/schema";
 import { adminOrNull, authenticate, createSession, currentUser, isAdminRole, markMfaVerified } from "./auth";
 import { clientIpHash, rateLimit } from "./http";
 import { audit } from "./ledger";
@@ -293,6 +293,16 @@ export async function destinationAction(form: FormData) {
       status, updatedAt: new Date(), ...(op === "approve" ? { approvedAt: new Date(), approvedBy: a.id } : {}),
     }).where(eq(destinations.id, id)).returning();
     if (row) await audit(conn, a.id, `destination.${op}`, "destination", id, { serviceName: row.serviceName, reason: str(form, "reason") });
+  } else if (op === "delete") {
+    if (!id) return;
+    // 送客先そのものを削除する。外部キー（creator_affiliates は restrict）があるので、
+    // 先にひもづく登録を外してから消す。投稿のリンク（outbound_links）は set null で自動的に外れる。
+    const [row] = await conn.select({ serviceName: destinations.serviceName }).from(destinations).where(eq(destinations.id, id));
+    if (!row) return;
+    await conn.delete(creatorAffiliates).where(eq(creatorAffiliates.destinationId, id));
+    await conn.update(outboundLinks).set({ status: "disabled_by_admin", destinationId: null }).where(eq(outboundLinks.destinationId, id));
+    await conn.delete(destinations).where(eq(destinations.id, id));
+    await audit(conn, a.id, "destination.delete", "destination", id, { serviceName: row.serviceName, reason: str(form, "reason") });
   }
   revalidatePath("/admin/links");
 }
