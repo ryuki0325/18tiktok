@@ -43,6 +43,7 @@ export function usePager(count: number, handlers: PagerHandlers, opts: { disable
     longTimer: 0 as unknown as ReturnType<typeof setTimeout>, pointerId: -1,
     wheelAcc: 0, wheelLock: false, wheelTimer: 0 as unknown as ReturnType<typeof setTimeout>, refreshing: false,
     noH: false,
+    rail: null as HTMLElement | null, railScroll: 0, // 写真の横スワイプ用（data-hswipe の要素を直接スクロール）
   });
   const h = useRef(handlers);
   const countRef = useRef(count);
@@ -155,8 +156,10 @@ export function usePager(count: number, handlers: PagerHandlers, opts: { disable
       st.mode = "pending";
       st.pointerId = e.pointerId;
       st.startX = e.clientX; st.startY = e.clientY; st.startPos = st.pos;
-      // 写真の横スワイプ領域で始めた指は、横に動かしても「投稿者ページへ」にしない（写真の送りを優先）
-      st.noH = !!(e.target as HTMLElement | null)?.closest?.("[data-hswipe]");
+      // 写真の横スワイプ領域で始めた指は、その写真列を直接スクロールして送る
+      st.rail = (e.target as HTMLElement | null)?.closest?.("[data-hswipe]") as HTMLElement | null;
+      st.noH = !!st.rail;
+      st.railScroll = st.rail?.scrollLeft ?? 0;
       st.samples = [{ y: e.clientY, t: e.timeStamp }];
       clearTimeout(st.longTimer);
       st.longTimer = setTimeout(() => {
@@ -173,7 +176,18 @@ export function usePager(count: number, handlers: PagerHandlers, opts: { disable
           try { el.setPointerCapture(e.pointerId); } catch {}
         } else if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) {
           st.mode = "h"; clearTimeout(st.longTimer);
+          // 写真列の上なら、ブラウザのスナップを一旦切って指に合わせて動かす
+          if (st.rail) { try { el.setPointerCapture(e.pointerId); } catch {}; st.rail.style.scrollSnapType = "none"; }
         } else return;
+      }
+      // 写真の横スワイプ：その写真列を指の動きぶんスクロールさせる
+      if (st.mode === "h") {
+        if (st.rail) {
+          e.preventDefault();
+          const max = st.rail.scrollWidth - st.rail.clientWidth;
+          st.rail.scrollLeft = Math.max(0, Math.min(max, st.railScroll - dx));
+        }
+        return;
       }
       if (st.mode !== "v") return;
       e.preventDefault();
@@ -206,7 +220,15 @@ export function usePager(count: number, handlers: PagerHandlers, opts: { disable
         const vy = first && lastS.t - first.t > 0 ? (lastS.y - first.y) / (lastS.t - first.t) : 0;
         release(vy);
       } else if (mode === "h") {
-        if (!st.noH && e.clientX - st.startX < -60 && Math.abs(e.clientY - st.startY) < 60) h.current.onSwipeLeft?.(st.index);
+        if (st.rail) {
+          // 指を離したら、いちばん近い写真へスナップして止める
+          const w = Math.max(1, st.rail.clientWidth);
+          const i = Math.round(st.rail.scrollLeft / w);
+          st.rail.style.scrollSnapType = "";
+          st.rail.scrollTo({ left: i * w, behavior: "smooth" });
+        } else if (!st.noH && e.clientX - st.startX < -60 && Math.abs(e.clientY - st.startY) < 60) {
+          h.current.onSwipeLeft?.(st.index);
+        }
       } else if (mode === "long") {
         h.current.onLongPress?.(false);
       } else if (mode === "pending" && e.type === "pointerup") {

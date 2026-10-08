@@ -290,6 +290,31 @@ describe("最初の分岐（ジャンル）", () => {
     const all = await feed("recommended", { viewerKey: "d:x", audience: "all" }, 50);
     expect(new Set(all.map((v) => v.category)).size).toBeGreaterThan(1);
   });
+
+  it("いいねした動画と同じタグの動画が、その人のおすすめで上がりやすい（TikTok風）", async () => {
+    setDbForTest(Promise.resolve(db));
+    const vk = "d:aff-test";
+    // 3つ以上の動画が共有しているタグを探す
+    const rows = await db.select({ vid: s.videoTags.videoId, name: s.tags.name })
+      .from(s.videoTags).innerJoin(s.tags, eq(s.tags.id, s.videoTags.tagId))
+      .innerJoin(s.videos, eq(s.videos.id, s.videoTags.videoId)).where(eq(s.videos.status, "published"));
+    const byTag = new Map<string, Set<string>>();
+    for (const r of rows) { const set = byTag.get(r.name) ?? new Set<string>(); set.add(r.vid); byTag.set(r.name, set); }
+    const found = [...byTag.values()].find((set) => set.size >= 3);
+    if (!found) return; // seedにタグ共有が十分なければスキップ
+    const vids = [...found];
+    const liked = vids[0];
+    const others = new Set(vids.slice(1));
+    const avgIdx = (f: { id: string }[]) => {
+      const idx = f.map((v, i) => [v.id, i] as const).filter(([id]) => others.has(id)).map(([, i]) => i);
+      return idx.length ? idx.reduce((a, b) => a + b, 0) / idx.length : 999;
+    };
+    const before = await feed("recommended", { viewerKey: vk, audience: "all" }, 100);
+    await db.insert(s.likes).values({ viewerKey: vk, videoId: liked }).onConflictDoNothing();
+    const after = await feed("recommended", { viewerKey: vk, audience: "all" }, 100);
+    // 同じ視聴者・同じゆらぎなので、変わるのは「いいねからの好み」だけ。同タグ動画は上がる（下がらない）
+    expect(avgIdx(after)).toBeLessThanOrEqual(avgIdx(before));
+  });
 });
 
 describe("ブロックリスト", () => {

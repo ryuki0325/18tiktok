@@ -86,6 +86,17 @@ export type FeedTab = "recommended" | "popular" | "following";
  * フィード。今は公開中の動画を読み込んでアプリ側で並べる（件数が増えたら rankings_cache に移す）。
  * おすすめ：新しさ × 好みのタグ × フォロー、人気：再生・クリック・いいねを時間で減衰させたスコア
  */
+/**
+ * 文面を「文字2文字の並び（bigram）」に分ける。日本語でも形態素解析なしで、
+ * 近い言葉づかいの重なりをざっくり測れる。記号・空白は落とし、#タグも言葉として拾う。
+ */
+function bigrams(text: string): string[] {
+  const t = text.toLowerCase().replace(/[\s　#@/.,!?！？、。・…「」『』()（）\-_"'`]+/g, "");
+  const out: string[] = [];
+  for (let i = 0; i < t.length - 1; i++) out.push(t.slice(i, i + 2));
+  return out;
+}
+
 export async function feed(tab: FeedTab, o: Opts, limit = 20, offset = 0): Promise<VideoCard[]> {
   if (adultBlocked(o)) return [];
   const d = await db();
@@ -111,6 +122,37 @@ export async function feed(tab: FeedTab, o: Opts, limit = 20, offset = 0): Promi
   if (o.userId) {
     watched = new Set((await d.select({ id: s.watchHistory.videoId }).from(s.watchHistory).where(eq(s.watchHistory.userId, o.userId))).map((r) => r.id));
   }
+  // TikTok風のおすすめ：この人が「いいね」した動画のタグと文面から好みプロフィールを作り、
+  // 似ている動画（同じタグ・近い言葉）をこの人のおすすめで上がりやすくする。
+  const likeTagW = new Map<string, number>();
+  const likeGramW = new Map<string, number>();
+  const likedIdSet = new Set<string>();
+  if (o.viewerKey) {
+    const likedIds = (await d.select({ id: s.likes.videoId }).from(s.likes)
+      .where(eq(s.likes.viewerKey, o.viewerKey)).orderBy(desc(s.likes.createdAt)).limit(60)).map((r) => r.id);
+    for (const id of likedIds) likedIdSet.add(id);
+    if (likedIds.length) {
+      const lt = await d.select({ name: s.tags.name }).from(s.videoTags)
+        .innerJoin(s.tags, eq(s.tags.id, s.videoTags.tagId)).where(inArray(s.videoTags.videoId, likedIds));
+      for (const r of lt) likeTagW.set(r.name, (likeTagW.get(r.name) ?? 0) + 1);
+      const lv = await d.select({ title: s.videos.title, description: s.videos.description }).from(s.videos).where(inArray(s.videos.id, likedIds));
+      for (const r of lv) for (const g of bigrams(`${r.title} ${r.description ?? ""}`)) likeGramW.set(g, (likeGramW.get(g) ?? 0) + 1);
+    }
+  }
+  const hasLikeProfile = likeTagW.size > 0 || likeGramW.size > 0;
+  // 似ている度：同じタグ（強い信号）＋文面の近さ（文字2文字の重なり）
+  const affinityOf = (c: VideoCard) => {
+    if (!hasLikeProfile) return 0;
+    let tagA = 0;
+    for (const t of c.tags) tagA += Math.min(likeTagW.get(t) ?? 0, 6);
+    const gs = bigrams(`${c.title} ${c.description ?? ""}`);
+    let gramA = 0;
+    for (const g of gs) gramA += Math.min(likeGramW.get(g) ?? 0, 4);
+    const gramNorm = gs.length ? gramA / gs.length : 0;
+    // すでにいいね済みの動画そのものは、強調しすぎない
+    const self = likedIdSet.has(c.id) ? 0.4 : 1;
+    return (tagA * 0.5 + gramNorm * 2.2) * self;
+  };
   const cards = await hydrate(idRows.map((r) => r.id), o, d);
   const formula = await getSetting("ranking.popular_formula", d);
   const age = (c: VideoCard) => (Date.now() - new Date(c.publishedAt ?? Date.now()).getTime()) / 3600_000;
@@ -125,9 +167,9 @@ export async function feed(tab: FeedTab, o: Opts, limit = 20, offset = 0): Promi
     for (const ch of `${o.viewerKey}|${id}|${dayBucket}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
     return 0.85 + ((h >>> 0) % 1000) / 1000 * 0.3; // 0.85〜1.15
   };
-  // おすすめ：好みのタグ・フォロー・新しさ・人気に、少しのゆらぎを足し、見た動画は強く下げる
+  // おすすめ：好みのタグ・いいねからの好み・フォロー・新しさ・人気に、少しのゆらぎを足し、見た動画は強く下げる
   const rec = (c: VideoCard) => {
-    const base = (1 + c.tags.filter((t) => pref.has(t)).length * 0.6 + (c.following ? 0.6 : 0)) * 0.5 ** (age(c) / 72) + pop(c) * 0.02;
+    const base = (1 + c.tags.filter((t) => pref.has(t)).length * 0.6 + affinityOf(c) + (c.following ? 0.6 : 0)) * 0.5 ** (age(c) / 72) + pop(c) * 0.02;
     return base * jitterOf(c.id) * (watched.has(c.id) ? 0.12 : 1);
   };
   const score = tab === "popular" ? (c: VideoCard) => pop(c) * (watched.has(c.id) ? 0.4 : 1) : rec;
