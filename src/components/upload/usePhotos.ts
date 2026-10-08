@@ -12,8 +12,12 @@ export type Photo = {
   state: "uploading" | "ready" | "failed";
 };
 
-/** 画像を長辺1440pxまで縮めてJPEGにする（端末内で処理し、そのままサーバーに送る） */
-const MAX_SIDE = 1440;
+/**
+ * 画像を長辺1280pxまで縮めてJPEGにする（端末内で処理し、そのままサーバーに送る）。
+ * スマホのフィード表示には十分な大きさで、保存容量をおさえる。
+ */
+const MAX_SIDE = 1280;
+const JPEG_QUALITY = 0.78;
 function shrink(file: File): Promise<{ dataUrl: string; w: number; h: number; preview: string }> {
   return new Promise((resolve, reject) => {
     const preview = URL.createObjectURL(file);
@@ -27,7 +31,7 @@ function shrink(file: File): Promise<{ dataUrl: string; w: number; h: number; pr
       const ctx = c.getContext("2d");
       if (!ctx) { reject(new Error("no ctx")); return; }
       ctx.drawImage(img, 0, 0, w, h);
-      resolve({ dataUrl: c.toDataURL("image/jpeg", 0.82), w, h, preview });
+      resolve({ dataUrl: c.toDataURL("image/jpeg", JPEG_QUALITY), w, h, preview });
     };
     img.onerror = () => { URL.revokeObjectURL(preview); reject(new Error("画像を読み込めませんでした")); };
     img.src = preview;
