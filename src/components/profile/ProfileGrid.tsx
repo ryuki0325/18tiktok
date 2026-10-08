@@ -12,14 +12,14 @@ const STATUS: Record<string, [string, string]> = {
 };
 
 /** 動画のサムネイル一覧。TikTok と同じく左下に再生数を出す */
-export function ProfileGrid({ cards, empty, showStatus = false }: { cards: VideoCard[]; empty: React.ReactNode; showStatus?: boolean }) {
+export function ProfileGrid({ cards, empty, showStatus = false, hrefFor }: { cards: VideoCard[]; empty: React.ReactNode; showStatus?: boolean; hrefFor?: (c: VideoCard) => string }) {
   if (!cards.length) return <>{empty}</>;
   return (
     <div className="thumbs">
       {cards.map((c) => {
         const st = showStatus ? STATUS[c.status] : undefined;
         return (
-          <Link key={c.id} className="thumb" href={`/?v=${c.id}`} aria-label={c.title}>
+          <Link key={c.id} className="thumb" href={hrefFor ? hrefFor(c) : `/?v=${c.id}`} aria-label={c.title}>
             <Thumb card={c} />
             <span className="meta">
               {c.kind === "photo"

@@ -38,14 +38,19 @@ test("1回タップで一時停止", async ({ page }) => {
   await expect(item).toHaveClass(/paused/);
 });
 
-test("左スワイプで投稿者ページへ", async ({ page }) => {
+test("投稿者ページは、アイコンのタップで開く（横スワイプでは移動しない）", async ({ page }) => {
   await passGate(page);
-  const box = (await page.locator(".item.active").boundingBox())!;
+  const item = page.locator(".item.active");
+  const box = (await item.boundingBox())!;
   const y = box.y + box.height / 2;
+  // 横スワイプしても投稿者ページには移動しない
   await page.mouse.move(box.x + box.width * 0.8, y);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.2, y, { steps: 6 });
   await page.mouse.up();
+  await expect(page).not.toHaveURL(/\/u\//);
+  // アイコン（アバター）をタップすると投稿者ページへ
+  await item.locator("a.av").first().click();
   await expect(page).toHaveURL(/\/u\//);
 });
 
@@ -339,5 +344,19 @@ test.describe("プロフィールの固定（ピン留め）", () => {
     // プロフィールの投稿一覧に「固定」バッジが出る
     await page.goto("/me");
     await expect(page.locator(".thumbs .badge", { hasText: "固定" }).first()).toBeVisible();
+  });
+
+  test("プロフィールの投稿をタップすると、自分の動画だけを縦に見られる（おすすめに混ざらない）", async ({ page }) => {
+    await passGate(page);
+    await login(page, "luna_night@demo.example");
+    await page.goto("/me");
+    const thumb = page.locator(".thumbs .thumb").first();
+    await expect(thumb).toBeVisible();
+    await thumb.click();
+    await expect(page).toHaveURL(/\/me\/feed/);
+    await expect(page.locator(".feedtop-title")).toHaveText("あなたの投稿");
+    await expect(page.locator(".item.active")).toBeVisible();
+    // おすすめに混ざらず、投稿者は自分だけ
+    await expect(page.locator(".item.active .vinfo .h")).toHaveText("@luna_night");
   });
 });

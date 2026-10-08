@@ -36,7 +36,7 @@ function seekVideo(root: HTMLElement | null, id: string, t: number) {
   if (v && t > 0) v.currentTime = t;
 }
 
-export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initialHasMore }: { cards: VideoCard[]; tab: string; loggedIn: boolean; myId: string | null; hasMore: boolean }) {
+export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initialHasMore, scoped = false, initialIndex = 0, scopedTitle, backHref = "/" }: { cards: VideoCard[]; tab: string; loggedIn: boolean; myId: string | null; hasMore: boolean; scoped?: boolean; initialIndex?: number; scopedTitle?: string; backHref?: string }) {
   const [cards, setCards] = useState(initial);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -98,8 +98,9 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
     onLongPress: (down) => setUiHidden(down),
     // 横スワイプは写真の送り専用にする。投稿者ページはアイコンのタップで開く
 
-    onRefresh: refresh,
-  }, { disabled: !!sheet || !!fs });
+    // プロフィールから開いた一覧（scoped）では、引っ張って更新で全体フィードに置き換えない
+    onRefresh: scoped ? undefined : refresh,
+  }, { disabled: !!sheet || !!fs, initial: initialIndex });
 
   // 残りが少なくなったら次のページを先に読み込む（無限スクロール）
   useEffect(() => {
@@ -274,12 +275,22 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
         </div>
       )}
       <div className="feedtop">
-        <button className="l" onClick={toggleMute} aria-label={muted ? "音をオンにする" : "音をオフにする"}><Icon name={muted ? "volx" : "vol"} size={22} /></button>
-        <nav className="tabs" role="tablist">
-          {TABS.map(([k, l]) => <Link key={k} role="tab" aria-selected={tab === k} href={k === "recommended" ? "/" : `/?tab=${k}`}>{l}</Link>)}
-        </nav>
-        <button className="r" onClick={goSearch} aria-label="検索"><Icon name="search" /></button>
-        <input ref={searchFocus} className="kbd-proxy" aria-hidden="true" tabIndex={-1} inputMode="search" />
+        {scoped ? (
+          <>
+            <Link className="l" href={backHref} aria-label="戻る"><Icon name="back" size={24} /></Link>
+            <h1 className="feedtop-title">{scopedTitle ?? "投稿"}</h1>
+            <button className="r" onClick={toggleMute} aria-label={muted ? "音をオンにする" : "音をオフにする"}><Icon name={muted ? "volx" : "vol"} size={22} /></button>
+          </>
+        ) : (
+          <>
+            <button className="l" onClick={toggleMute} aria-label={muted ? "音をオンにする" : "音をオフにする"}><Icon name={muted ? "volx" : "vol"} size={22} /></button>
+            <nav className="tabs" role="tablist">
+              {TABS.map(([k, l]) => <Link key={k} role="tab" aria-selected={tab === k} href={k === "recommended" ? "/" : `/?tab=${k}`}>{l}</Link>)}
+            </nav>
+            <button className="r" onClick={goSearch} aria-label="検索"><Icon name="search" /></button>
+            <input ref={searchFocus} className="kbd-proxy" aria-hidden="true" tabIndex={-1} inputMode="search" />
+          </>
+        )}
       </div>
       {sheet?.kind === "report" && <ReportSheet targetType="video" targetId={sheet.card.id} label={sheet.card.title} onClose={(hidden) => { setSheet(null); if (hidden) setCards((cs) => cs.filter((x) => x.id !== sheet.card.id)); }} />}
       {sheet?.kind === "comment" && <CommentSheet card={sheet.card} loggedIn={loggedIn} onClose={() => setSheet(null)} onPosted={() => patch(sheet.card.id, (x) => ({ comments: x.comments + 1 }))} />}

@@ -141,6 +141,7 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
 .feedtop .tabs a { font-size: 15px; font-weight: 600; color: rgba(255,255,255,.62); height: 44px; display: flex; align-items: center; position: relative; }
 .feedtop .tabs a[aria-selected="true"] { color: #fff; }
 .feedtop .tabs a[aria-selected="true"]::after { content: ""; position: absolute; left: 50%; bottom: 4px; width: 20px; height: 3px; border-radius: 3px; background: var(--accent); transform: translateX(-50%); }
+.feedtop-title { font-size: 16px; font-weight: 700; margin: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feedtop .l, .feedtop .r { position: absolute; top: env(safe-area-inset-top, 0px); width: 44px; height: 52px; display: grid; place-items: center; }
 .feedtop .l { left: 8px; } .feedtop .r { right: 8px; }
 .rail { position: absolute; right: 10px; bottom: calc(var(--nav-h) + 84px); display: flex; flex-direction: column; align-items: center; gap: 12px; }
