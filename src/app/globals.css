@@ -595,7 +595,7 @@ html.standalone .pager { touch-action: none; }
 /* ---- アフィリエイトの登録（サービス名＋ID） ---- */
 .aff-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
 .aff-row .input { height: 46px; min-width: 0; }
-@media (max-width: 420px) { .aff-row { grid-template-columns: 1fr auto; } .aff-row select { grid-column: 1 / -1; } }
+@media (max-width: 540px) { .aff-row { grid-template-columns: 1fr auto; } .aff-row select { grid-column: 1 / -1; } }
 
 /* ---- 投稿画面：選んだ写真の帯 ---- */
 .photo-strip { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }

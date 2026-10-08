@@ -39,7 +39,7 @@ export function ApplyForm({ minAge, methodNote, maxDate, destinations, attestati
           <div key={i} className="aff-row">
             <select className="input" name="destinationId" value={r.destinationId} required
               onChange={(e) => set(i, { destinationId: e.target.value })} aria-label={`アフィリエイトサイト名 ${i + 1}`}>
-              {destinations.map((d) => <option key={d.id} value={d.id}>{d.serviceName}</option>)}
+              {destinations.map((d) => <option key={d.id} value={d.id}>{d.serviceName}（{d.domain}）</option>)}
             </select>
             <input className="input num" name="affiliateId" value={r.affiliateId} required maxLength={64}
               onChange={(e) => set(i, { affiliateId: e.target.value })}

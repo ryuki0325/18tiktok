@@ -58,7 +58,7 @@ export default async function Apply() {
                 <li><b>投稿するのは、その作品のサンプル動画</b></li>
               </ul>
               <p className="cap" style={{ margin: "10px 0 0" }}>
-                <b>投稿した動画は、すべて公開前に運営が確認します。</b>登録そのものに運営の確認はありません。
+                <b>投稿すると約1分、AIが公開してよいか自動で確認します。</b>その間は自分でも共有できず、確認後に全員へ公開されます。登録そのものに運営の確認はありません。
                 詳しくは<Link href="/legal/guidelines" style={{ textDecoration: "underline" }}>投稿ガイドライン</Link>をご覧ください。
               </p>
             </div>
