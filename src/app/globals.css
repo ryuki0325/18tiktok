@@ -164,6 +164,19 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
 .progress i { display: block; height: 100%; width: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); }
 .item.active .progress i { animation: prog 15s linear infinite; }
 @keyframes prog { to { transform: scaleX(1); } }
+
+/* 横画面：中央の細い列をやめて画面いっぱいに使い、操作ボタンは右端に縦並びで画面中央寄せ（見切れない） */
+@media (orientation: landscape) {
+  .pager, .feedtop, .tabbar { max-width: none; }
+  .rail { top: 50%; bottom: auto; transform: translateY(-50%); right: calc(env(safe-area-inset-right, 0px) + 14px); gap: 8px; }
+  .rail > a, .rail > button { width: 48px; font-size: 10.5px; }
+  .rail .hit { width: 46px; height: 32px; }
+  .av { width: 42px !important; height: 42px !important; }
+  /* 説明・タグは左下に、CTAはその下に。横いっぱいにはしない */
+  .vinfo { left: calc(env(safe-area-inset-left, 0px) + 22px); right: auto; bottom: calc(var(--nav-h) + 70px); max-width: 54vw; }
+  .ctawrap { left: calc(env(safe-area-inset-left, 0px) + 22px); right: auto; bottom: calc(var(--nav-h) + 14px); width: min(380px, 54vw); }
+  .cta { height: 46px; font-size: 15px; }
+}
 .empty-feed { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 32px; text-align: center; color: #fff; }
 
 /* ---- シート ---- */
