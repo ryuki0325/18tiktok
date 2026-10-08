@@ -27,7 +27,7 @@ export default async function History() {
         ) : (
           <>
             <p className="cap" style={{ margin: "0 0 10px" }}>最近見た {cards.length} 件。右上のゴミ箱ですべて消せます。</p>
-            <ProfileGrid cards={cards} empty={null} />
+            <ProfileGrid cards={cards} empty={null} hrefFor={(c) => `/history/feed?v=${c.id}`} />
           </>
         )}
       </div>

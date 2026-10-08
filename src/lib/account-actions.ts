@@ -1,6 +1,7 @@
 "use server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
@@ -14,6 +15,19 @@ import { isAudience } from "./audience";
 import { THEME_COOKIE } from "./theme-server";
 
 export type FormState = { error?: string; info?: string; devLink?: string } | undefined;
+
+/** いいねした動画を他の人に見せるかどうかの設定を切り替える */
+export async function setPublicLikesAction(form: FormData) {
+  const u = await currentUser();
+  if (!u) redirect("/login");
+  const on = form.get("public_likes") === "on";
+  const conn = await db();
+  const jar = await cookies();
+  const cookiePref = parsePref(jar.get(THEME_COOKIE)?.value ?? null);
+  await conn.insert(userPreferences).values({ userId: u.id, theme: cookiePref, publicLikes: on })
+    .onConflictDoUpdate({ target: userPreferences.userId, set: { publicLikes: on, updatedAt: new Date() } });
+  revalidatePath("/settings/privacy");
+}
 
 const safeNext = (n: FormDataEntryValue | null) => (typeof n === "string" && n.startsWith("/") && !n.startsWith("//") ? n : "/me");
 

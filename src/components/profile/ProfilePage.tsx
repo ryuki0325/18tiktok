@@ -21,7 +21,7 @@ export function ProfilePage({ p, mine, loggedIn, tab, cards, tabs, href, top, ch
       <ProfileTabs tabs={tabs} current={tab} href={href} />
       <div className="prof-body">
         <ProfileGrid cards={cards} showStatus={tab === "private"}
-          hrefFor={(c) => mine ? `/me/feed?tab=${tab}&v=${c.id}` : `/u/${encodeURIComponent(p.handle)}/feed?v=${c.id}`}
+          hrefFor={(c) => mine ? `/me/feed?tab=${tab}&v=${c.id}` : `/u/${encodeURIComponent(p.handle)}/feed?tab=${tab}&v=${c.id}`}
           empty={<Empty tab={tab} mine={mine} isCreator={p.isCreator} />} />
       </div>
       <NavTabs />

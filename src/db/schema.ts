@@ -60,6 +60,8 @@ export const userPreferences = pgTable("user_preferences", {
   audience: text().$type<"women" | "men" | "gay" | "lesbian" | "all">().notNull().default("all"),
   /** 刺激の強さの上限（1=ソフト〜3=ハード）。これより強い動画はフィードに出さない */
   maxIntensity: integer().notNull().default(3),
+  /** いいねした動画を他の人のプロフィールからも見せてよいか（既定は非公開） */
+  publicLikes: boolean().notNull().default(false),
   updatedAt: now(),
 });
 

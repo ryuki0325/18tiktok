@@ -1,0 +1,1 @@
+ALTER TABLE "user_preferences" ADD COLUMN IF NOT EXISTS "public_likes" boolean DEFAULT false NOT NULL;

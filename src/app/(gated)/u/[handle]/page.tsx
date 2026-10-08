@@ -5,23 +5,29 @@ import type { IconName } from "@/components/Icon";
 import { ProfileBar, ProfilePage } from "@/components/profile/ProfilePage";
 import { UserMenu } from "./UserMenu";
 
-const TABS: [ProfileTab, IconName, string][] = [["posts", "grid", "投稿"]];
+const POSTS: [ProfileTab, IconName, string] = ["posts", "grid", "投稿"];
+const LIKED: [ProfileTab, IconName, string] = ["liked", "heart", "いいねした動画"];
 
 export async function generateMetadata({ params }: { params: Promise<{ handle: string }> }) {
   return { title: `@${decodeURIComponent((await params).handle)}` };
 }
 
-export default async function CreatorPage({ params }: { params: Promise<{ handle: string }> }) {
+export default async function CreatorPage({ params, searchParams }: { params: Promise<{ handle: string }>; searchParams: Promise<{ tab?: string }> }) {
   const ctx = await viewerContext();
   const handle = decodeURIComponent((await params).handle).toLowerCase();
   const p = await profileOf({ handle }, ctx.userId);
   if (!p || !p.isCreator) notFound();
   // 自分のページを開いたらマイページと同じ見た目にする
   const mine = ctx.userId === p.id;
-  const cards = await profileVideos("posts", p, ctx);
+  // いいね一覧は、その人が「見せる」設定にしているときだけタブに出す
+  const tabs = p.publicLikes ? [POSTS, LIKED] : [POSTS];
+  const t = (await searchParams).tab;
+  const tab: ProfileTab = t === "liked" && p.publicLikes ? "liked" : "posts";
+  const cards = await profileVideos(tab, p, ctx);
+  const base = `/u/${encodeURIComponent(p.handle)}`;
   return (
     <ProfilePage
-      p={p} mine={mine} loggedIn={!!ctx.user} tab="posts" cards={cards} tabs={TABS} href={() => `/u/${encodeURIComponent(p.handle)}`}
+      p={p} mine={mine} loggedIn={!!ctx.user} tab={tab} cards={cards} tabs={tabs} href={(x) => (x === "posts" ? base : `${base}?tab=${x}`)}
       top={<ProfileBar handle={p.handle} back="/" right={<UserMenu creatorId={p.id} handle={p.handle} mine={mine} />} />}
     />
   );

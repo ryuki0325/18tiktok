@@ -14,8 +14,8 @@ export default async function Settings() {
   const u = await currentUser();
   const t = tokensFor(pref.id, pref.mode === "light" ? "light" : "dark", pref.custom);
   const items: [IconName, string, string][] = [
-    ["sliders", "好み・絞り込み（ジャンル・刺激の強さ）", "/welcome/tags"], ["user", "アカウント・パスワード・退会", u ? "/settings/account" : "/login"], ["ext", "アフィリエイトの登録", "/settings/affiliates"], ["bookmark", "コレクション", "/collections"], ["gauge", "視聴履歴", "/history"], ["eyeoff", "表示しない投稿者", "/settings/blocks"], ["bell", "通知", "/notifications"], ["shield", "年齢確認", "/legal/terms#age"],
-    ["eye", "プライバシー", "/legal/privacy"], ["flag", "削除・権利侵害の申告", "/takedown"],
+    ["sliders", "好み・絞り込み（ジャンル・刺激の強さ）", "/welcome/tags"], ["user", "アカウント・パスワード・退会", u ? "/settings/account" : "/login"], ["ext", "アフィリエイトの登録", "/settings/affiliates"], ["bookmark", "コレクション", "/collections"], ["gauge", "視聴履歴", "/history"], ["eyeoff", "表示しない投稿者", "/settings/blocks"], ["bell", "通知", "/notifications"], ["lock", "プライバシー（いいねの公開など）", "/settings/privacy"], ["shield", "年齢確認", "/legal/terms#age"],
+    ["flag", "削除・権利侵害の申告", "/takedown"],
     ["file", "利用規約", "/legal/terms"], ["file", "プライバシーポリシー", "/legal/privacy"], ["file", "投稿ガイドライン", "/legal/guidelines"], ["file", "運営者情報", "/legal/operator"],
   ];
   return (

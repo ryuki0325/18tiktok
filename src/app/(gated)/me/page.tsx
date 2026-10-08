@@ -51,7 +51,7 @@ export default async function Me({ searchParams }: { searchParams: Promise<{ tab
 /** ログインしていない人のマイページ。端末に保存した「保存・いいね」は見られる */
 async function Guest({ tab, ctx }: { tab?: string; ctx: Awaited<ReturnType<typeof viewerContext>> }) {
   const current: ProfileTab = tab === "liked" ? "liked" : "saved";
-  const cards = await profileVideos(current, { id: "", handle: "", displayName: "", avatarHue: 280, avatarUrl: null, bio: "", isCreator: false, createdAt: "", posts: 0, followers: 0, following: 0, likes: 0, followed: false, followsYou: false }, ctx);
+  const cards = await profileVideos(current, { id: "", handle: "", displayName: "", avatarHue: 280, avatarUrl: null, bio: "", isCreator: false, createdAt: "", posts: 0, followers: 0, following: 0, likes: 0, followed: false, followsYou: false, publicLikes: false }, ctx);
   return (
     <div className="screen with-nav">
       <div className="navbar"><span className="sp44" /><h1 style={{ fontSize: 17 }}>マイページ</h1><Link className="iconbtn" href="/settings" aria-label="設定"><Icon name="sliders" /></Link></div>

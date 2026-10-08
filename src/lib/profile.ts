@@ -16,6 +16,8 @@ export type Profile = {
   followed: boolean;
   /** 相手も自分をフォローしているか（TikTok の「友達」表示） */
   followsYou: boolean;
+  /** いいねした動画を他の人に見せる設定か */
+  publicLikes: boolean;
 };
 
 const count = (n: { n: number }[]) => n[0]?.n ?? 0;
@@ -27,7 +29,7 @@ export async function profileOf(who: { handle?: string; id?: string }, viewerId:
     who.id ? eq(s.users.id, who.id) : eq(s.users.handle, (who.handle ?? "").toLowerCase()),
   );
   if (!u || u.status === "deleted") return null;
-  const [cp, posts, followers, following, likeSum, rel] = await Promise.all([
+  const [cp, posts, followers, following, likeSum, rel, prefs] = await Promise.all([
     d.select({ status: s.creatorProfiles.status }).from(s.creatorProfiles).where(eq(s.creatorProfiles.userId, u.id)),
     d.select({ n: sql<number>`count(*)::int` }).from(s.videos).where(and(eq(s.videos.creatorId, u.id), eq(s.videos.status, "published"))),
     d.select({ n: sql<number>`count(*)::int` }).from(s.follows).where(eq(s.follows.creatorId, u.id)),
@@ -37,12 +39,14 @@ export async function profileOf(who: { handle?: string; id?: string }, viewerId:
     viewerId ? d.select({ a: s.follows.followerId, b: s.follows.creatorId }).from(s.follows)
       .where(sql`(${s.follows.followerId} = ${viewerId} and ${s.follows.creatorId} = ${u.id}) or (${s.follows.followerId} = ${u.id} and ${s.follows.creatorId} = ${viewerId})`)
       : Promise.resolve([] as { a: string; b: string }[]),
+    d.select({ publicLikes: s.userPreferences.publicLikes }).from(s.userPreferences).where(eq(s.userPreferences.userId, u.id)),
   ]);
   return {
     id: u.id, handle: u.handle, displayName: u.displayName, avatarHue: u.avatarHue, avatarUrl: u.avatarUrl,
     bio: u.bio, isCreator: cp[0]?.status === "approved", createdAt: u.createdAt.toISOString(),
     posts: count(posts), followers: count(followers), following: count(following), likes: count(likeSum),
     followed: rel.some((r) => r.a === viewerId), followsYou: rel.some((r) => r.b === viewerId),
+    publicLikes: prefs[0]?.publicLikes ?? false,
   };
 }
 
@@ -56,7 +60,10 @@ export async function profileVideos(tab: ProfileTab, p: Profile, v: Viewer, limi
     return hydrate(rows.map((r) => r.id), v, d, tab === "private");
   }
   const t = tab === "liked" ? s.likes : s.favorites;
-  const rows = await d.select({ id: t.videoId }).from(t).where(eq(t.viewerKey, v.viewerKey)).orderBy(desc(t.createdAt)).limit(limit);
+  // いいね・保存は「そのプロフィールの持ち主」のもの。自分のページなら自分、他人のページならその人。
+  // 保存タブは他人には出さない（タブ構成で制御）ので、ここは持ち主キーで引けばよい。
+  const ownerKey = p.id ? `u:${p.id}` : v.viewerKey;
+  const rows = await d.select({ id: t.videoId }).from(t).where(eq(t.viewerKey, ownerKey)).orderBy(desc(t.createdAt)).limit(limit);
   return hydrate(rows.map((r) => r.id), v, d);
 }
 

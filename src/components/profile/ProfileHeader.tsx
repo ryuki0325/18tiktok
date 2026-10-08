@@ -4,6 +4,7 @@ import { Icon } from "../Icon";
 import { fmt } from "../format";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { FollowButton } from "./FollowButton";
+import { ShareProfile } from "./ShareProfile";
 
 /**
  * プロフィールの上半分（TikTokと同じ並び）。
@@ -31,11 +32,13 @@ export function ProfileHeader({ p, mine, loggedIn }: { p: Profile; mine: boolean
           <>
             <Link className="btn btn-secondary" href="/me/edit">プロフィールを編集</Link>
             <Link className="btn btn-secondary" href="/me/people?tab=suggested" aria-label="友達を追加"><Icon name="userplus" size={20} /></Link>
+            <ShareProfile handle={p.handle} />
           </>
         ) : (
           <>
             <FollowButton creatorId={p.id} initial={p.followed} followsYou={p.followsYou} loggedIn={loggedIn} handle={p.handle} />
             <Link className="btn btn-secondary" href={`/u/${encodeURIComponent(p.handle)}/people?tab=followers`} aria-label="フォロワーを見る"><Icon name="userplus" size={20} /></Link>
+            <ShareProfile handle={p.handle} />
           </>
         )}
       </div>
