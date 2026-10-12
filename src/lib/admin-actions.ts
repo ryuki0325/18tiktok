@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import QRCode from "qrcode";
 import { db } from "@/db";
-import { comments, creatorAffiliates, creatorProfiles, destinations, featuredSlots, moderationCases, notifications, outboundLinks, sessions, takedownRequests, users, videos, type Role } from "@/db/schema";
+import { comments, creatorAffiliates, creatorProfiles, destinations, embedSources, featuredSlots, moderationCases, notifications, outboundLinks, sessions, takedownRequests, users, videos, type Role } from "@/db/schema";
 import { adminOrNull, authenticate, createSession, currentUser, isAdminRole, markMfaVerified } from "./auth";
 import { clientIpHash, rateLimit } from "./http";
 import { audit } from "./ledger";
@@ -147,6 +147,30 @@ export async function removeDomainAction(form: FormData) {
   const a = await need(["super_admin"]);
   await removeDomain(await db(), a.id, Number(form.get("id")));
   revalidatePath("/admin/domains");
+}
+
+/** 埋め込みできる出どころ（公式サンプル等の許可ホスト）の追加・有効化 */
+export async function addEmbedSourceAction(form: FormData) {
+  const a = await need(["super_admin"]);
+  const conn = await db();
+  const clean = str(form, "domain").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(clean)) return;
+  const name = str(form, "name") || clean;
+  await conn.insert(embedSources).values({ domain: clean, displayName: name })
+    .onConflictDoUpdate({ target: embedSources.domain, set: { isActive: true, displayName: name } });
+  await audit(conn, a.id, "embed_source.add", "embed_source", clean, { displayName: name });
+  revalidatePath("/admin/embeds");
+  revalidatePath("/creator/new");
+}
+
+/** 出どころの無効化（新規の埋め込みを止める。既存の投稿は 動画 画面から個別に対応） */
+export async function removeEmbedSourceAction(form: FormData) {
+  const a = await need(["super_admin"]);
+  const conn = await db();
+  const [d] = await conn.update(embedSources).set({ isActive: false }).where(eq(embedSources.id, Number(form.get("id")))).returning();
+  if (d) await audit(conn, a.id, "embed_source.remove", "embed_source", d.domain, {});
+  revalidatePath("/admin/embeds");
+  revalidatePath("/creator/new");
 }
 
 const NUMERIC: SettingKey[] = ["review.new_creator_full_review_count", "report.auto_hide_threshold.unauthorized_repost", "report.auto_hide_threshold.inappropriate", "report.auto_hide_threshold.other", "comments.auto_hide_threshold", "comments.rate_limit_per_hour", "clicks.dedupe_window_sec", "age_gate.ttl_days"];

@@ -118,6 +118,12 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
   .fv.fv-land { object-fit: cover; }
 }
 .vwait { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; opacity: .9; }
+/* 埋め込み（公式サンプル等）の表示。16:9 で中央に収め、上下は暗い余白にしてスワイプの余地を残す */
+.fembed { position: absolute; inset: 0; display: grid; place-items: center; }
+.fembed-frame { width: 100%; max-height: 100%; aspect-ratio: 16 / 9; border: 0; background: #000; display: block; }
+@media (orientation: landscape) and (max-height: 600px) { .fembed-frame { height: 100%; width: auto; } }
+.fembed-wait { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none; }
+.fembed-note { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: rgba(255,255,255,.72); }
 .real .progress i { animation: none !important; transition: transform .25s linear; }
 .streak { position: absolute; inset: 0; background: linear-gradient(115deg, transparent 40%, rgba(255,255,255,.06) 48%, transparent 56%); mix-blend-mode: screen; }
 .grain { position: absolute; inset: 0; opacity: .07; background-image: radial-gradient(rgba(255,255,255,.7) .5px, transparent .6px); background-size: 3px 3px; }
@@ -502,6 +508,14 @@ html.standalone .pager { touch-action: none; }
   box-shadow: 0 18px 50px -24px color-mix(in srgb, var(--accent) 60%, transparent), inset 0 1px 0 color-mix(in srgb, #fff 8%, transparent);
   transition: transform .18s cubic-bezier(.2,.8,.2,1), box-shadow .18s; }
 .pick-main:active { transform: scale(.985); }
+/* 種類を選ぶ入口（動画＝埋め込み／写真）を縦に2つ並べる */
+.pick-choices { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 14px; }
+.pick-main.alt { padding: 24px 22px; border-color: var(--border); box-shadow: none; background: color-mix(in srgb, var(--surface) 90%, transparent); }
+/* 許可された出どころのチップ */
+.src-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.src-chip { display: inline-flex; flex-direction: column; gap: 1px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent); }
+.src-chip small { font-weight: 400; opacity: .7; font-size: 10px; }
 .pick-main .pick-glow { position: absolute; z-index: -1; top: -40%; left: 50%; width: 220px; height: 220px; transform: translateX(-50%);
   background: radial-gradient(circle, color-mix(in srgb, var(--accent) 55%, transparent), transparent 70%); filter: blur(28px); opacity: .55;
   animation: pickpulse 4.5s ease-in-out infinite; }

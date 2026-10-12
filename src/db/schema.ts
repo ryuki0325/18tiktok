@@ -218,6 +218,13 @@ export const videos = pgTable("videos", {
   durationMs: integer(),
   /** 動画ファイルの状態 none=未登録 / processing=変換中 / ready=再生可能 / failed=失敗 */
   mediaStatus: text().$type<"none" | "processing" | "ready" | "failed">().notNull().default("none"),
+  /**
+   * 埋め込み動画のURL（公式サンプル／許可済みの出どころ）。
+   * 自社に動画ファイルを保存せず、提携先の公式サーバーから再生する方式。ここが入っていれば本体は埋め込みで表示する。
+   */
+  embedUrl: text(),
+  /** 埋め込み元のホスト（許可リスト照合・審査の表示用） */
+  embedDomain: text(),
   /** いいね数・再生数（likes / views への追加・削除時にDBトリガーで増減する。一覧で数え直さないため） */
   likeCount: integer().notNull().default(0),
   viewCount: integer().notNull().default(0),
@@ -606,6 +613,19 @@ export const affiliateDomains = pgTable("affiliate_domains", {
   isActive: boolean().notNull().default(true),
   createdAt: now(),
 }, (t) => [uniqueIndex("affiliate_domains_uq").on(t.domain)]);
+
+/**
+ * 埋め込み動画の「許可された出どころ」。
+ * 投稿者が埋め込める動画は、ここで運営が有効にしたホスト（公式サンプル／提携先が許可した埋め込み元）のURLだけ。
+ * 無断転載の拡散を防ぐための出どころ審査の実体（リーチサイト規制への対応）。
+ */
+export const embedSources = pgTable("embed_sources", {
+  id: serial().primaryKey(),
+  domain: text().notNull(),
+  displayName: text().notNull(),
+  isActive: boolean().notNull().default(true),
+  createdAt: now(),
+}, (t) => [uniqueIndex("embed_sources_uq").on(t.domain)]);
 
 export const outboundLinks = pgTable("outbound_links", {
   id: text().primaryKey(),

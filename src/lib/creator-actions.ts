@@ -6,8 +6,8 @@ import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { Draft, Post } from "./post-schema";
 import { db } from "@/db";
-import { affiliateDomains, creatorProfiles, outboundLinks, tags, uploads, videoTags, videos } from "@/db/schema";
-import { applyUploadToVideo, dropSource, isUuid, mediaProvider } from "./media";
+import { affiliateDomains, creatorProfiles, outboundLinks, tags, videoTags, videos } from "@/db/schema";
+import { isUuid } from "./media";
 import { checkTag } from "./tags";
 import { transition } from "./video-state";
 import { activeLimits } from "./safety";
@@ -90,6 +90,7 @@ function readPost(form: FormData) {
   return {
     title: form.get("title"), description: form.get("description") ?? "", tags: form.getAll("tags"),
     link: form.get("link") || undefined,
+    embed: form.get("embed") || undefined,
     // 下書きのときは未選択（null）を undefined にして、必須チェックを通さない
     category: form.get("category") ?? undefined, intensity: form.get("intensity") ?? undefined,
     visibility: form.get("visibility") === "private" ? "private" : "public",
@@ -133,22 +134,24 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
     if (images.length > maxImages()) return { error: `画像は${maxImages()}枚までです` };
   }
 
-  // 動画ファイル（チャンクアップロード済み）。保存先が設定されている場合は必須（写真投稿では不要）
-  const uploadId = kind === "photo" ? "" : String(form.get("uploadId") ?? "");
-  let upload: typeof uploads.$inferSelect | undefined;
-  if (uploadId) {
-    if (!isUuid(uploadId)) return { error: "動画ファイルが見つかりません" };
-    [upload] = await conn.select().from(uploads).where(and(eq(uploads.id, uploadId), eq(uploads.userId, u.id)));
-    if (!upload || upload.videoId) return { error: "動画ファイルが見つかりません。もう一度アップロードしてください" };
-    if (upload.status === "uploading") return { error: "動画のアップロードがまだ終わっていません" };
-    if (upload.status === "failed") return { error: "動画の変換に失敗しました。別のファイルでお試しください" };
-  } else if (kind === "video" && mediaProvider()) {
-    // 下書きの続きは、動画がもう付いているので選び直さなくてよい
-    if (!draftId) return { error: "動画ファイルを選んでください" };
-    const [d] = await conn.select({ media: videos.mediaStatus }).from(videos)
-      .where(and(eq(videos.id, draftId), eq(videos.creatorId, u.id), eq(videos.status, "draft")));
-    if (!d) return { error: "下書きが見つかりません" };
-    if (d.media === "none") return { error: "動画ファイルを選んでください" };
+  // 動画は自社に保存せず、公式サンプル等の「埋め込みURL」で表示する。
+  // 出どころ（ホスト）が運営の許可リスト（embed_sources）にあるものだけを通す ＝ 出どころ審査。
+  let embed: { embedUrl: string; embedDomain: string } | undefined;
+  if (kind === "video") {
+    const raw = parsed.data.embed?.trim();
+    if (raw) {
+      const { checkEmbedUrl } = await import("./embeds");
+      const chk = await checkEmbedUrl(conn, raw);
+      if (!chk.ok) return { error: chk.error };
+      embed = { embedUrl: chk.embedUrl, embedDomain: chk.embedDomain };
+    } else if (!asDraft) {
+      // 下書きの続きで、すでに埋め込みが付いているならそれを使う
+      const [d] = draftId
+        ? await conn.select({ embedUrl: videos.embedUrl }).from(videos)
+          .where(and(eq(videos.id, draftId), eq(videos.creatorId, u.id), eq(videos.status, "draft")))
+        : [undefined];
+      if (!d?.embedUrl) return { error: "埋め込みURL（公式サンプル）を入れてください" };
+    }
   }
   const r = await createVideo(conn, {
     creatorId: u.id,
@@ -156,15 +159,9 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
     category: (parsed.data.category ?? "women") as "women" | "men" | "gay" | "lesbian",
     intensity: parsed.data.intensity || 1,
     consents, ipHash: await clientIpHash(), userAgent: (await headers()).get("user-agent") ?? "",
-    asDraft, draftId, kind, images,
+    asDraft, draftId, kind, images, embedUrl: embed?.embedUrl, embedDomain: embed?.embedDomain,
   });
   if (!r.ok) return { error: r.error };
-  if (upload) {
-    const [linked] = await conn.update(uploads).set({ videoId: r.video.id }).where(eq(uploads.id, upload.id)).returning();
-    await applyUploadToVideo(conn, linked);
-    // ここから先は切り取り直さないので、元ファイルを消す（保存料の節約）
-    await dropSource(linked);
-  }
   revalidatePath("/creator/videos");
   redirect(asDraft ? "/creator/videos?saved=1" : `/creator/videos?submitted=1${r.linkPending ? "&linkPending=1" : ""}`);
 }

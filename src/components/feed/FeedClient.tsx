@@ -11,6 +11,7 @@ import { api } from "./api";
 import { CommentSheet, MoreSheet, RATES, ShareSheet } from "./Sheets";
 import { ReportSheet } from "../ReportSheet";
 import { FeedVideo, loadHls } from "./FeedVideo";
+import { FeedEmbed } from "./FeedEmbed";
 import { PhotoCarousel } from "./PhotoCarousel";
 import { FullscreenView } from "./FullscreenView";
 import { PhotoFullscreen } from "./PhotoFullscreen";
@@ -214,6 +215,8 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
                   aria-hidden={!active} onContextMenu={(e) => e.preventDefault()}>
                   {c.kind === "photo" && c.images?.length
                     ? <PhotoCarousel images={c.images} active={active} />
+                    : c.embedUrl
+                    ? <><VideoBackdrop hue={c.hue} /><FeedEmbed src={c.embedUrl} active={active} near={active || i === index + 1} /></>
                     : c.src
                     ? <FeedVideo src={c.src} poster={c.poster} width={c.width} height={c.height} active={active} paused={!!paused[c.id] || !!fs} muted={muted} rate={rate}
                         preload={active ? "active" : i === index + 1 ? "next" : "idle"}
@@ -238,6 +241,8 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
                       <button className={c.saved ? "on" : ""} aria-pressed={c.saved} aria-label="保存" onClick={() => save(c)}><span className="hit"><Icon name="bookmark" size={28} filled={c.saved} /></span><span>保存</span></button>
                       {c.kind === "photo"
                         ? (c.images?.length ? <button aria-label="全画面で見る" onClick={() => setPhotoFs({ images: c.images! })}><span className="hit"><Icon name="expand" size={26} /></span><span>全画面</span></button> : null)
+                        : c.embedUrl
+                        ? null
                         : <button aria-label="全画面で見る" onClick={() => openFullscreen(c)}><span className="hit"><Icon name="expand" size={26} /></span><span>全画面</span></button>}
                       <button aria-label="その他" onClick={() => setSheet({ kind: "more", card: c })}><span className="hit"><Icon name="more" size={28} /></span></button>
                     </div>

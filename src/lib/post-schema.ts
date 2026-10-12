@@ -11,6 +11,8 @@ export const Post = z.object({
   tags: z.array(z.string()).min(1, "タグを1つ以上選んでください").max(5, "タグは5つまでです"),
   // サンプル動画として投稿してもらうため、「完全版を見る」のリンクは必須
   link: z.string().trim().min(1, "「完全版を見る」のリンクを入れてください").max(2048),
+  // 動画は自社に保存せず、公式サンプル等の埋め込みURLで表示する（写真投稿では未使用）
+  embed: z.string().trim().max(2048).optional(),
   category: z.enum(["women", "men", "gay", "lesbian"], { message: "ジャンルを選んでください" }),
   // 刺激の強さは投稿画面から外したので、既定値（1）にする
   intensity: z.coerce.number().int().min(1).max(3).default(1),

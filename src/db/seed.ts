@@ -41,6 +41,10 @@ export async function seed(db: DB, opts: { demo: boolean }) {
     { domain: "partner-a.example", displayName: "Partner A（サンプル）" },
     { domain: "partner-b.example", displayName: "Partner B（サンプル）" },
   ]).onConflictDoNothing();
+  // 埋め込みできる出どころ（運営が許可したホスト）。実運用の前に、公式サンプルの正しいホストを管理画面で登録する。
+  await db.insert(s.embedSources).values([
+    { domain: "example.com", displayName: "Example（提携先サンプル）" },
+  ]).onConflictDoNothing();
 
   const adminEmail = (process.env.ADMIN_EMAIL || "admin@example.com").toLowerCase();
   const [admin] = await db.select().from(s.users).where(eq(s.users.email, adminEmail));

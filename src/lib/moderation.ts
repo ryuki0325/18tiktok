@@ -71,6 +71,9 @@ export async function createVideo(conn: DB, input: {
   /** 投稿の種類。写真投稿のときは images を渡す（動画は使わない） */
   kind?: "video" | "photo";
   images?: { url: string; w: number; h: number }[];
+  /** 動画の埋め込みURL（公式サンプル等）。自社に保存せず、ここから再生する */
+  embedUrl?: string;
+  embedDomain?: string;
 }) {
   if (!input.asDraft && !input.consents.every(Boolean)) return { ok: false as const, error: "3つの確認事項すべてにチェックが必要です" };
   const isPhoto = input.kind === "photo";
@@ -89,11 +92,15 @@ export async function createVideo(conn: DB, input: {
 
   return conn.transaction(async (tx) => {
     const t = tx as unknown as DB;
-    // 写真投稿は変換が要らないので、できた時点で見られる状態（mediaStatus=ready）にする
-    const photo = isPhoto && input.images?.length
+    // 写真投稿は変換が要らないので、できた時点で見られる状態（mediaStatus=ready）にする。
+    // 動画は埋め込み（公式サンプル等）で表示するので、URLが付いていればそのまま ready にする。
+    const media = isPhoto && input.images?.length
       ? { kind: "photo" as const, images: input.images, mediaStatus: "ready" as const,
           thumbnailUrl: input.images[0].url, width: input.images[0].w, height: input.images[0].h, playbackUrl: null }
-      : {};
+      : input.embedUrl
+        ? { kind: "video" as const, embedUrl: input.embedUrl, embedDomain: input.embedDomain ?? null,
+            mediaStatus: "ready" as const, playbackUrl: null }
+        : {};
     const now = new Date();
     // 投稿直後は「調査中」として一定時間（既定60秒）だけ他の人に見せない。時間が来たら自動で公開される。
     const holdSec = Number(process.env.POST_HOLD_SEC || 60);
@@ -107,7 +114,7 @@ export async function createVideo(conn: DB, input: {
     const common = {
       title: input.title, description: input.description, category: input.category, intensity: input.intensity,
       visibility: input.visibility ?? "public", commentsEnabled: input.commentsEnabled ?? true,
-      statusReason: null, ...photo,
+      statusReason: null, ...media,
     };
     let v: typeof s.videos.$inferSelect;
     if (input.draftId) {

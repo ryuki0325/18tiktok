@@ -13,6 +13,8 @@ export type VideoCard = {
   publishedAt: string | null; commentsEnabled: boolean;
   /** 動画ファイルのURL（CDN上の HLS .m3u8 または MP4）。未アップロードなら null で、抽象プレースホルダーを表示 */
   src: string | null;
+  /** 埋め込み動画のURL（公式サンプル等）。自社に保存せず、提携先から再生する。あれば iframe で表示 */
+  embedUrl: string | null;
   poster: string | null;
   /** 縦横のピクセル数。横長（width > height）は切らずに全体を表示する */
   width: number | null;
@@ -71,7 +73,7 @@ export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublis
       link: link ? { id: link.id, domain: link.domain } : null,
       liked: liked.has(v.id), saved: saved.has(v.id), following: fol.has(v.creatorId),
       publishedAt: v.publishedAt?.toISOString() ?? null, commentsEnabled: v.commentsEnabled,
-      src: v.mediaStatus === "ready" ? v.playbackUrl : null, poster: v.thumbnailUrl, width: v.width, height: v.height, category: v.category, intensity: v.intensity, status: v.status,
+      src: v.mediaStatus === "ready" ? v.playbackUrl : null, embedUrl: v.embedUrl, poster: v.thumbnailUrl, width: v.width, height: v.height, category: v.category, intensity: v.intensity, status: v.status,
       kind: v.kind, images: v.images, pinned: !!v.pinnedAt,
     };
     return [v.id, card];

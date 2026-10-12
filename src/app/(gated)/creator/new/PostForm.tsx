@@ -1,46 +1,40 @@
 "use client";
 import Link from "next/link";
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { createVideoAction } from "@/lib/creator-actions";
 import { Check, FormMessage } from "@/components/forms/Field";
 import { Icon } from "@/components/Icon";
-import { CoverPicker } from "@/components/upload/CoverPicker";
-import { TrimBar } from "@/components/upload/TrimBar";
 import { TagInput } from "@/components/upload/TagInput";
-import { useUpload } from "@/components/upload/useUpload";
 import { usePhotos } from "@/components/upload/usePhotos";
-import { findUnfinished, forgetUnfinished, type Unfinished } from "@/components/upload/tus";
 import { VIDEO_CATEGORIES } from "@/lib/audience";
 
 type Dest = { id: string; serviceName: string; domain: string };
 type Draft = { id: string; title: string; poster: string | null; hue: [number, number, number] };
+type Source = { domain: string; displayName: string };
 
-const mb = (n: number) => `${(n / 1024 / 1024).toFixed(n > 100 * 1024 * 1024 ? 0 : 1)}MB`;
 const MAX_TAGS = 5;
 
 /**
- * 投稿画面（TikTok と同じ流れ）。
- * 1) 動画を選ぶ  2) 選んだ瞬間から裏で送りながら、説明・表紙・公開設定を決める
- * 下のボタンは「下書き保存」と「審査に提出」の2つ。
+ * 投稿画面。
+ * 動画は自社に保存せず、公式サンプル等の「埋め込みURL」で表示する（出どころは運営の許可リストに限定）。
+ * 写真は、権利を持つ自分の宣伝用素材をアップロードできる。
  */
 type Resume = {
   id: string; caption: string; tags: string[]; category: string | null; intensity: number | null;
   visibility: "public" | "private"; comments: boolean; poster: string | null; hasMedia: boolean;
-  destId: string; linkUrl: string;
+  destId: string; linkUrl: string; embedUrl: string;
   kind: "video" | "photo"; images: { url: string; w: number; h: number }[] | null;
 };
 
-export function PostForm({ tags, destinations, upload, drafts, resume, myLink }: {
-  tags: string[]; destinations: Dest[]; upload: { maxMb: number; maxSec: number; canTrim: boolean; maxImages: number } | null; drafts: Draft[];
-  /** 下書きの続きから書くとき、その中身 */
+export function PostForm({ tags, destinations, drafts, resume, maxImages, embedSources, myLink }: {
+  tags: string[]; destinations: Dest[]; drafts: Draft[]; maxImages: number; embedSources: Source[];
   resume?: Resume | null;
-  /** 申請のときに登録した自分の販売ページ（初期値に使う） */
   myLink?: { destId: string; url: string } | null;
 }) {
-  const [uploadId, setUploadId] = useState<string | null>(null);
   const [state, action, pending] = useActionState(createVideoAction, undefined);
-  const up = useUpload({ maxMb: upload?.maxMb ?? 0, maxSec: upload?.maxSec ?? 0, onReady: setUploadId });
-  const input = useRef<HTMLInputElement>(null);
+
+  // 投稿の種類。新規は未選択の入口を出し、下書きの続きは保存されている種類で始める。
+  const [mode, setMode] = useState<"video" | "photo" | null>(resume?.kind ?? null);
 
   const [caption, setCaption] = useState(resume?.caption ?? "");
   const [sel, setSel] = useState<string[]>(resume?.tags ?? []);
@@ -49,62 +43,23 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
   const [comments, setComments] = useState(resume?.comments ?? true);
   const [destId, setDestId] = useState(resume?.destId ?? myLink?.destId ?? "");
   const [linkUrl, setLinkUrl] = useState(resume?.linkUrl ?? myLink?.url ?? "");
+  const [embed, setEmbed] = useState(resume?.embedUrl ?? "");
   const [checks, setChecks] = useState({ c1: false, c2: false, c3: false, c4: false });
-  const [coverOpen, setCoverOpen] = useState(false);
-  // 下書きの続きは、動画がもう付いているので最初から内容を書く画面に入る
-  const kept = !!resume?.hasMedia;
-  // 前に送りかけた動画。もう一度同じファイルを選べば、続きから送れる
-  const [left, setLeft] = useState<Unfinished | null>(null);
-  useEffect(() => {
-    if (!upload) return;
-    let dead = false;
-    void findUnfinished().then((u) => { if (!dead) setLeft(u); });
-    return () => { dead = true; };
-  }, [upload]);
-  // 投稿画面を開いたら、すぐ端末の選択画面を出す（iOS では1タップ必要なことがある）
-  const opened = useRef(false);
-  useEffect(() => {
-    if (opened.current || !upload || resume?.hasMedia) return;
-    opened.current = true;
-    const t = setTimeout(() => input.current?.click(), 150);
-    return () => clearTimeout(t);
-  }, [upload, resume]);
-  const canTrim = !!upload?.canTrim;
-  const [trimOpen, setTrimOpen] = useState(false);
-  const [trim, setTrim] = useState<{ startMs: number; endMs: number } | null>(null);
 
-  // 写真投稿（複数枚）。動画が選ばれていなければこちら
+  // 写真投稿（複数枚）
   const [images, setImages] = useState<{ url: string; w: number; h: number }[]>([]);
-  const ph = usePhotos({ max: upload?.maxImages ?? 0, onChange: setImages, initial: resume?.kind === "photo" ? resume.images : null });
+  const ph = usePhotos({ max: maxImages, onChange: setImages, initial: resume?.kind === "photo" ? resume.images : null });
   const photoInput = useRef<HTMLInputElement>(null);
-  const isPhoto = resume?.kind === "photo" || (ph.photos.length > 0 && !up.file && !kept);
+  const isPhoto = mode === "photo";
 
-  // 「動画を選ぶ」ボタンから、動画と写真のどちらが来ても振り分ける
-  const pickFiles = (files: FileList | null) => {
-    const arr = files ? Array.from(files) : [];
-    if (!arr.length) return;
-    const vid = arr.find((f) => f.type.startsWith("video/"));
-    if (vid) void up.pick(vid);
-    else void ph.add(arr);
-  };
-
-  // 保存先が未設定のときは、動画なしで先に内容だけ登録できる（運営が設定するまでの間）
-  // 下書きの続きは、動画がもう付いているので最初から内容を書く画面に入る
-  const chosen = !upload || !!up.file || kept || ph.photos.length > 0;
-  // 動画は変換完了、写真は1枚以上アップロード済みで「本体あり」とみなす
-  const hasVideo = !upload ? true
-    : isPhoto ? (ph.readyCount > 0 && !ph.uploading)
-    : (!!uploadId || kept);
-  // 「完全版を見る」のリンクは必須（サンプル動画として投稿してもらうため）
-  const ready = hasVideo && !!cat && caption.trim().length > 0 && sel.length > 0
+  const hasMedia = isPhoto ? (ph.readyCount > 0 && !ph.uploading) : embed.trim().length > 0;
+  const ready = hasMedia && !!cat && caption.trim().length > 0 && sel.length > 0
     && !!destId && linkUrl.trim().length > 0
     && checks.c1 && checks.c2 && checks.c3 && checks.c4 && !pending;
-  // 下書きは、動画さえ送れていれば保存できる
-  const canDraft = hasVideo && !pending;
+  const canDraft = hasMedia && !pending;
 
-  // 投稿に足りていない項目を、分かりやすく画面に出すためのリスト
   const missing = [
-    !hasVideo && (isPhoto ? "写真を選ぶ" : "動画を選ぶ"),
+    !hasMedia && (isPhoto ? "写真を選ぶ" : "埋め込みURLを入れる"),
     !cat && "ジャンルを選ぶ",
     caption.trim().length === 0 && "説明を書く",
     sel.length === 0 && "タグを1つ以上つける",
@@ -112,44 +67,25 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
     !(checks.c1 && checks.c2 && checks.c3 && checks.c4) && "確認事項にすべてチェックする",
   ].filter(Boolean) as string[];
 
-  const toggleTag = (t: string) =>
-    setSel((s) => (s.includes(t) ? s.filter((x) => x !== t) : s.length < MAX_TAGS ? [...s, t] : s));
-
-  /* ---------- 1) 動画・写真を選ぶ画面（開くとすぐ端末の選択が出る） ---------- */
-  if (!chosen) {
+  /* ---------- 1) 種類を選ぶ画面 ---------- */
+  if (mode === null) {
     return (
       <div className="pick-screen">
-        <input ref={input} type="file" accept="video/*,image/*" multiple hidden aria-label="動画・写真を選ぶ"
-          onChange={(e) => pickFiles(e.target.files)} />
-        <button type="button" className="pick-main" onClick={() => input.current?.click()}>
-          <span className="pick-glow" aria-hidden="true" />
-          <span className="pick-ic"><Icon name="upload" size={30} /></span>
-          <b className="pick-title">動画・写真を選ぶ</b>
-          <span className="pick-sub">タップして端末から選ぶ</span>
-          <span className="pick-chips" aria-hidden="true">
-            <span className="pick-chip"><Icon name="video" size={13} />動画 1本</span>
-            <span className="pick-chip"><Icon name="images" size={13} />写真 何枚でも</span>
-          </span>
-        </button>
-        <p className="pick-note cap">
-          縦長がおすすめ（横長もそのまま表示）・動画は{upload ? `${Math.floor(upload.maxSec / 60)}分・${upload.maxMb >= 1024 ? `${upload.maxMb / 1024}GB` : `${upload.maxMb}MB`}` : "6分・2GB"}まで
-        </p>
-        {left && up.state.k === "idle" && (
-          <div className="notice info resume" role="status">
-            <Icon name="upload" size={18} />
-            <span>
-              <b>送りかけの動画があります</b><br />
-              {left.filename}（{Math.floor((left.sent / Math.max(1, left.size)) * 100)}% まで送信済み）<br />
-              <small>同じファイルをもう一度選ぶと、続きから送ります。</small>
-            </span>
-            <span style={{ display: "flex", gap: 8, marginTop: 6 }}>
-              <button type="button" className="btn btn-sm btn-primary" onClick={() => input.current?.click()}>続きから送る</button>
-              <button type="button" className="btn btn-sm btn-secondary" onClick={() => { forgetUnfinished(); setLeft(null); }}>やめる</button>
-            </span>
-          </div>
-        )}
-        {up.state.k === "failed" && <p className="cap" style={{ color: "var(--bad)", textAlign: "center" }}>{up.state.message}</p>}
-        {up.state.k === "reading" && <p className="cap" style={{ textAlign: "center" }}>動画を読み込んでいます…</p>}
+        <div className="pick-choices">
+          <button type="button" className="pick-main" onClick={() => setMode("video")}>
+            <span className="pick-glow" aria-hidden="true" />
+            <span className="pick-ic"><Icon name="video" size={30} /></span>
+            <b className="pick-title">動画を埋め込む</b>
+            <span className="pick-sub">公式サンプルの埋め込みURLを貼る</span>
+          </button>
+          <button type="button" className="pick-main alt" onClick={() => photoInput.current?.click()}>
+            <span className="pick-ic"><Icon name="images" size={30} /></span>
+            <b className="pick-title">写真を投稿</b>
+            <span className="pick-sub">権利を持つ宣伝用の画像を選ぶ</span>
+          </button>
+          <input ref={photoInput} type="file" accept="image/*" multiple hidden aria-label="写真を選ぶ"
+            onChange={(e) => { const fs = e.target.files ? Array.from(e.target.files) : []; e.target.value = ""; if (fs.length) { setMode("photo"); void ph.add(fs); } }} />
+        </div>
 
         {drafts.length > 0 && (
           <section style={{ width: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -169,7 +105,7 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
         <Link href="/legal/guidelines" className="pick-guide">
           <span className="pick-guide-ic"><Icon name="shield" size={18} /></span>
           <span>
-            投稿できるのは、<b>自分が権利を持ち、出演者全員が18歳以上で公開に同意している</b>ものだけです。
+            載せられるのは、<b>提携先の正規流通作品（公式サンプル）や、自分が権利を持つ素材</b>だけです。本編は公式サイトで視聴してもらいます。
             <span className="pick-guide-link">投稿ガイドラインを読む<Icon name="chev" size={14} /></span>
           </span>
         </Link>
@@ -178,23 +114,11 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
   }
 
   /* ---------- 2) 投稿の内容を決める画面 ---------- */
-  const st = up.state;
-  // 下書きの続きのときは、保存してある表紙を出す（手元に動画ファイルはない）
-  const coverSrc = up.cover ?? (kept ? resume!.poster : null);
-  const statusLine = isPhoto
-    ? (ph.uploading ? "写真を取り込み中です…" : `写真 ${ph.readyCount} 枚の準備ができました`)
-    : st.k === "uploading" ? `アップロード中 ${up.pct}%（${mb(st.sent)} / ${mb(st.total)}）`
-      : st.k === "paused" ? `一時停止中 ${up.pct}%`
-        : st.k === "processing" ? "画質ごとに変換中です（このまま投稿できます）"
-          : st.k === "ready" ? "動画の準備ができました"
-            : st.k === "failed" ? st.message
-              : kept ? "下書きの続きです" : "";
-
   return (
     <form action={action} className="composer">
-      <input type="hidden" name="uploadId" value={uploadId ?? ""} />
       <input type="hidden" name="kind" value={isPhoto ? "photo" : "video"} />
       {isPhoto && <input type="hidden" name="images" value={JSON.stringify(images)} />}
+      {!isPhoto && <input type="hidden" name="embed" value={embed.trim()} />}
       {resume && <input type="hidden" name="draftId" value={resume.id} />}
       <input type="hidden" name="visibility" value={visibility} />
       <input type="hidden" name="commentsEnabled" value={comments ? "on" : "off"} />
@@ -204,28 +128,29 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
       <input type="hidden" name="description" value={caption.slice(0, 300)} />
       <input type="hidden" name="link" value={destId ? linkUrl : ""} />
 
-      {/* 送信の進み具合は常に上に出す */}
-      {statusLine && (
-        <div className={`up-head${st.k === "failed" ? " bad" : ""}`}>
-          <div className="up-bar"><i style={{ transform: `scaleX(${isPhoto ? (ph.uploading ? 0.5 : 1) : up.pct / 100})` }} /></div>
-          <div className="up-row">
-            <span className="cap num">{statusLine}</span>
-            {!isPhoto && st.k === "uploading" && <button type="button" className="btn btn-sm btn-secondary" onClick={up.pause}>一時停止</button>}
-            {!isPhoto && st.k === "paused" && <button type="button" className="btn btn-sm btn-primary" onClick={() => void up.resume()}>再開</button>}
-          </div>
-          {st.k === "paused" && st.message && <span className="cap" style={{ color: "var(--warn)" }}>{st.message}</span>}
-        </div>
-      )}
-
       <div className="sec" style={{ gap: 18, paddingBottom: 16 }}>
-        {!upload && (
-          <div className="notice info" role="status">
-            <Icon name="alert" size={18} />
-            <span>動画ファイルのアップロードは準備中です。いまは内容だけ先に登録できます（動画は抽象的な表示になります）。</span>
+        {/* 動画＝埋め込みURL */}
+        {!isPhoto && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <span className="label">埋め込みURL（公式サンプル）<small className="req">必須</small></span>
+            <input className="input num" type="url" inputMode="url" value={embed} onChange={(e) => setEmbed(e.target.value)}
+              placeholder="https://…（公式サンプルの埋め込みURL）" aria-label="埋め込みURL" style={{ height: 46 }} />
+            <span className="cap" style={{ display: "flex", gap: 6 }}>
+              <Icon name="shield" size={14} />
+              動画は<b>自社に保存しません</b>。公式サンプルなど、運営が許可した出どころのURLだけ埋め込めます。
+            </span>
+            {embedSources.length > 0 ? (
+              <div className="src-chips">
+                <span className="cap">許可された出どころ：</span>
+                {embedSources.map((s) => <span key={s.domain} className="src-chip">{s.displayName}<small>{s.domain}</small></span>)}
+              </div>
+            ) : (
+              <span className="cap" style={{ color: "var(--warn)" }}>いま許可された出どころがありません。運営に追加を依頼してください。</span>
+            )}
           </div>
         )}
 
-        {/* 写真投稿のときは、選んだ写真を横に並べて足したり外したりできる */}
+        {/* 写真投稿 */}
         {isPhoto && (
           <div className="photo-strip" role="list" aria-label="選んだ写真">
             {ph.photos.map((pt) => (
@@ -237,7 +162,7 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
                 <button type="button" className="ph-x" aria-label="この写真を外す" onClick={() => ph.remove(pt.key)}><Icon name="x" size={14} /></button>
               </div>
             ))}
-            {ph.photos.length < (upload?.maxImages ?? 0) && (
+            {ph.photos.length < maxImages && (
               <button type="button" className="photo-add" onClick={() => photoInput.current?.click()} aria-label="写真を追加">
                 <Icon name="plus" size={24} /><span>追加</span>
               </button>
@@ -246,32 +171,19 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
               onChange={(e) => { void ph.add(e.target.files ? Array.from(e.target.files) : []); e.currentTarget.value = ""; }} />
           </div>
         )}
+        {isPhoto && (
+          <span className="cap num">{ph.uploading ? "写真を取り込み中です…" : `写真 ${ph.readyCount} 枚の準備ができました`}</span>
+        )}
 
-        {/* 説明＋表紙（TikTok と同じ並び） */}
+        {/* 説明 */}
         <div className="cap-row">
           <textarea className="cap-input" value={caption} onChange={(e) => setCaption(e.target.value)}
             maxLength={300} rows={5} placeholder="説明を書く…　#タグ をつけると見つけてもらいやすくなります" aria-label="説明" />
-          {upload && !isPhoto && (
-            <button type="button" className="cover-btn" onClick={() => setCoverOpen(true)} disabled={!up.file || st.k !== "ready"}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              {coverSrc ? <img src={coverSrc} alt="" /> : <span className="ph"><Icon name="video" size={22} /></span>}
-              <span className="lbl">{kept && !up.file ? "動画は保存済み" : st.k === "ready" ? "表紙を選ぶ" : "準備中…"}</span>
-            </button>
-          )}
         </div>
         <div className="cap-meta">
           <span className="cap num">{caption.length}/300</span>
           <button type="button" className="cap-chip" onClick={() => setCaption((c) => `${c}#`)}>#タグを入れる</button>
-          {canTrim && up.file && !isPhoto && (
-            <button type="button" className="cap-chip" onClick={() => setTrimOpen(true)} disabled={st.k === "uploading" || st.k === "reading"}>
-              <Icon name="scissors" size={14} />{trim ? `${Math.round((trim.endMs - trim.startMs) / 1000)}秒に切り取り済み` : "長さを切り取る"}
-            </button>
-          )}
-          {upload && (
-            <button type="button" className="cap-chip" onClick={() => { up.reset(); ph.reset(); }}>
-              {isPhoto ? "選び直す" : "動画を選び直す"}
-            </button>
-          )}
+          <button type="button" className="cap-chip" onClick={() => setMode(null)}>種類を選び直す</button>
         </div>
 
         {/* タグ */}
@@ -287,12 +199,13 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
             {VIDEO_CATEGORIES.map((c) => <button type="button" key={c.id} role="radio" aria-checked={cat === c.id} onClick={() => setCat(c.id)}>{c.label}</button>)}
           </div>
         </div>
-        {/* 公開の設定（TikTok の「この動画を見られる人」と同じ並び） */}
+
+        {/* 公開の設定 */}
         <div className="opt-list">
           <div className="opt">
             <Icon name="eye" size={20} />
-            <span className="grow">この動画を見られる人</span>
-            <div className="seg mini" role="radiogroup" aria-label="この動画を見られる人">
+            <span className="grow">この投稿を見られる人</span>
+            <div className="seg mini" role="radiogroup" aria-label="この投稿を見られる人">
               <button type="button" role="radio" aria-checked={visibility === "public"} onClick={() => setVisibility("public")}>全員</button>
               <button type="button" role="radio" aria-checked={visibility === "private"} onClick={() => setVisibility("private")}>自分だけ</button>
             </div>
@@ -321,7 +234,7 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
                     placeholder={`https://${destinations.find((d) => d.id === destId)?.domain}/...`} aria-label="自分のページのURL" />
                   <span className="cap" style={{ display: "flex", gap: 6 }}>
                     <Icon name="shield" size={14} />
-                    この動画は<b>サンプル</b>として扱われます。完全版を売っている自分のページのURLを入れてください。
+                    この投稿は<b>サンプル</b>として扱われます。完全版を売っている自分のページのURLを入れてください。
                     選んだサービスのURLだけ登録できます。短縮URLは使えません。移動の前に確認画面とPR表記が出ます。
                   </span>
                 </>
@@ -330,15 +243,15 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
           )}
         </div>
 
-        {/* 確認事項（詳しい内容は「投稿前の確認・誓約事項」にまとめ、ここでは要点に同意してもらう） */}
+        {/* 確認事項 */}
         <div style={{ display: "flex", flexDirection: "column" }}>
           <span className="label" style={{ marginBottom: 4 }}>確認事項<small className="req">すべて必須</small></span>
           {(["c1", "c2", "c3"] as const).map((k, i) => (
             <span key={k} onChange={(e) => setChecks((c) => ({ ...c, [k]: (e.target as HTMLInputElement).checked }))}>
               <Check name={k}>{[
-                "出演者は自分を含め全員が18歳以上で、年齢を確認できる書類を自分で確認しました",
-                "出演者全員から、インターネットでの公開について同意を得ています",
-                "自分が権利を持つ内容で、他人の転載・切り抜き・AIによる他人の再現ではありません",
+                "載せる素材は、提携先が許可した正規流通作品の公式サンプル、または自分が権利を持つものです",
+                "出演者は全員が18歳以上で、インターネットでの公開に同意しています",
+                "児童ポルノ・リベンジポルノ・盗撮・無断アップロード作品ではありません",
               ][i]}</Check>
             </span>
           ))}
@@ -351,7 +264,7 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
           <span className="cap" style={{ marginTop: 4 }}>同意の内容と日時は、変更できない記録として保存されます。虚偽の同意は、アカウント停止・法的措置の対象になります。</span>
         </div>
 
-        {/* 足りない項目を、投稿ボタンの手前にはっきり出す */}
+        {/* 足りない項目 */}
         {!pending && missing.length > 0 && (
           <div className="notice warn" role="status" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
             <b style={{ fontSize: 14 }}>投稿するには、あと{missing.length}つ必要です</b>
@@ -369,32 +282,10 @@ export function PostForm({ tags, destinations, upload, drafts, resume, myLink }:
         <FormMessage state={state} />
       </div>
 
-      {/* TikTok と同じく、下に「下書き」と「投稿」を並べる */}
       <div className="bottom-fixed">
         <button className="btn btn-secondary" name="intent" value="draft" disabled={!canDraft}>下書き保存</button>
         <button className="btn btn-primary" name="intent" value="submit" disabled={!ready}>{pending ? "送信中…" : "投稿する"}</button>
       </div>
-
-      {coverOpen && up.file && uploadId && (
-        <CoverPicker file={up.file} uploadId={uploadId} durationMs={up.info?.durationMs ?? 0}
-          onClose={(c) => {
-            setCoverOpen(false);
-            if (!c?.changed) return;
-            // サーバーが作り直した表紙に差し替える（端末で絵を作れなかった場合もこちらで見える）
-            up.setCover(c.dataUrl || `/media/${uploadId}/poster.jpg?t=${Date.now()}`);
-          }} />
-      )}
-
-      {trimOpen && up.file && uploadId && (
-        <TrimBar file={up.file} uploadId={uploadId} durationMs={up.info?.durationMs ?? 0} value={trim}
-          onClose={(v, saved) => {
-            setTrimOpen(false);
-            if (!saved) return;
-            setTrim(v);
-            // 切り取ると変換をやり直すので、終わるまで待つ
-            up.recheck();
-          }} />
-      )}
     </form>
   );
 }
