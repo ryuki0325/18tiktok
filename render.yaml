@@ -27,16 +27,7 @@ services:
         value: "true"
       - key: CRON_SECRET
         generateValue: true
-      # 動画の保存・配信（Bunny Stream）。3つとも入れると投稿画面で動画をアップロードできるようになる
-      - key: BUNNY_STREAM_LIBRARY_ID
-        sync: false
-      - key: BUNNY_STREAM_API_KEY
-        sync: false
-      - key: BUNNY_STREAM_CDN_HOST
-        sync: false
-      # Bunny の Webhook にかける鍵。Bunny 側の Webhook URL の末尾に ?t=（この値）を付ける
-      - key: BUNNY_WEBHOOK_SECRET
-        generateValue: true
+      # 動画は自社に保存せず、公式サンプル等の「埋め込みURL」で表示するため、動画の保存設定は不要。
       # 写真の保存・配信（Bunny Storage）。4つ入れると写真が Bunny に保存され、再起動でも消えない
       - key: BUNNY_STORAGE_ZONE
         sync: false

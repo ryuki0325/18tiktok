@@ -1,5 +1,9 @@
 import type { MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
-  return { rules: [{ userAgent: "*", allow: ["/legal/"], disallow: ["/"] }] };
+  const base = process.env.APP_URL?.replace(/\/$/, "");
+  return {
+    rules: [{ userAgent: "*", allow: ["/legal/"], disallow: ["/"] }],
+    ...(base ? { sitemap: `${base}/sitemap.xml` } : {}),
+  };
 }

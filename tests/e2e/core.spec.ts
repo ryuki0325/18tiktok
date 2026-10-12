@@ -201,7 +201,6 @@ async function startPhotos(page: Page, files: string[]) {
 }
 
 const CRON_SECRET = "e2e-cron-secret-0123456789";
-const WEBHOOK_SECRET = "e2e-bunny-hook-0123456789";
 
 const hasFfmpeg = (() => { try { execFileSync("ffmpeg", ["-version"], { stdio: "ignore" }); return true; } catch { return false; } })();
 
@@ -217,58 +216,9 @@ test.describe("外部サービスとのつなぎ目", () => {
     // 知らない仕事は404
     expect((await page.request.post("/api/cron/nope", { headers: { authorization: `Bearer ${CRON_SECRET}` } })).status()).toBe(404);
   });
-
-  test("Bunny の Webhook は鍵がないと受け付けない", async ({ page }) => {
-    const url = "/api/v1/webhooks/bunny";
-    const guid = "00000000-0000-4000-8000-000000000000";
-    expect((await page.request.post(url, { data: { VideoGuid: guid } })).status()).toBe(401);
-    expect((await page.request.post(`${url}?t=wrong`, { data: { VideoGuid: guid } })).status()).toBe(401);
-    // 正しい鍵でも、中身は信用せず GUID で問い合わせ直すだけ（知らない GUID は何もしない）
-    const ok = await page.request.post(`${url}?t=${WEBHOOK_SECRET}`, { data: { VideoGuid: guid } });
-    expect(ok.status()).toBe(200);
-    // 形が違う GUID は断る
-    expect((await page.request.post(`${url}?t=${WEBHOOK_SECRET}`, { data: { VideoGuid: "../etc/passwd" } })).status()).toBe(400);
-  });
 });
 
 test.describe("投稿（埋め込み・写真）と配信", () => {
-  test("分割アップロード（tus）：位置がずれたチャンクは拒否され、HEADで続きの位置が分かる", async ({ page }) => {
-    await passGate(page);
-    await loginAs(page, "luna_night@demo.example");
-    const size = 300 * 1024;
-    const init = await page.request.post("/api/v1/uploads", { headers: { origin: "http://localhost:3200" }, data: { filename: "a.mp4", mime: "video/mp4", size } });
-    expect(init.status()).toBe(201);
-    const { id, tus } = await init.json();
-    expect(tus.chunkSize).toBe(128 * 1024);
-    const url = `/api/v1/uploads/${id}/tus`;
-    const h = { origin: "http://localhost:3200", "Tus-Resumable": "1.0.0", "Content-Type": "application/offset+octet-stream" };
-    // 先頭はMP4のしるし（ftyp）にする。でないと「動画ではない」として弾かれる
-    const chunk = Buffer.alloc(tus.chunkSize, 1);
-    Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32]).copy(chunk, 0);
-    expect((await page.request.patch(url, { headers: { ...h, "Upload-Offset": "0" }, data: chunk })).status()).toBe(204);
-    // 同じ位置をもう一度送る（通信が切れて再送した想定）→ 409 と正しい位置
-    const dup = await page.request.patch(url, { headers: { ...h, "Upload-Offset": "0" }, data: chunk });
-    expect(dup.status()).toBe(409);
-    expect(dup.headers()["upload-offset"]).toBe(String(tus.chunkSize));
-    const head = await page.request.head(url, { headers: { "Tus-Resumable": "1.0.0" } });
-    expect(head.headers()["upload-offset"]).toBe(String(tus.chunkSize));
-    // 途中で完了させようとしても受け付けない
-    expect((await page.request.post(`/api/v1/uploads/${id}/complete`, { headers: { origin: "http://localhost:3200" }, data: {} })).status()).toBe(409);
-    // 動画でないファイルは、中身を見て弾く（MIMEの自己申告は信用しない）
-    const bad = await page.request.post("/api/v1/uploads", { headers: { origin: "http://localhost:3200" }, data: { filename: "evil.mp4", mime: "video/mp4", size: 1024 } });
-    const badId = (await bad.json()).id;
-    const badRes = await page.request.patch(`/api/v1/uploads/${badId}/tus`, {
-      headers: { ...h, "Upload-Offset": "0" }, data: Buffer.from("<?php system($_GET[0]); ?>".padEnd(64, " ")),
-    });
-    expect(badRes.status()).toBe(415);
-
-    // 他人は触れない
-    const other = await page.context().browser()!.newContext();
-    const o = await other.newPage();
-    expect((await o.request.head(`http://localhost:3200${url}`)).status()).toBe(401);
-    await other.close();
-  });
-
   test("埋め込み動画：投稿するとフィードで埋め込み再生される", async ({ page }) => {
     test.setTimeout(60_000);
     await passGate(page);

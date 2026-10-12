@@ -391,39 +391,13 @@ describe("動画の軽い情報（いいね数・再生数・場所）", () => {
     expect((await feed("recommended", { viewerKey: "d:other" }, 50)).map((c) => c.id)).toContain(first.id);
   });
 
-  it("アップロードが完了すると、動画の行に再生URL・サムネイル・縦横が入り、変換が終わるまでは再生URLを出さない", async () => {
+  it("埋め込み動画は、埋め込みURLが入り src は null のまま（自社配信しない）", async () => {
     setDbForTest(Promise.resolve(db));
-    const { applyUploadToVideo, markUpload } = await import("@/lib/media");
     const [v] = await published();
-    const [u] = await db.insert(s.uploads).values({ userId: v.creatorId, videoId: v.id, provider: "local", filename: "a.mp4", mime: "video/mp4", size: 10, status: "processing", expiresAt: new Date(Date.now() + 3600_000) }).returning();
-    await applyUploadToVideo(db, u);
+    await db.update(s.videos).set({ embedUrl: "https://example.com/sample/abc", embedDomain: "example.com", mediaStatus: "ready", playbackUrl: null }).where(eq(s.videos.id, v.id));
     const { hydrate } = await import("@/lib/content");
-    expect((await hydrate([v.id], { viewerKey: "d:x" }, db))[0].src).toBeNull();
-    await markUpload(db, u.id, { status: "ready", playbackUrl: "/media/x/master.m3u8", thumbnailUrl: "/media/x/poster.jpg", width: 1920, height: 1080 });
     const [card] = await hydrate([v.id], { viewerKey: "d:x" }, db);
-    expect(card).toMatchObject({ src: "/media/x/master.m3u8", poster: "/media/x/poster.jpg", width: 1920, height: 1080 });
-  });
-});
-
-describe("保存料をむだにしない後片付け", () => {
-  it("削除された動画のファイルは、猶予を過ぎたら保存先からも消す", async () => {
-    const { purgeRemovedMedia } = await import("@/lib/media");
-    const [v] = await db.select().from(s.videos).limit(1);
-    await db.update(s.videos).set({ status: "deleted", playbackUrl: "/media/zz/master.m3u8", thumbnailUrl: "/media/zz/poster.jpg", mediaStatus: "ready", deletedAt: new Date(Date.now() - 30 * 86400_000) }).where(eq(s.videos.id, v.id));
-    await db.insert(s.uploads).values({ userId: v.creatorId, videoId: v.id, provider: "local", filename: "a.mp4", mime: "video/mp4", size: 10, status: "ready", expiresAt: new Date(Date.now() + 3600_000) });
-    expect(await purgeRemovedMedia(db)).toBe(1);
-    const [after] = await db.select().from(s.videos).where(eq(s.videos.id, v.id));
-    expect(after.playbackUrl).toBeNull();
-    expect(after.mediaStatus).toBe("none");
-    expect((await db.select().from(s.uploads).where(eq(s.uploads.videoId, v.id))).length).toBe(0);
-  });
-
-  it("消したばかりの動画は、猶予のあいだ残す（誤操作に備える）", async () => {
-    const { purgeRemovedMedia } = await import("@/lib/media");
-    const [v] = await db.select().from(s.videos).where(eq(s.videos.status, "published")).limit(1);
-    await db.update(s.videos).set({ status: "deleted", playbackUrl: "/media/yy/master.m3u8", mediaStatus: "ready", deletedAt: new Date() }).where(eq(s.videos.id, v.id));
-    expect(await purgeRemovedMedia(db)).toBe(0);
-    const [after] = await db.select().from(s.videos).where(eq(s.videos.id, v.id));
-    expect(after.playbackUrl).toBe("/media/yy/master.m3u8");
+    expect(card.src).toBeNull();
+    expect(card.embedUrl).toBe("https://example.com/sample/abc");
   });
 });

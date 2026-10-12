@@ -37,7 +37,9 @@ export default async function Legal({ params }: { params: Promise<{ slug: string
     <main className="shell">
       <div className="navbar"><Link className="iconbtn" href="/" aria-label="戻る"><Icon name="back" /></Link><h1>{PAGES[slug]}</h1><span className="sp44" /></div>
       <div className="sec" style={{ paddingBottom: 40 }}>
-        <div className="notice warn" role="note"><Icon name="alert" size={18} />弁護士確認前の仮文面です。正式な公開前に内容が変わります。</div>
+        {(slug === "tokushoho" || slug === "privacy" || slug === "operator") && (
+          <div className="notice warn" role="note"><Icon name="alert" size={18} />このページは運営者の情報に合わせて内容を記入・確認してください。</div>
+        )}
         <article className="prose-legal" dangerouslySetInnerHTML={{ __html: html }} />
         <nav className="cap" style={{ display: "flex", flexWrap: "wrap", gap: 12, borderTop: "1px solid var(--border)", paddingTop: 16 }}>
           {Object.entries(PAGES).map(([k, v]) => <Link key={k} href={`/legal/${k}`} style={{ textDecoration: "underline" }}>{v}</Link>)}

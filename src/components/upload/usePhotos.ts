@@ -48,7 +48,7 @@ export function usePhotos({ max, onChange, initial }: {
   const [photos, setPhotos] = useState<Photo[]>(() =>
     (initial ?? []).map((im) => ({ key: crypto.randomUUID(), previewUrl: im.url, url: im.url, w: im.w, h: im.h, state: "ready" as const })));
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
   const emit = useCallback((list: Photo[]) => {
     onChangeRef.current(list.filter((p) => p.state === "ready" && p.url).map((p) => ({ url: p.url!, w: p.w, h: p.h })));

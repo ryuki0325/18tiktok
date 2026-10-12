@@ -253,13 +253,6 @@ export async function testMailAction(): Promise<{ ok: boolean; message: string }
     : { ok: false, message: "送れませんでした。RESEND_API_KEY と MAIL_FROM（送信元ドメインの認証）をご確認ください" };
 }
 
-/** 動画の保存先（Bunny Stream）につながるか確かめる */
-export async function checkBunnyAction(): Promise<{ ok: boolean; message: string }> {
-  await need(["super_admin"]);
-  const { checkBunny } = await import("./media");
-  return checkBunny();
-}
-
 /* ---------- 送客先（完全版を見る） ---------- */
 /** 投稿者が作ったタグを、広げる／広げないを決める */
 export async function tagAction(form: FormData) {
