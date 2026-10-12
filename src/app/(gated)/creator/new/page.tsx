@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { embedSources, outboundLinks, tags, videoTags, videos } from "@/db/schema";
+import { outboundLinks, tags, videoTags, videos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { NavBar } from "@/components/NavBar";
 import { maxImages } from "@/lib/media";
@@ -26,15 +26,12 @@ export default async function NewVideo({ searchParams }: { searchParams: Promise
     : limits.postBanned ? "投稿を停止されています。解除まで投稿できません。"
       : !v.ok ? v.reason : null;
 
-  const [allTags, dests, drafts, sources] = await Promise.all([
+  const [allTags, dests, drafts] = await Promise.all([
     conn.select({ name: tags.name }).from(tags).orderBy(tags.id),
     // 送客先は、自分がアフィリエイトIDを登録しているサービスだけ
     postableDestinations(conn, u.id),
     conn.select({ id: videos.id, title: videos.title, poster: videos.thumbnailUrl, hue: videos.hue })
       .from(videos).where(and(eq(videos.creatorId, u.id), eq(videos.status, "draft"))).orderBy(desc(videos.createdAt)).limit(10),
-    // 埋め込みできる出どころ（運営が許可したもの）
-    conn.select({ domain: embedSources.domain, displayName: embedSources.displayName }).from(embedSources)
-      .where(eq(embedSources.isActive, true)).orderBy(embedSources.domain),
   ]);
 
   // 「下書きの続きから」。自分の下書きだけ開ける
@@ -83,7 +80,6 @@ export default async function NewVideo({ searchParams }: { searchParams: Promise
           drafts={drafts}
           resume={resume}
           maxImages={maxImages()}
-          embedSources={sources}
         />
       )}
     </div>

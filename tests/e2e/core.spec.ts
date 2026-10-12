@@ -269,7 +269,7 @@ test.describe("投稿（埋め込み・写真）と配信", () => {
     await other.close();
   });
 
-  test("埋め込み動画：許可済みの出どころを投稿 → フィードで埋め込み再生される", async ({ page }) => {
+  test("埋め込み動画：投稿するとフィードで埋め込み再生される", async ({ page }) => {
     test.setTimeout(60_000);
     await passGate(page);
     await loginAs(page, "luna_night@demo.example");
@@ -297,20 +297,21 @@ test.describe("投稿（埋め込み・写真）と配信", () => {
     await expect(page.locator(".item.active").getByRole("button", { name: "いいね" })).toBeVisible();
   });
 
-  test("許可されていない出どころの埋め込みURLは投稿できない", async ({ page }) => {
+  test("安全でない埋め込みURL（https以外）は投稿できない", async ({ page }) => {
     await passGate(page);
     await loginAs(page, "luna_night@demo.example");
     await page.goto("/creator/new");
     await page.getByRole("button", { name: "動画を埋め込む" }).click();
-    await page.getByLabel("埋め込みURL").fill("https://not-allowed.example/clip/1");
+    // 出どころは自由だが、URL自体の安全性（https等）はチェックする
+    await page.getByLabel("埋め込みURL").fill("http://example.com/clip/1");
     await page.getByRole("radio", { name: /女性/ }).click();
-    await page.fill('[aria-label="説明"]', `不許可${Date.now() % 10000}`);
+    await page.fill('[aria-label="説明"]', `安全性${Date.now() % 10000}`);
     await addTag(page, "ホテル");
     await fillLink(page);
     await agreeAll(page);
     await page.getByRole("button", { name: "投稿する" }).click();
-    // サーバーの出どころ審査ではじかれ、エラーが出る（投稿は作られない）
-    await expect(page.getByText(/許可されていません/)).toBeVisible();
+    // サーバーではじかれ、エラーが出る（投稿は作られない）
+    await expect(page.getByText(/https/)).toBeVisible();
   });
 
   test("写真投稿：複数の画像を選んで投稿 → フィードで横スワイプで見られる", async ({ page }) => {

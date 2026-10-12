@@ -10,7 +10,6 @@ import { VIDEO_CATEGORIES } from "@/lib/audience";
 
 type Dest = { id: string; serviceName: string; domain: string };
 type Draft = { id: string; title: string; poster: string | null; hue: [number, number, number] };
-type Source = { domain: string; displayName: string };
 
 const MAX_TAGS = 5;
 
@@ -26,8 +25,8 @@ type Resume = {
   kind: "video" | "photo"; images: { url: string; w: number; h: number }[] | null;
 };
 
-export function PostForm({ tags, destinations, drafts, resume, maxImages, embedSources, myLink }: {
-  tags: string[]; destinations: Dest[]; drafts: Draft[]; maxImages: number; embedSources: Source[];
+export function PostForm({ tags, destinations, drafts, resume, maxImages, myLink }: {
+  tags: string[]; destinations: Dest[]; drafts: Draft[]; maxImages: number;
   resume?: Resume | null;
   myLink?: { destId: string; url: string } | null;
 }) {
@@ -132,21 +131,13 @@ export function PostForm({ tags, destinations, drafts, resume, maxImages, embedS
         {/* 動画＝埋め込みURL */}
         {!isPhoto && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <span className="label">埋め込みURL（公式サンプル）<small className="req">必須</small></span>
+            <span className="label">埋め込みURL<small className="req">必須</small></span>
             <input className="input num" type="url" inputMode="url" value={embed} onChange={(e) => setEmbed(e.target.value)}
-              placeholder="https://…（公式サンプルの埋め込みURL）" aria-label="埋め込みURL" style={{ height: 46 }} />
+              placeholder="https://…（動画の埋め込みURL）" aria-label="埋め込みURL" style={{ height: 46 }} />
             <span className="cap" style={{ display: "flex", gap: 6 }}>
               <Icon name="shield" size={14} />
-              動画は<b>自社に保存しません</b>。公式サンプルなど、運営が許可した出どころのURLだけ埋め込めます。
+              動画は<b>自社に保存しません</b>。権利を持つ素材・正規流通作品の公式サンプルの埋め込みURLを入れてください。
             </span>
-            {embedSources.length > 0 ? (
-              <div className="src-chips">
-                <span className="cap">許可された出どころ：</span>
-                {embedSources.map((s) => <span key={s.domain} className="src-chip">{s.displayName}<small>{s.domain}</small></span>)}
-              </div>
-            ) : (
-              <span className="cap" style={{ color: "var(--warn)" }}>いま許可された出どころがありません。運営に追加を依頼してください。</span>
-            )}
           </div>
         )}
 
