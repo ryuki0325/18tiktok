@@ -55,8 +55,14 @@ export default async function AdminVideos({ searchParams }: { searchParams: Prom
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <b>{v.title}</b>
                   <span className={`badge ${cls}`}>{label}</span>
+                  {v.kind === "photo" && <span className="badge b-info">写真</span>}
+                  {v.embedUrl && <span className="badge b-info">埋め込み</span>}
                   {reports > 0 && <span className="badge b-bad num">通報{reports}件</span>}
                 </div>
+                {v.embedUrl && (
+                  <span className="cap">出どころ：<b className="num">{v.embedDomain ?? "—"}</b>・
+                    <a href={v.embedUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>埋め込み元を開く ↗</a></span>
+                )}
                 <span className="cap">
                   @{handle}・{ago(v.createdAt)}・再生 <span className="num">{fmt(v.viewCount)}</span>・いいね <span className="num">{fmt(v.likeCount + v.baseLikes)}</span>
                   {v.status === "published" && <> ・<Link href={`/?v=${v.id}`} target="_blank" style={{ color: "var(--accent)" }}>見る ↗</Link></>}
