@@ -34,6 +34,7 @@ export default async function Settings() {
         </Link>
         <div className="list">{items.map(([i, l, h]) => <Link key={l} className="row" href={h}><span className="muted"><Icon name={i} size={22} /></span><span className="grow">{l}</span><span className="muted"><Icon name="chev" size={20} /></span></Link>)}</div>
         {u && <form action={logoutAction} className="list"><button className="row" style={{ color: "var(--bad)" }}><Icon name="logout" size={22} /><span className="grow">ログアウト</span></button></form>}
+        <p className="cap" style={{ textAlign: "center", margin: 0, lineHeight: 1.6 }}>当サイトはアフィリエイト広告を提供しています。</p>
         <p className="cap" style={{ textAlign: "center", margin: 0 }}>VYBE 0.2.0</p>
       </div>
     </div>
