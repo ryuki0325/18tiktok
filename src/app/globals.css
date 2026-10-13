@@ -325,10 +325,14 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
 .sheet .drag { padding: 4px 0 2px; margin: -8px 0 -6px; cursor: grab; touch-action: none; display: flex; flex-direction: column; gap: 14px; }
 
 /* PCで開いたとき：スマホでの利用を案内（QRコード） */
-.desk-qr { display: none; }
+.desk-qr, .desk-qr-reopen { display: none; }
 @media (min-width: 900px) and (hover: hover) {
   .desk-qr { display: flex; position: fixed; right: max(24px, calc(50% - 215px - 300px)); top: 50%; transform: translateY(-50%); width: 220px; flex-direction: column; gap: 12px; align-items: center; text-align: center; padding: 20px; border-radius: 20px; background: var(--surface); box-shadow: 0 0 0 1px var(--border); z-index: 1; }
   .desk-qr img { width: 160px; height: 160px; border-radius: 12px; background: #fff; padding: 8px; }
+  .desk-qr-x { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; border: none; cursor: pointer; color: var(--text); background: color-mix(in srgb, var(--fill) 70%, transparent); }
+  .desk-qr-x:hover { background: var(--fill); }
+  .desk-qr-reopen { display: inline-flex; align-items: center; gap: 6px; position: fixed; right: max(24px, calc(50% - 215px - 300px)); top: 50%; transform: translateY(-50%); cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); padding: 10px 14px; border-radius: 999px; border: none; background: var(--surface); box-shadow: 0 0 0 1px var(--border); z-index: 1; }
+  .desk-qr-reopen:hover { box-shadow: 0 0 0 1px var(--accent); }
 }
 
 @media (prefers-reduced-motion: reduce) { .vid i, .progress i { animation: none; } .sheet, .sheet-bg, .burst { animation: none; } }
