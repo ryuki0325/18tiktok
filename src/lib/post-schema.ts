@@ -8,7 +8,8 @@ import { z } from "zod";
 export const Post = z.object({
   title: z.string().trim().min(1, "タイトルを入力してください").max(60, "タイトルは60文字までです"),
   description: z.string().trim().max(300, "説明は300文字までです"),
-  tags: z.array(z.string()).min(1, "タグを1つ以上選んでください").max(5, "タグは5つまでです"),
+  // タグは説明文の #ハッシュタグ から自動で拾う（任意・最大5つ）
+  tags: z.array(z.string()).max(5, "タグは5つまでです").default([]),
   // サンプル動画として投稿してもらうため、「完全版を見る」のリンクは必須
   link: z.string().trim().min(1, "「完全版を見る」のリンクを入れてください").max(2048),
   // 動画は自社に保存せず、公式サンプル等の埋め込みURLで表示する（写真投稿では未使用）

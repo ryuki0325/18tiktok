@@ -169,10 +169,11 @@ async function fillLink(page: Page) {
   await page.getByLabel("自分のページのURL").fill(`https://${domain}/my/sample-${Date.now() % 100000}`);
 }
 
+/** タグは説明文の #ハッシュタグ から拾う。説明の末尾に別行で #タグ を足す（タイトル＝1行目はそのまま） */
 async function addTag(page: Page, name: string) {
-  const box = page.getByLabel("タグ", { exact: true });
-  await box.fill(name);
-  await box.press("Enter");
+  const box = page.getByLabel("説明");
+  const cur = await box.inputValue();
+  await box.fill(`${cur}\n#${name}`);
 }
 
 // 確認事項（4つ）をすべてチェックする
@@ -373,26 +374,25 @@ test.describe("投稿（埋め込み・写真）と配信", () => {
     await page.waitForURL(/creator\/videos\?submitted=1/);
   });
 
-  test("投稿画面：タグを自分で自由に付けられる（候補なし・即時）", async ({ page }) => {
+  test("説明の #ハッシュタグ がそのままタグになる（探すに反映）", async ({ page }) => {
     await passGate(page);
     await loginAs(page, "luna_night@demo.example");
     await startVideoEmbed(page);
-    const box = page.getByLabel("タグ", { exact: true });
+    await page.getByRole("radio", { name: /女性/ }).click();
+    const title = `ハッシュタグ${Date.now() % 100000}`;
+    await page.fill('[aria-label="説明"]', `${title}\n#ホテル #夜景`);
+    await fillLink(page);
+    await agreeAll(page);
+    await page.getByRole("button", { name: "投稿する" }).click();
+    await page.waitForURL(/creator\/videos\?submitted=1/);
 
-    // 自分で打って「追加」で付く
-    const mine = `夜景デート${Date.now() % 10000}`;
-    await box.fill(mine);
-    await page.getByRole("button", { name: new RegExp(`「${mine}」を追加`) }).click();
-    await expect(page.locator(".taginput .chip.on")).toHaveCount(1);
-
-    // Enter でも足せる
-    await box.fill("ゆったり");
-    await box.press("Enter");
-    await expect(page.locator(".taginput .chip.on")).toHaveCount(2);
-
-    // 外せる
-    await page.getByRole("button", { name: "ゆったり を外す" }).click();
-    await expect(page.locator(".taginput .chip.on")).toHaveCount(1);
+    const all: { title: string; tags: string[] }[] = [];
+    for (let off: number | null = 0; off !== null;) {
+      const j = await (await page.request.get(`/api/v1/feed?tab=recommended&offset=${off}`)).json();
+      all.push(...j.videos); off = j.nextOffset;
+    }
+    const v = all.find((x) => x.title === title)!;
+    expect(v.tags).toEqual(expect.arrayContaining(["ホテル", "夜景"]));
   });
 
   test("リンクがないと投稿できない（サンプル＋販売ページが条件）", async ({ page }) => {

@@ -4,7 +4,6 @@ import { useActionState, useRef, useState } from "react";
 import { createVideoAction } from "@/lib/creator-actions";
 import { Check, FormMessage } from "@/components/forms/Field";
 import { Icon } from "@/components/Icon";
-import { TagInput } from "@/components/upload/TagInput";
 import { usePhotos } from "@/components/upload/usePhotos";
 import { VIDEO_CATEGORIES } from "@/lib/audience";
 
@@ -25,8 +24,8 @@ type Resume = {
   kind: "video" | "photo"; images: { url: string; w: number; h: number }[] | null;
 };
 
-export function PostForm({ tags, destinations, drafts, resume, maxImages, myLink }: {
-  tags: string[]; destinations: Dest[]; drafts: Draft[]; maxImages: number;
+export function PostForm({ destinations, drafts, resume, maxImages, myLink }: {
+  destinations: Dest[]; drafts: Draft[]; maxImages: number;
   resume?: Resume | null;
   myLink?: { destId: string; url: string } | null;
 }) {
@@ -36,7 +35,6 @@ export function PostForm({ tags, destinations, drafts, resume, maxImages, myLink
   const [mode, setMode] = useState<"video" | "photo" | null>(resume?.kind ?? null);
 
   const [caption, setCaption] = useState(resume?.caption ?? "");
-  const [sel, setSel] = useState<string[]>(resume?.tags ?? []);
   const [cat, setCat] = useState<string | null>(resume?.category ?? null);
   const [visibility, setVisibility] = useState<"public" | "private">(resume?.visibility ?? "public");
   const [comments, setComments] = useState(resume?.comments ?? true);
@@ -51,8 +49,11 @@ export function PostForm({ tags, destinations, drafts, resume, maxImages, myLink
   const photoInput = useRef<HTMLInputElement>(null);
   const isPhoto = mode === "photo";
 
+  // タグは説明文の中の #ハッシュタグ から自動で拾う（最大5つ・重複なし）
+  const tags = Array.from(new Set((caption.match(/#([^\s#、。,.!?！？]+)/g) ?? []).map((t) => t.slice(1)).filter(Boolean))).slice(0, MAX_TAGS);
+
   const hasMedia = isPhoto ? (ph.readyCount > 0 && !ph.uploading) : embed.trim().length > 0;
-  const ready = hasMedia && !!cat && caption.trim().length > 0 && sel.length > 0
+  const ready = hasMedia && !!cat && caption.trim().length > 0
     && !!destId && linkUrl.trim().length > 0
     && checks.c1 && checks.c2 && checks.c3 && checks.c4 && !pending;
   const canDraft = hasMedia && !pending;
@@ -61,7 +62,6 @@ export function PostForm({ tags, destinations, drafts, resume, maxImages, myLink
     !hasMedia && (isPhoto ? "写真を選ぶ" : "埋め込みURLを入れる"),
     !cat && "ジャンルを選ぶ",
     caption.trim().length === 0 && "説明を書く",
-    sel.length === 0 && "タグを1つ以上つける",
     (!destId || linkUrl.trim().length === 0) && "「完全版を見る」のリンクを入れる",
     !(checks.c1 && checks.c2 && checks.c3 && checks.c4) && "確認事項にすべてチェックする",
   ].filter(Boolean) as string[];
@@ -122,7 +122,7 @@ export function PostForm({ tags, destinations, drafts, resume, maxImages, myLink
       <input type="hidden" name="visibility" value={visibility} />
       <input type="hidden" name="commentsEnabled" value={comments ? "on" : "off"} />
       {cat && <input type="hidden" name="category" value={cat} />}
-      {sel.map((t) => <input key={t} type="hidden" name="tags" value={t} />)}
+      {tags.map((t) => <input key={t} type="hidden" name="tags" value={t} />)}
       <input type="hidden" name="title" value={caption.split("\n")[0].slice(0, 60)} />
       <input type="hidden" name="description" value={caption.slice(0, 300)} />
       <input type="hidden" name="link" value={destId ? linkUrl : ""} />
@@ -134,9 +134,9 @@ export function PostForm({ tags, destinations, drafts, resume, maxImages, myLink
             <span className="label">埋め込みURL<small className="req">必須</small></span>
             <input className="input num" type="url" inputMode="url" value={embed} onChange={(e) => setEmbed(e.target.value)}
               placeholder="https://…（動画の埋め込みURL）" aria-label="埋め込みURL" style={{ height: 46 }} />
-            <span className="cap" style={{ display: "flex", gap: 6 }}>
-              <Icon name="shield" size={14} />
-              動画は<b>自社に保存しません</b>。権利を持つ素材・正規流通作品の公式サンプルの埋め込みURLを入れてください。
+            <span className="cap" style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+              <span style={{ flexShrink: 0, lineHeight: 0, marginTop: 2 }}><Icon name="shield" size={14} /></span>
+              <span>動画は<b>自社に保存しません</b>。権利を持つ素材・正規流通作品の公式サンプルの埋め込みURLを入れてください。</span>
             </span>
           </div>
         )}
@@ -176,12 +176,7 @@ export function PostForm({ tags, destinations, drafts, resume, maxImages, myLink
           <button type="button" className="cap-chip" onClick={() => setCaption((c) => `${c}#`)}>#タグを入れる</button>
           <button type="button" className="cap-chip" onClick={() => setMode(null)}>種類を選び直す</button>
         </div>
-
-        {/* タグ */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span className="label">タグ<small className="req">必須</small><small>・最大{MAX_TAGS}つ（{sel.length}/{MAX_TAGS}）</small></span>
-          <TagInput value={sel} max={MAX_TAGS} onChange={setSel} />
-        </div>
+        <span className="cap">説明文に <b>#タグ</b> をつけると、そのまま「探す」に反映されます{tags.length > 0 && `（${tags.map((t) => `#${t}`).join(" ")}）`}。</span>
 
         {/* 必須の分類 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -223,10 +218,10 @@ export function PostForm({ tags, destinations, drafts, resume, maxImages, myLink
                 <>
                   <input className="input num" type="url" inputMode="url" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)}
                     placeholder={`https://${destinations.find((d) => d.id === destId)?.domain}/...`} aria-label="自分のページのURL" />
-                  <span className="cap" style={{ display: "flex", gap: 6 }}>
-                    <Icon name="shield" size={14} />
-                    この投稿は<b>サンプル</b>として扱われます。完全版を売っている自分のページのURLを入れてください。
-                    選んだサービスのURLだけ登録できます。短縮URLは使えません。移動の前に確認画面とPR表記が出ます。
+                  <span className="cap" style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                    <span style={{ flexShrink: 0, lineHeight: 0, marginTop: 2 }}><Icon name="shield" size={14} /></span>
+                    <span>この投稿は<b>サンプル</b>として扱われます。完全版を売っている自分のページのURLを入れてください。
+                    選んだサービスのURLだけ登録できます。短縮URLは使えません。移動の前に確認画面とPR表記が出ます。</span>
                   </span>
                 </>
               )}

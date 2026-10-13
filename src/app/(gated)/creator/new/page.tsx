@@ -26,8 +26,7 @@ export default async function NewVideo({ searchParams }: { searchParams: Promise
     : limits.postBanned ? "投稿を停止されています。解除まで投稿できません。"
       : !v.ok ? v.reason : null;
 
-  const [allTags, dests, drafts] = await Promise.all([
-    conn.select({ name: tags.name }).from(tags).orderBy(tags.id),
+  const [dests, drafts] = await Promise.all([
     // 送客先は、自分がアフィリエイトIDを登録しているサービスだけ
     postableDestinations(conn, u.id),
     conn.select({ id: videos.id, title: videos.title, poster: videos.thumbnailUrl, hue: videos.hue })
@@ -75,7 +74,6 @@ export default async function NewVideo({ searchParams }: { searchParams: Promise
         <PostForm
           /* 下書きを開き直したときに中身を入れ替えるため、下書きごとに作り直す */
           key={resume?.id ?? "new"}
-          tags={allTags.map((t) => t.name)}
           destinations={dests}
           drafts={drafts}
           resume={resume}
