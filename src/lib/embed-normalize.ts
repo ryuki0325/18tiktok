@@ -61,6 +61,24 @@ export function normalizeEmbed(raw: string): string | null {
     if (dm) return `https://www.dailymotion.com/embed/video/${dm[1]}`;
   }
 
+  // X / Twitter の投稿 → 公式の埋め込み iframe（ツイート本文＋動画が表示される）
+  if (host === "x.com" || host === "twitter.com" || host === "mobile.twitter.com" || host.endsWith(".twitter.com")) {
+    const tw = path.match(/\/status(?:es)?\/(\d+)/);
+    if (tw) return `https://platform.twitter.com/embed/Tweet.html?id=${tw[1]}`;
+  }
+
+  // Instagram の投稿・リール → 公式の埋め込み
+  if (host === "instagram.com" || host.endsWith(".instagram.com")) {
+    const ig = path.match(/\/(p|reel|reels|tv)\/([^/]+)/);
+    if (ig) { const kind = ig[1] === "reels" ? "reel" : ig[1]; return `https://www.instagram.com/${kind}/${ig[2]}/embed`; }
+  }
+
+  // TikTok の動画 → 公式の埋め込み（短縮URL vm.tiktok.com は数字IDが取れないため対象外）
+  if (host === "tiktok.com" || host.endsWith(".tiktok.com")) {
+    const tk = path.match(/\/video\/(\d+)/);
+    if (tk) return `https://www.tiktok.com/embed/v2/${tk[1]}`;
+  }
+
   // それ以外はそのまま（埋め込みできるかは貼り先サイトの設定しだい）
   return u.toString();
 }

@@ -193,6 +193,7 @@ export function MoreSheet({ card, rate, loggedIn, mine, onClose, onShare, onNotI
           {mine && (
             // 自分の投稿のときは、非公開・削除をいちばん上に出す
             <div className="list" style={{ background: "var(--surface-2)", marginBottom: 12 }}>
+              <Link className="row" href={`/creator/videos/${card.id}/edit`} onClick={onClose}><Icon name="file" size={20} /><span className="grow">編集する<span className="cap" style={{ display: "block" }}>説明・タグ・公開範囲などを変えられます（動画とリンクは不可）</span></span></Link>
               <button className="row" onClick={onHidePost}><Icon name="eyeoff" size={20} /><span className="grow">非公開にする<span className="cap" style={{ display: "block" }}>自分だけが見られる状態にします（あとで公開に戻せます）</span></span></button>
               <button className="row" onClick={() => setView("delete")}><span style={{ color: "var(--bad)", display: "inline-flex" }}><Icon name="trash" size={20} /></span><span className="grow" style={{ color: "var(--bad)" }}>削除する<span className="cap" style={{ display: "block" }}>この{isPhoto ? "写真" : "動画"}を完全に削除します</span></span></button>
             </div>

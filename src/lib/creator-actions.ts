@@ -6,14 +6,12 @@ import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { Draft, Post } from "./post-schema";
 import { db } from "@/db";
-import { affiliateDomains, creatorProfiles, outboundLinks, tags, videoTags, videos } from "@/db/schema";
+import { creatorProfiles, tags, videoTags, videos } from "@/db/schema";
 import { isUuid } from "./media";
 import { checkTag } from "./tags";
 import { transition } from "./video-state";
 import { activeLimits } from "./safety";
 import { canPublish, submitVerification } from "./verification";
-import { checkAffiliateUrl } from "./url";
-import { getSetting } from "./settings";
 import { currentUser } from "./auth";
 import { clientIpHash, rateLimit } from "./http";
 import { createVideo } from "./moderation";
@@ -188,55 +186,46 @@ const Edit = z.object({
   id: z.string().uuid(),
   title: z.string().trim().min(1, "タイトルを入力してください").max(60, "タイトルは60文字までです"),
   description: z.string().trim().max(300, "説明は300文字までです"),
-  tags: z.array(z.string()).min(1, "タグを1つ以上選んでください").max(5, "タグは5つまでです"),
-  link: z.string().trim().max(2048),
-  intensity: z.coerce.number().int().min(1).max(3),
+  visibility: z.enum(["public", "private"]).default("public"),
+  commentsEnabled: z.coerce.boolean().default(true),
 });
 
-/** 自分の投稿の編集。タイトル・説明・タグはそのまま反映。外部リンクを変えたときは再審査（差し替え対策） */
+/**
+ * 自分の投稿の編集。
+ * 変えられるのは、タイトル・説明（#タグ）・公開範囲・コメント許可だけ。
+ * 埋め込み動画とアフィリエイトURL（完全版リンク）は変えられない（差し替え対策）。
+ * 変えたいときは、新しく投稿し直してもらう。
+ */
 export async function updateVideoAction(_: FormState, form: FormData): Promise<FormState> {
   const u = await currentUser();
   if (!u) redirect("/login");
-  const parsed = Edit.safeParse({ id: form.get("id"), title: form.get("title"), description: form.get("description") ?? "", tags: form.getAll("tags"), link: form.get("link") ?? "", intensity: form.get("intensity") ?? 1 });
+  const parsed = Edit.safeParse({
+    id: form.get("id"), title: form.get("title"), description: form.get("description") ?? "",
+    visibility: form.get("visibility") === "private" ? "private" : "public",
+    commentsEnabled: form.get("commentsEnabled") !== "off",
+  });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const d = parsed.data;
   const conn = await db();
   const [v] = await conn.select().from(videos).where(and(eq(videos.id, d.id), eq(videos.creatorId, u.id)));
   if (!v || v.status === "deleted") return { error: "動画が見つかりません" };
-  // 使えないタグはここで断る（作ってから消すのではなく、作らせない）
-  const bad = d.tags.map((t) => checkTag(t)).find((c) => !c.ok);
+  // タグは説明文の #ハッシュタグ から拾う（投稿画面と同じ）
+  const tagsFromCaption = Array.from(new Set((d.description.match(/#([^\s#、。,.!?！？]+)/g) ?? []).map((t) => t.slice(1)).filter(Boolean))).slice(0, 5);
+  const bad = tagsFromCaption.map((t) => checkTag(t)).find((c) => !c.ok);
   if (bad && !bad.ok) return { error: bad.error };
-  const [old] = await conn.select().from(outboundLinks).where(eq(outboundLinks.videoId, v.id));
-  let linkChange: null | { url: string; domain: string; status: "active" | "pending_domain_review" } | "remove" = null;
-  if ((old?.url ?? "") !== d.link) {
-    if (!d.link) linkChange = "remove";
-    else {
-      const chk = checkAffiliateUrl(d.link, await getSetting("shortener_domains", conn));
-      if (!chk.ok) return { error: chk.reason };
-      if (chk.url !== old?.url) {
-        const [allowed] = await conn.select().from(affiliateDomains).where(and(eq(affiliateDomains.domain, chk.domain), eq(affiliateDomains.isActive, true)));
-        linkChange = { url: chk.url, domain: chk.domain, status: allowed ? "active" : "pending_domain_review" };
-      }
-    }
-  }
   await conn.transaction(async (tx) => {
-    // リンクの差し替えや、刺激の強さを上げたときは再審査（絞り込みのすり抜け対策）
-    const rereview = v.status === "published" && ((linkChange && linkChange !== "remove") || d.intensity > v.intensity);
-    await tx.update(videos).set({
-      title: d.title, description: d.description, intensity: d.intensity,
-      ...(rereview ? { status: "pending_review" as const, statusReason: d.intensity > v.intensity ? "刺激の強さの変更による再審査" : "外部リンクの変更による再審査" } : {}),
-    }).where(eq(videos.id, v.id));
+    await tx.update(videos).set({ title: d.title, description: d.description, visibility: d.visibility, commentsEnabled: d.commentsEnabled }).where(eq(videos.id, v.id));
     await tx.delete(videoTags).where(eq(videoTags.videoId, v.id));
-    // 編集でも新しいタグを作れる（運営が見るまでは候補や検索に出ない）
     const { resolveTags } = await import("./tags");
-    const tg = await resolveTags(tx as unknown as typeof conn, d.tags, u.id);
+    const tg = tagsFromCaption.length ? await resolveTags(tx as unknown as typeof conn, tagsFromCaption, u.id) : { ids: [] as number[] };
     if (tg.ids.length) await tx.insert(videoTags).values(tg.ids.map((id) => ({ videoId: v.id, tagId: id })));
-    if (linkChange === "remove") await tx.delete(outboundLinks).where(eq(outboundLinks.videoId, v.id));
-    else if (linkChange) {
-      await tx.delete(outboundLinks).where(eq(outboundLinks.videoId, v.id));
-      await tx.insert(outboundLinks).values({ id: crypto.randomUUID().replace(/-/g, "").slice(0, 16), videoId: v.id, ...linkChange });
-    }
   });
+  // 公開範囲の切り替えは、状態遷移表を通す（審査飛ばし対策）
+  if (d.visibility === "private" && (v.status === "published" || v.status === "approved")) {
+    await transition(conn, { videoId: v.id, to: "hidden", hiddenReason: "by_creator", actorId: u.id, expect: ["published", "approved"] });
+  } else if (d.visibility === "public" && v.status === "hidden" && v.hiddenReason === "by_creator") {
+    await transition(conn, { videoId: v.id, to: "published", actorId: u.id, expect: ["hidden"] });
+  }
   revalidatePath("/creator/videos");
-  redirect(`/creator/videos?edited=1${v.status === "published" && ((linkChange && linkChange !== "remove") || d.intensity > v.intensity) ? "&rereview=1" : ""}`);
+  redirect("/creator/videos?edited=1");
 }

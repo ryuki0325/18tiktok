@@ -151,7 +151,7 @@ export function PostForm({ destinations, drafts, resume, maxImages, myLink }: {
               <span style={{ flexShrink: 0, lineHeight: 0, marginTop: 2 }}><Icon name="shield" size={14} /></span>
               <span>
                 動画は<b>自社に保存しません</b>。権利を持つ素材・正規流通作品の公式サンプルを埋め込んでください。<br />
-                YouTube・Vimeo などは<b>普通のURL</b>でOK。その他のサイトは、そのサイトの<b>「共有 → 埋め込み」</b>で出る <code>&lt;iframe…&gt;</code> のコードを貼ってください。
+                <b>X(Twitter)・Instagram・TikTok・YouTube・Vimeo</b> などは、投稿の<b>普通のURL</b>を貼るだけでOK。その他のサイトは、そのサイトの<b>「共有 → 埋め込み」</b>で出る <code>&lt;iframe…&gt;</code> のコードを貼ってください。
                 <br /><small>※「本編ページのURL」をそのまま貼ると、多くのサイトは埋め込みを禁止しているため真っ白になります。</small>
               </span>
             </span>
