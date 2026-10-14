@@ -124,6 +124,8 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
 @media (orientation: landscape) and (max-height: 600px) { .fembed-frame { height: 100%; width: auto; } }
 .fembed-wait { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none; }
 .fembed-note { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: rgba(255,255,255,.72); }
+/* 投稿画面の埋め込みプレビュー */
+.fembed-preview iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 12px; background: #000; display: block; }
 .real .progress i { animation: none !important; transition: transform .25s linear; }
 .streak { position: absolute; inset: 0; background: linear-gradient(115deg, transparent 40%, rgba(255,255,255,.06) 48%, transparent 56%); mix-blend-mode: screen; }
 .grain { position: absolute; inset: 0; opacity: .07; background-image: radial-gradient(rgba(255,255,255,.7) .5px, transparent .6px); background-size: 3px 3px; }

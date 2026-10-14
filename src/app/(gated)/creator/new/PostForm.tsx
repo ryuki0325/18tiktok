@@ -5,12 +5,14 @@ import { createVideoAction } from "@/lib/creator-actions";
 import { Check, FormMessage } from "@/components/forms/Field";
 import { Icon } from "@/components/Icon";
 import { usePhotos } from "@/components/upload/usePhotos";
+import { normalizeEmbed } from "@/lib/embed-normalize";
 import { VIDEO_CATEGORIES } from "@/lib/audience";
 
 type Dest = { id: string; serviceName: string; domain: string };
 type Draft = { id: string; title: string; poster: string | null; hue: [number, number, number] };
 
 const MAX_TAGS = 5;
+const EMBED_SANDBOX = "allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox";
 
 /**
  * 投稿画面。
@@ -51,6 +53,9 @@ export function PostForm({ destinations, drafts, resume, maxImages, myLink }: {
 
   // タグは説明文の中の #ハッシュタグ から自動で拾う（最大5つ・重複なし）
   const tags = Array.from(new Set((caption.match(/#([^\s#、。,.!?！？]+)/g) ?? []).map((t) => t.slice(1)).filter(Boolean))).slice(0, MAX_TAGS);
+
+  // 入力（URL か <iframe> コード）から埋め込み用URLを作る（プレビューと送信前チェックに使う）
+  const embedPreview = !isPhoto && embed.trim() ? normalizeEmbed(embed) : null;
 
   const hasMedia = isPhoto ? (ph.readyCount > 0 && !ph.uploading) : embed.trim().length > 0;
   const ready = hasMedia && !!cat && caption.trim().length > 0
@@ -128,15 +133,27 @@ export function PostForm({ destinations, drafts, resume, maxImages, myLink }: {
       <input type="hidden" name="link" value={destId ? linkUrl : ""} />
 
       <div className="sec" style={{ gap: 18, paddingBottom: 16 }}>
-        {/* 動画＝埋め込みURL */}
+        {/* 動画＝埋め込みURL／コード */}
         {!isPhoto && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <span className="label">埋め込みURL<small className="req">必須</small></span>
-            <input className="input num" type="url" inputMode="url" value={embed} onChange={(e) => setEmbed(e.target.value)}
-              placeholder="https://…（動画の埋め込みURL）" aria-label="埋め込みURL" style={{ height: 46 }} />
+            <span className="label">埋め込みURL／コード<small className="req">必須</small></span>
+            <textarea className="input num" value={embed} onChange={(e) => setEmbed(e.target.value)} rows={2}
+              placeholder="https://… または『共有→埋め込み』の <iframe …> コード" aria-label="埋め込みURL" style={{ minHeight: 46, resize: "vertical" }} />
+            {/* 入力から埋め込みプレビューを出して、投稿前に表示を確認できる */}
+            {embed.trim() && (embedPreview
+              ? <div className="fembed-preview">
+                  <iframe src={embedPreview} sandbox={EMBED_SANDBOX} allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                    referrerPolicy="no-referrer-when-downgrade" title="埋め込みプレビュー" />
+                  <span className="cap" style={{ display: "block", marginTop: 6 }}>↑ ここに動画が出れば表示できます。<b>真っ白のまま</b>なら、そのサイトは埋め込み非対応です（下の案内を参照）。</span>
+                </div>
+              : <span className="cap" style={{ color: "var(--warn)" }}>この入力からは埋め込みを作れません。URL か <code>&lt;iframe…&gt;</code> のコードを貼ってください。</span>)}
             <span className="cap" style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
               <span style={{ flexShrink: 0, lineHeight: 0, marginTop: 2 }}><Icon name="shield" size={14} /></span>
-              <span>動画は<b>自社に保存しません</b>。権利を持つ素材・正規流通作品の公式サンプルの埋め込みURLを入れてください。</span>
+              <span>
+                動画は<b>自社に保存しません</b>。権利を持つ素材・正規流通作品の公式サンプルを埋め込んでください。<br />
+                YouTube・Vimeo などは<b>普通のURL</b>でOK。その他のサイトは、そのサイトの<b>「共有 → 埋め込み」</b>で出る <code>&lt;iframe…&gt;</code> のコードを貼ってください。
+                <br /><small>※「本編ページのURL」をそのまま貼ると、多くのサイトは埋め込みを禁止しているため真っ白になります。</small>
+              </span>
             </span>
           </div>
         )}
