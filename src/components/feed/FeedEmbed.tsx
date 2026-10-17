@@ -11,6 +11,25 @@ import { Icon } from "../Icon";
  */
 const SANDBOX = "allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox";
 
+/**
+ * フィードでは必ず自動再生（ミュート・インライン）にする。投稿時に付け忘れた古いURLでも、
+ * ここで主要プロバイダに自動再生パラメータを足す（YouTube/Vimeo/Dailymotion）。
+ */
+function withAutoplay(src: string): string {
+  try {
+    const u = new URL(src);
+    const h = u.hostname.replace(/^www\./, "").toLowerCase();
+    if (h === "youtube.com" || h.endsWith(".youtube.com") || h === "youtube-nocookie.com") {
+      u.searchParams.set("autoplay", "1"); u.searchParams.set("mute", "1"); u.searchParams.set("playsinline", "1"); u.searchParams.set("rel", "0");
+    } else if (h === "player.vimeo.com") {
+      u.searchParams.set("autoplay", "1"); u.searchParams.set("muted", "1"); u.searchParams.set("playsinline", "1");
+    } else if (h.endsWith("dailymotion.com")) {
+      u.searchParams.set("autoplay", "1"); u.searchParams.set("mute", "1");
+    }
+    return u.toString();
+  } catch { return src; }
+}
+
 export function FeedEmbed({ src, active }: { src: string; active: boolean; near?: boolean }) {
   const [loaded, setLoaded] = useState(false);
   // 表示中のカードだけ iframe を置く（自動再生が複数同時に走らないように）。離れたら外して止める。
@@ -20,8 +39,7 @@ export function FeedEmbed({ src, active }: { src: string; active: boolean; near?
       {mounted ? (
         <iframe
           className="fembed-frame"
-          src={src}
-          loading="lazy"
+          src={withAutoplay(src)}
           sandbox={SANDBOX}
           allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
           referrerPolicy="no-referrer-when-downgrade"
