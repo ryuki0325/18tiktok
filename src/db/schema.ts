@@ -1,5 +1,5 @@
 import {
-  pgTable, text, uuid, timestamp, boolean, integer, jsonb, primaryKey, serial, bigserial, index, uniqueIndex,
+  pgTable, text, uuid, timestamp, boolean, integer, jsonb, primaryKey, serial, bigserial, bigint, index, uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 const now = () => timestamp({ withTimezone: true }).notNull().defaultNow();
@@ -239,6 +239,40 @@ export const videos = pgTable("videos", {
   // 特定ユーザーの動画
   index("videos_creator_idx").on(t.creatorId, t.publishedAt),
 ]);
+
+/**
+ * 大きな動画のチャンク（分割）アップロード。tus 方式で、途中で切れても続きから再開できる。
+ * provider=local：このサーバーが受け取り、ffmpeg があれば HLS（複数画質）に変換
+ * provider=bunny：Bunny Stream に直接アップロード（変換・CDN配信は Bunny 側）
+ */
+export const uploads = pgTable("uploads", {
+  id: uuid().primaryKey().defaultRandom(),
+  userId: uuid().notNull().references(() => users.id, { onDelete: "cascade" }),
+  videoId: uuid().references(() => videos.id, { onDelete: "set null" }),
+  provider: text().$type<"local" | "bunny">().notNull(),
+  /** 外部サービス側のID（Bunny の動画GUIDなど） */
+  providerRef: text(),
+  filename: text().notNull(),
+  mime: text().notNull(),
+  size: bigint({ mode: "number" }).notNull(),
+  /** 受け取り済みのバイト数（local のみ。再開位置） */
+  received: bigint({ mode: "number" }).notNull().default(0),
+  status: text().$type<"uploading" | "processing" | "ready" | "failed">().notNull().default("uploading"),
+  playbackUrl: text(),
+  thumbnailUrl: text(),
+  width: integer(),
+  height: integer(),
+  durationMs: integer(),
+  /** 表紙に選んだ位置（ミリ秒） */
+  coverTimeMs: integer(),
+  /** 切り取り（トリミング）の範囲。null は切り取らない。変換のときに実際に切る */
+  trimStartMs: integer(),
+  trimEndMs: integer(),
+  error: text(),
+  createdAt: now(),
+  updatedAt: now(),
+  expiresAt: timestamp({ withTimezone: true }).notNull(),
+}, (t) => [index("uploads_user_idx").on(t.userId, t.createdAt), index("uploads_video_idx").on(t.videoId)]);
 
 export const TAG_STATUS = ["approved", "pending", "rejected"] as const;
 export type TagStatus = (typeof TAG_STATUS)[number];

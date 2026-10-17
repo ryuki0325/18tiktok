@@ -6,8 +6,8 @@ import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { Draft, Post } from "./post-schema";
 import { db } from "@/db";
-import { creatorProfiles, tags, videoTags, videos } from "@/db/schema";
-import { isUuid } from "./media";
+import { creatorProfiles, tags, uploads, videoTags, videos } from "@/db/schema";
+import { applyUploadToVideo, dropSource, isUuid } from "./media";
 import { checkTag } from "./tags";
 import { transition } from "./video-state";
 import { activeLimits } from "./safety";
@@ -133,23 +133,33 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
     if (images.length > maxImages()) return { error: `画像は${maxImages()}枚までです` };
   }
 
-  // 動画は自社に保存せず、公式サンプル等の「埋め込みURL」で表示する。
-  // 出どころ（ホスト）が運営の許可リスト（embed_sources）にあるものだけを通す ＝ 出どころ審査。
+  // 動画は2通り：
+  //  - 自社アップロード（uploadId）：権利を持つ動画ファイルを自社に保存して配信（再生操作が自前でできる）。
+  //  - 埋め込み（embed）：公式サンプル等を提携先の公式サーバーから再生する。
   let embed: { embedUrl: string; embedDomain: string } | undefined;
+  let upload: typeof uploads.$inferSelect | undefined;
   if (kind === "video") {
+    const uploadId = String(form.get("uploadId") ?? "");
     const raw = parsed.data.embed?.trim();
-    if (raw) {
+    if (uploadId) {
+      // 自分の・まだ投稿に紐づいていないアップロードだけを受け付ける
+      if (!isUuid(uploadId)) return { error: "動画ファイルが見つかりません" };
+      [upload] = await conn.select().from(uploads).where(and(eq(uploads.id, uploadId), eq(uploads.userId, u.id)));
+      if (!upload || upload.videoId) return { error: "動画ファイルが見つかりません。もう一度アップロードしてください" };
+      if (upload.status === "uploading") return { error: "動画のアップロードがまだ終わっていません" };
+      if (upload.status === "failed") return { error: "動画の変換に失敗しました。別のファイルでお試しください" };
+    } else if (raw) {
       const { checkEmbedUrl } = await import("./embeds");
       const chk = await checkEmbedUrl(conn, raw);
       if (!chk.ok) return { error: chk.error };
       embed = { embedUrl: chk.embedUrl, embedDomain: chk.embedDomain };
     } else if (!asDraft) {
-      // 下書きの続きで、すでに埋め込みが付いているならそれを使う
+      // 下書きの続きで、すでに動画（アップロード or 埋め込み）が付いているならそれを使う
       const [d] = draftId
-        ? await conn.select({ embedUrl: videos.embedUrl }).from(videos)
+        ? await conn.select({ embedUrl: videos.embedUrl, media: videos.mediaStatus }).from(videos)
           .where(and(eq(videos.id, draftId), eq(videos.creatorId, u.id), eq(videos.status, "draft")))
         : [undefined];
-      if (!d?.embedUrl) return { error: "埋め込みURL（公式サンプル）を入れてください" };
+      if (!d || (!d.embedUrl && d.media === "none")) return { error: "動画ファイルを選ぶか、埋め込みURLを入れてください" };
     }
   }
   const r = await createVideo(conn, {
@@ -161,6 +171,13 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
     asDraft, draftId, kind, images, embedUrl: embed?.embedUrl, embedDomain: embed?.embedDomain, embedFit: parsed.data.embedFit,
   });
   if (!r.ok) return { error: r.error };
+  if (upload) {
+    // アップロードを投稿に紐づけ、動画の行に「場所」（再生URL等）を写す。
+    const [linked] = await conn.update(uploads).set({ videoId: r.video.id }).where(eq(uploads.id, upload.id)).returning();
+    await applyUploadToVideo(conn, linked);
+    // ここから先は切り取り直さないので、元ファイルを消す（保存料の節約）
+    await dropSource(linked);
+  }
   revalidatePath("/creator/videos");
   redirect(asDraft ? "/creator/videos?saved=1" : `/creator/videos?submitted=1${r.linkPending ? "&linkPending=1" : ""}`);
 }

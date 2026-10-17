@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/lib/auth";
 import { bumpAgeGateVersionAction, runJobAction, settingsAction } from "@/lib/admin-actions";
-import { photosOnBunny } from "@/lib/media";
+import { photosOnBunny, mediaStatus } from "@/lib/media";
+import { MediaCheck } from "./MediaCheck";
 import { MailCheck } from "./MailCheck";
 import { getSetting, requestTime } from "@/lib/settings";
 import { mailConfigured } from "@/lib/mail";
@@ -19,6 +20,8 @@ export default async function Settings() {
   const [lastPurge, lastLink] = await Promise.all([g("cron.last_run.purge"), g("cron.last_run.link-health")]);
   const mailOk = mailConfigured();
   const photoBunny = photosOnBunny();
+  const hookOk = !!process.env.BUNNY_WEBHOOK_SECRET;
+  const m = mediaStatus();
   const cronOk = !!(process.env.CRON_SECRET && process.env.CRON_SECRET.length >= 16);
   // 1日1回の想定なので、2日を超えたら設定し忘れを疑う
   const stale = (iso: string) => !iso || requestTime() - new Date(iso).getTime() > 48 * 3600_000;
@@ -62,10 +65,24 @@ export default async function Settings() {
         <button className="btn btn-primary" style={{ maxWidth: 240 }}>保存</button>
       </form>
       <section className="card" style={{ padding: 16, marginTop: 24, maxWidth: 760, display: "flex", flexDirection: "column", gap: 10 }}>
-        <b>写真の保存先</b>
+        <b>動画の保存・配信</b>
         <span className="cap">
-          動画は自社に保存せず、公式サンプル等の<b>埋め込み</b>で表示します。保存先の設定が必要なのは<b>写真</b>だけです。
+          いまの保存先：<b>{m.provider === "bunny" ? "Bunny Stream" : m.provider === "local" ? "このサーバー（開発用）" : m.provider}</b>
+          {"　"}1本あたり最大 {m.maxMb >= 1024 ? `${Math.round(m.maxMb / 1024 * 10) / 10}GB` : `${m.maxMb}MB`}・{m.chunkMb}MB ずつ分割して送信
         </span>
+        <span className="cap">
+          Bunny Stream の設定：ライブラリID <b>{m.bunny.libraryId}</b>／APIキー <b>{m.bunny.apiKey}</b>／配信元 <b>{m.bunny.cdnHost}</b>
+        </span>
+        <MediaCheck />
+        <span className="cap">
+          変換が終わったことをすぐ反映するには、Bunny のライブラリ設定の Webhook URL に <code>/api/v1/webhooks/bunny</code> を入れてください。
+          {hookOk
+            ? <> 鍵が設定されているので、URL の末尾に <code>?t=（BUNNY_WEBHOOK_SECRET の値）</code> も付けてください。</>
+            : <b style={{ color: "var(--warn)" }}> いまは鍵（BUNNY_WEBHOOK_SECRET）がないため、誰でも呼べる状態です。設定をおすすめします。</b>}
+        </span>
+      </section>
+      <section className="card" style={{ padding: 16, marginTop: 24, maxWidth: 760, display: "flex", flexDirection: "column", gap: 10 }}>
+        <b>写真の保存先</b>
         <span className="cap">
           いまの保存先：<b style={{ color: photoBunny ? "var(--ok)" : "var(--warn)" }}>{photoBunny ? "Bunny Storage（再起動でも消えません）" : "このサーバー"}</b>
           {!photoBunny && <b style={{ color: "var(--warn)" }}>　本番（Render 等）では再デプロイ・再起動で写真が消えます。<code>BUNNY_STORAGE_*</code> の設定をおすすめします。</b>}

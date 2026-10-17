@@ -180,6 +180,10 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
 .progress { position: absolute; left: 0; right: 0; bottom: var(--nav-h); height: 2px; background: rgba(255,255,255,.14); }
 .progress i { display: block; height: 100%; width: 100%; background: var(--accent); transform-origin: left; transform: scaleX(0); }
 .item.active .progress i { animation: prog 15s linear infinite; }
+/* 自社ホスト動画は、このバーをタップ／ドラッグして頭出し（シーク）できる。指で押しやすいよう当たり判定を広げる */
+.progress.seekable { height: 20px; bottom: calc(var(--nav-h) - 9px); background: transparent; touch-action: none; cursor: pointer; }
+.progress.seekable::before { content: ""; position: absolute; left: 0; right: 0; bottom: 9px; height: 2px; background: rgba(255,255,255,.18); }
+.progress.seekable i { position: absolute; left: 0; right: 0; bottom: 9px; height: 2px; width: 100%; }
 @keyframes prog { to { transform: scaleX(1); } }
 
 /* 横画面：中央の細い列をやめて画面いっぱいに使い、操作ボタンは右端に縦並びで画面中央寄せ（見切れない） */

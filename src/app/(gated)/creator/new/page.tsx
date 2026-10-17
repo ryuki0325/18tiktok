@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { outboundLinks, tags, videoTags, videos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { NavBar } from "@/components/NavBar";
-import { maxImages } from "@/lib/media";
+import { maxImages, maxUploadBytes, maxUploadSec, mediaProvider } from "@/lib/media";
 import { canPublish } from "@/lib/verification";
 import { postableDestinations } from "@/lib/affiliates";
 import { activeLimits } from "@/lib/safety";
@@ -78,6 +78,9 @@ export default async function NewVideo({ searchParams }: { searchParams: Promise
           drafts={drafts}
           resume={resume}
           maxImages={maxImages()}
+          maxMb={Math.round(maxUploadBytes() / 1024 / 1024)}
+          maxSec={maxUploadSec()}
+          uploadEnabled={!!mediaProvider()}
         />
       )}
     </div>

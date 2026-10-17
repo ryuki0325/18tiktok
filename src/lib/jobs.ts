@@ -3,6 +3,7 @@ import { and, eq, isNotNull, lt, sql } from "drizzle-orm";
 import type { DB } from "@/db";
 import * as s from "@/db/schema";
 import { audit } from "./ledger";
+import { purgeRemovedMedia, purgeStaleUploads } from "./media";
 import { purgeVerificationData } from "./verification";
 import { getSetting } from "./settings";
 import { registrableDomain } from "./url";
@@ -93,6 +94,8 @@ export async function purgeExpired(conn: DB) {
     emailTokens: await del(conn.delete(s.emailTokens).where(lt(s.emailTokens.expiresAt, new Date())).returning({ id: s.emailTokens.id })),
     ageGateSessions: await del(conn.delete(s.ageGateSessions).where(lt(s.ageGateSessions.expiresAt, new Date(now - 7 * day))).returning({ id: s.ageGateSessions.id })),
     rateLimits: await del(conn.delete(s.rateLimits).where(lt(s.rateLimits.windowStart, new Date(now - day))).returning({ k: s.rateLimits.key })),
+    staleUploads: await purgeStaleUploads(conn),
+    removedMedia: await purgeRemovedMedia(conn),
     // 保存期限を過ぎた生年月日を消す（「確認済み」という結果は残す）
     verificationData: await purgeVerificationData(conn),
     // 期限の切れた措置を自動で解く

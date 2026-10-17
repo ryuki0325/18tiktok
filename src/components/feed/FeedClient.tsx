@@ -200,6 +200,15 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
   // 検索：先に隠し入力欄にフォーカスしてキーボードを出しておき、「探す」の検索欄に引き継ぐ（iPhoneでも自動でキーボードが出る）
   const goSearch = () => { searchFocus.current?.focus(); router.push("/explore?focus=1"); };
   const toggleMute = () => { const m = !muted; setMuted(m); try { localStorage.setItem("glow.muted", m ? "1" : "0"); } catch {} toast(m ? "音をオフにしました" : "音をオンにしました（設定を記憶します）"); };
+  // 自社ホスト動画のシーク（頭出し）。バー上の位置から再生位置を決め、見た目もすぐ反映する。
+  const seekBar = (id: string, clientX: number, el: HTMLElement) => {
+    const rect = el.getBoundingClientRect();
+    const f = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(1, rect.width)));
+    const v = trackRef.current?.querySelector<HTMLVideoElement>(`.item[data-vid="${id}"] video`);
+    if (v && v.duration && isFinite(v.duration)) v.currentTime = f * v.duration;
+    const bar = el.querySelector<HTMLElement>("i");
+    if (bar) bar.style.transform = `scaleX(${f})`;
+  };
 
   return (
     <div className={`vt${uiHidden ? " ui-hidden" : ""}`}>
@@ -263,7 +272,13 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
                       </div>
                     )}
                   </div>
-                  <div className="progress"><i /></div>
+                  {c.src ? (
+                    <div className="progress seekable" data-no-swipe
+                      onPointerDown={(e) => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); seekBar(c.id, e.clientX, e.currentTarget); }}
+                      onPointerMove={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) { e.stopPropagation(); seekBar(c.id, e.clientX, e.currentTarget); } }}
+                      onPointerUp={(e) => { e.stopPropagation(); try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {} }}
+                    ><i /></div>
+                  ) : <div className="progress"><i /></div>}
                 </article>
               );
             })}

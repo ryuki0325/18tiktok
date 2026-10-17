@@ -5,6 +5,7 @@ import { createVideoAction } from "@/lib/creator-actions";
 import { Check, FormMessage } from "@/components/forms/Field";
 import { Icon } from "@/components/Icon";
 import { usePhotos } from "@/components/upload/usePhotos";
+import { useUpload } from "@/components/upload/useUpload";
 import { normalizeEmbed } from "@/lib/embed-normalize";
 import { VIDEO_CATEGORIES } from "@/lib/audience";
 
@@ -26,15 +27,22 @@ type Resume = {
   kind: "video" | "photo"; images: { url: string; w: number; h: number }[] | null;
 };
 
-export function PostForm({ destinations, drafts, resume, maxImages, myLink }: {
+export function PostForm({ destinations, drafts, resume, maxImages, maxMb, maxSec, uploadEnabled, myLink }: {
   destinations: Dest[]; drafts: Draft[]; maxImages: number;
+  maxMb: number; maxSec: number; uploadEnabled: boolean;
   resume?: Resume | null;
   myLink?: { destId: string; url: string } | null;
 }) {
   const [state, action, pending] = useActionState(createVideoAction, undefined);
 
-  // 投稿の種類。新規は未選択の入口を出し、下書きの続きは保存されている種類で始める。
-  const [mode, setMode] = useState<"video" | "photo" | null>(resume?.kind ?? null);
+  // 投稿の種類。
+  // upload＝動画ファイルを自社に保存（再生/一時停止/音量/速度/シークを自前で操作できる）
+  // video＝公式サンプル等の埋め込みURL／photo＝写真（複数枚）
+  type Mode = "upload" | "video" | "photo" | null;
+  const initialMode: Mode = resume
+    ? (resume.kind === "photo" ? "photo" : resume.embedUrl ? "video" : resume.hasMedia ? "upload" : "video")
+    : null;
+  const [mode, setMode] = useState<Mode>(initialMode);
 
   const [caption, setCaption] = useState(resume?.caption ?? "");
   const [cat, setCat] = useState<string | null>(resume?.category ?? null);
@@ -50,22 +58,34 @@ export function PostForm({ destinations, drafts, resume, maxImages, myLink }: {
   const [images, setImages] = useState<{ url: string; w: number; h: number }[]>([]);
   const ph = usePhotos({ max: maxImages, onChange: setImages, initial: resume?.kind === "photo" ? resume.images : null });
   const photoInput = useRef<HTMLInputElement>(null);
+
+  // 動画ファイルのアップロード（自社ホスト）。キャプションを書いている間も裏で送り続ける。
+  const [uploadId, setUploadId] = useState<string | null>(null);
+  const up = useUpload({ maxMb, maxSec, onReady: setUploadId });
+  const videoInput = useRef<HTMLInputElement>(null);
+  // 下書きの続きで、すでに動画が付いている（アップロード済み）なら選び直さなくてよい
+  const [resumedMedia] = useState(resume?.kind !== "photo" && !resume?.embedUrl && !!resume?.hasMedia);
+
   const isPhoto = mode === "photo";
+  const isUpload = mode === "upload";
+  const isEmbed = mode === "video";
 
   // タグは説明文の中の #ハッシュタグ から自動で拾う（最大5つ・重複なし）
   const tags = Array.from(new Set((caption.match(/#([^\s#、。,.!?！？]+)/g) ?? []).map((t) => t.slice(1)).filter(Boolean))).slice(0, MAX_TAGS);
 
   // 入力（URL か <iframe> コード）から埋め込み用URLを作る（プレビューと送信前チェックに使う）
-  const embedPreview = !isPhoto && embed.trim() ? normalizeEmbed(embed) : null;
+  const embedPreview = isEmbed && embed.trim() ? normalizeEmbed(embed) : null;
 
-  const hasMedia = isPhoto ? (ph.readyCount > 0 && !ph.uploading) : embed.trim().length > 0;
+  const hasMedia = isPhoto ? (ph.readyCount > 0 && !ph.uploading)
+    : isUpload ? (up.state.k === "ready" || resumedMedia)
+    : embed.trim().length > 0;
   const ready = hasMedia && !!cat && caption.trim().length > 0
     && !!destId && linkUrl.trim().length > 0
     && checks.c1 && checks.c2 && checks.c3 && checks.c4 && !pending;
   const canDraft = hasMedia && !pending;
 
   const missing = [
-    !hasMedia && (isPhoto ? "写真を選ぶ" : "埋め込みURLを入れる"),
+    !hasMedia && (isPhoto ? "写真を選ぶ" : isUpload ? "動画ファイルを選ぶ" : "埋め込みURLを入れる"),
     !cat && "ジャンルを選ぶ",
     caption.trim().length === 0 && "説明を書く",
     (!destId || linkUrl.trim().length === 0) && "「完全版を見る」のリンクを入れる",
@@ -77,8 +97,16 @@ export function PostForm({ destinations, drafts, resume, maxImages, myLink }: {
     return (
       <div className="pick-screen">
         <div className="pick-choices">
-          <button type="button" className="pick-main" onClick={() => setMode("video")}>
-            <span className="pick-glow" aria-hidden="true" />
+          {uploadEnabled && (
+            <button type="button" className="pick-main" onClick={() => setMode("upload")}>
+              <span className="pick-glow" aria-hidden="true" />
+              <span className="pick-ic"><Icon name="video" size={30} /></span>
+              <b className="pick-title">動画をアップロード</b>
+              <span className="pick-sub">権利を持つ動画を自社に保存して配信</span>
+            </button>
+          )}
+          <button type="button" className={`pick-main${uploadEnabled ? " alt" : ""}`} onClick={() => setMode("video")}>
+            {!uploadEnabled && <span className="pick-glow" aria-hidden="true" />}
             <span className="pick-ic"><Icon name="video" size={30} /></span>
             <b className="pick-title">動画を埋め込む</b>
             <span className="pick-sub">公式サンプルの埋め込みURLを貼る</span>
@@ -123,8 +151,9 @@ export function PostForm({ destinations, drafts, resume, maxImages, myLink }: {
     <form action={action} className="composer">
       <input type="hidden" name="kind" value={isPhoto ? "photo" : "video"} />
       {isPhoto && <input type="hidden" name="images" value={JSON.stringify(images)} />}
-      {!isPhoto && <input type="hidden" name="embed" value={embed.trim()} />}
-      {!isPhoto && <input type="hidden" name="embedFit" value={embedFit} />}
+      {isUpload && <input type="hidden" name="uploadId" value={uploadId ?? ""} />}
+      {isEmbed && <input type="hidden" name="embed" value={embed.trim()} />}
+      {isEmbed && <input type="hidden" name="embedFit" value={embedFit} />}
       {resume && <input type="hidden" name="draftId" value={resume.id} />}
       <input type="hidden" name="visibility" value={visibility} />
       <input type="hidden" name="commentsEnabled" value={comments ? "on" : "off"} />
@@ -135,8 +164,55 @@ export function PostForm({ destinations, drafts, resume, maxImages, myLink }: {
       <input type="hidden" name="link" value={destId ? linkUrl : ""} />
 
       <div className="sec" style={{ gap: 18, paddingBottom: 16 }}>
+        {/* 動画＝自社アップロード（再生/一時停止/音量/速度/シークを自前で操作できる） */}
+        {isUpload && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <span className="label">動画ファイル<small className="req">必須</small></span>
+            {up.previewUrl ? (
+              <div style={{ borderRadius: 12, overflow: "hidden", background: "#000", maxHeight: 360 }}>
+                <video src={up.previewUrl} poster={up.cover ?? undefined} controls playsInline muted
+                  style={{ width: "100%", maxHeight: 360, display: "block", objectFit: "contain" }} />
+              </div>
+            ) : resumedMedia ? (
+              <span className="cap num" style={{ color: "var(--ok)" }}><Icon name="check" size={14} /> アップロード済みの動画を使います</span>
+            ) : null}
+
+            {up.state.k === "reading" && <span className="cap num"><span className="spinner spin" /> 動画を読み込み中…</span>}
+            {(up.state.k === "uploading" || up.state.k === "paused") && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ height: 6, borderRadius: 3, background: "var(--line, #2a2a2a)", overflow: "hidden" }}>
+                  <i style={{ display: "block", height: "100%", width: `${up.pct}%`, background: "var(--accent)" }} />
+                </div>
+                <span className="cap num">
+                  {up.state.k === "paused" ? (up.state.message ?? "一時停止中です") : `送信中… ${up.pct}%`}
+                  {up.state.k === "uploading"
+                    ? <button type="button" className="cap-chip" onClick={up.pause} style={{ marginLeft: 8 }}>一時停止</button>
+                    : <button type="button" className="cap-chip" onClick={up.resume} style={{ marginLeft: 8 }}>再開</button>}
+                </span>
+              </div>
+            )}
+            {up.state.k === "processing" && <span className="cap num"><span className="spinner spin" /> 変換中です…（このまま投稿できます。完了後に再生できます）</span>}
+            {up.state.k === "ready" && <span className="cap num" style={{ color: "var(--ok)" }}><Icon name="check" size={14} /> アップロード完了</span>}
+            {up.state.k === "failed" && <span className="cap" style={{ color: "var(--bad)" }}>{up.state.message}</span>}
+
+            <button type="button" className="cap-chip" onClick={() => videoInput.current?.click()} style={{ alignSelf: "flex-start" }}>
+              {up.state.k === "idle" && !resumedMedia ? "動画ファイルを選ぶ" : "別の動画に差し替える"}
+            </button>
+            <input ref={videoInput} type="file" accept="video/*" hidden aria-label="動画ファイルを選ぶ"
+              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void up.pick(f); }} />
+
+            <span className="cap" style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+              <span style={{ flexShrink: 0, lineHeight: 0, marginTop: 2 }}><Icon name="shield" size={14} /></span>
+              <span>
+                アップロードできるのは、<b>自分が権利を持つ動画</b>だけです（{maxMb >= 1024 ? `${Math.round(maxMb / 1024 * 10) / 10}GB` : `${maxMb}MB`}・最長 {Math.floor(maxSec / 60)}分）。
+                この動画は<b>再生・一時停止・音量・速度・シーク</b>をVYBE側で操作できます。
+              </span>
+            </span>
+          </div>
+        )}
+
         {/* 動画＝埋め込みURL／コード */}
-        {!isPhoto && (
+        {isEmbed && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <span className="label">埋め込みURL／コード<small className="req">必須</small></span>
             <textarea className="input num" value={embed} onChange={(e) => setEmbed(e.target.value)} rows={2}
