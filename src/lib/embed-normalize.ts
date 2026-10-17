@@ -31,34 +31,37 @@ export function normalizeEmbed(raw: string): string | null {
     return u.toString();
   }
 
+  // フィードで“動画のように自動再生”させる埋め込み用URLを作る（ミュート＋ループ＋インライン）
+  const yt = (id: string) => `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&playsinline=1&loop=1&playlist=${id}&rel=0&modestbranding=1`;
+
   // YouTube
   if (host === "youtu.be") {
     const id = path.split("/").filter(Boolean)[0];
-    if (id) return `https://www.youtube.com/embed/${id}`;
+    if (id) return yt(id);
   }
   if (host === "youtube.com" || host.endsWith(".youtube.com")) {
     const v = u.searchParams.get("v");
-    if (v) return `https://www.youtube.com/embed/${v}`;
+    if (v) return yt(v);
     const shorts = path.match(/\/shorts\/([^/]+)/);
-    if (shorts) return `https://www.youtube.com/embed/${shorts[1]}`;
+    if (shorts) return yt(shorts[1]);
     const live = path.match(/\/live\/([^/]+)/);
-    if (live) return `https://www.youtube.com/embed/${live[1]}`;
+    if (live) return yt(live[1]);
   }
 
   // Vimeo
   if (host === "vimeo.com" || host.endsWith(".vimeo.com")) {
     const id = path.split("/").filter(Boolean)[0];
-    if (id && /^\d+$/.test(id)) return `https://player.vimeo.com/video/${id}`;
+    if (id && /^\d+$/.test(id)) return `https://player.vimeo.com/video/${id}?autoplay=1&muted=1&loop=1&playsinline=1`;
   }
 
   // Dailymotion
   if (host === "dai.ly") {
     const id = path.split("/").filter(Boolean)[0];
-    if (id) return `https://www.dailymotion.com/embed/video/${id}`;
+    if (id) return `https://www.dailymotion.com/embed/video/${id}?autoplay=1&mute=1`;
   }
   if (host === "dailymotion.com" || host.endsWith(".dailymotion.com")) {
     const dm = path.match(/\/video\/([^/_]+)/);
-    if (dm) return `https://www.dailymotion.com/embed/video/${dm[1]}`;
+    if (dm) return `https://www.dailymotion.com/embed/video/${dm[1]}?autoplay=1&mute=1`;
   }
 
   // X / Twitter の投稿 → 公式の埋め込み iframe（ツイート本文＋動画が表示される）

@@ -2,16 +2,17 @@ import { describe, expect, it } from "vitest";
 import { normalizeEmbed } from "@/lib/embed-normalize";
 
 describe("埋め込みURLの正規化", () => {
-  it("YouTube の視聴URLを embed URL に変換する", () => {
-    expect(normalizeEmbed("https://www.youtube.com/watch?v=abc123")).toBe("https://www.youtube.com/embed/abc123");
-    expect(normalizeEmbed("https://youtu.be/abc123")).toBe("https://www.youtube.com/embed/abc123");
-    expect(normalizeEmbed("https://www.youtube.com/shorts/xyz789")).toBe("https://www.youtube.com/embed/xyz789");
+  it("YouTube の視聴URLを自動再生の embed URL に変換する", () => {
+    const yt = "https://www.youtube.com/embed/abc123?autoplay=1&mute=1&playsinline=1&loop=1&playlist=abc123&rel=0&modestbranding=1";
+    expect(normalizeEmbed("https://www.youtube.com/watch?v=abc123")).toBe(yt);
+    expect(normalizeEmbed("https://youtu.be/abc123")).toBe(yt);
+    expect(normalizeEmbed("https://www.youtube.com/shorts/xyz789")).toContain("https://www.youtube.com/embed/xyz789?autoplay=1");
   });
 
-  it("Vimeo / Dailymotion を embed URL に変換する", () => {
-    expect(normalizeEmbed("https://vimeo.com/12345678")).toBe("https://player.vimeo.com/video/12345678");
-    expect(normalizeEmbed("https://www.dailymotion.com/video/x7xyz")).toBe("https://www.dailymotion.com/embed/video/x7xyz");
-    expect(normalizeEmbed("https://dai.ly/x7xyz")).toBe("https://www.dailymotion.com/embed/video/x7xyz");
+  it("Vimeo / Dailymotion を自動再生の embed URL に変換する", () => {
+    expect(normalizeEmbed("https://vimeo.com/12345678")).toBe("https://player.vimeo.com/video/12345678?autoplay=1&muted=1&loop=1&playsinline=1");
+    expect(normalizeEmbed("https://www.dailymotion.com/video/x7xyz")).toBe("https://www.dailymotion.com/embed/video/x7xyz?autoplay=1&mute=1");
+    expect(normalizeEmbed("https://dai.ly/x7xyz")).toBe("https://www.dailymotion.com/embed/video/x7xyz?autoplay=1&mute=1");
   });
 
   it("X / Twitter の投稿URLを公式の埋め込み iframe に変換する", () => {
