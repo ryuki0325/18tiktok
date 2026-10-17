@@ -225,6 +225,8 @@ export const videos = pgTable("videos", {
   embedUrl: text(),
   /** 埋め込み元のホスト（許可リスト照合・審査の表示用） */
   embedDomain: text(),
+  /** 埋め込みの見せ方。cover＝縦画面いっぱい（はみ出しは切り取り）／contain＝全体表示（横長向け・切らない） */
+  embedFit: text().$type<"cover" | "contain">().notNull().default("cover"),
   /** いいね数・再生数（likes / views への追加・削除時にDBトリガーで増減する。一覧で数え直さないため） */
   likeCount: integer().notNull().default(0),
   viewCount: integer().notNull().default(0),

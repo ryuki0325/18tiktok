@@ -8,12 +8,13 @@ import { Icon } from "@/components/Icon";
 export function EditForm(p: {
   id: string; title: string; description: string;
   visibility: "public" | "private"; comments: boolean;
-  kind: "video" | "photo"; embedUrl: string | null; linkUrl: string;
+  kind: "video" | "photo"; embedUrl: string | null; embedFit: "cover" | "contain"; linkUrl: string;
 }) {
   const [state, action, pending] = useActionState(updateVideoAction, undefined);
   const [caption, setCaption] = useState(p.description || p.title);
   const [visibility, setVisibility] = useState<"public" | "private">(p.visibility);
   const [comments, setComments] = useState(p.comments);
+  const [embedFit, setEmbedFit] = useState<"cover" | "contain">(p.embedFit);
   const tags = Array.from(new Set((caption.match(/#([^\s#、。,.!?！？]+)/g) ?? []).map((t) => t.slice(1)).filter(Boolean))).slice(0, 5);
 
   return (
@@ -23,6 +24,7 @@ export function EditForm(p: {
       <input type="hidden" name="description" value={caption.slice(0, 300)} />
       <input type="hidden" name="visibility" value={visibility} />
       <input type="hidden" name="commentsEnabled" value={comments ? "on" : "off"} />
+      <input type="hidden" name="embedFit" value={embedFit} />
       <div className="sec" style={{ gap: 18, paddingBottom: 16 }}>
         <Field label="説明" hint="300文字まで。#タグ をつけると探すに反映" htmlFor="caption">
           <textarea className="input" id="caption" value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={300} rows={5}
@@ -46,6 +48,18 @@ export function EditForm(p: {
             <span className={`sw${comments ? " on" : ""}`} aria-hidden="true"><i /></span>
           </button>
         </div>
+
+        {/* 動画の向き（埋め込み動画のみ） */}
+        {p.kind === "video" && p.embedUrl && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span className="label">動画の向き</span>
+            <div className="seg" role="radiogroup" aria-label="動画の向き">
+              <button type="button" role="radio" aria-checked={embedFit === "cover"} onClick={() => setEmbedFit("cover")}>縦長（全画面）</button>
+              <button type="button" role="radio" aria-checked={embedFit === "contain"} onClick={() => setEmbedFit("contain")}>横長（全体表示）</button>
+            </div>
+            <span className="cap">横長の動画は「横長（全体表示）」にすると左右が切れずきれいに出ます。</span>
+          </div>
+        )}
 
         {/* 変更できないもの（埋め込み動画・完全版リンク） */}
         <div className="notice info" role="note" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>

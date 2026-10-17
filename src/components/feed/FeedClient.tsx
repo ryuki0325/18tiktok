@@ -216,7 +216,7 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
                   {c.kind === "photo" && c.images?.length
                     ? <PhotoCarousel images={c.images} active={active} />
                     : c.embedUrl
-                    ? <><VideoBackdrop hue={c.hue} /><FeedEmbed src={c.embedUrl} active={active} near={active || i === index + 1} /></>
+                    ? <><VideoBackdrop hue={c.hue} /><FeedEmbed src={c.embedUrl} fit={c.embedFit} active={active} /></>
                     : c.src
                     ? <FeedVideo src={c.src} poster={c.poster} width={c.width} height={c.height} active={active} paused={!!paused[c.id] || !!fs} muted={muted} rate={rate}
                         preload={active ? "active" : i === index + 1 ? "next" : "idle"}

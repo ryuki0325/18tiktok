@@ -14,6 +14,8 @@ export const Post = z.object({
   link: z.string().trim().min(1, "「完全版を見る」のリンクを入れてください").max(2048),
   // 動画は自社に保存せず、公式サンプル等の埋め込みURLで表示する（写真投稿では未使用）
   embed: z.string().trim().max(2048).optional(),
+  // 埋め込みの見せ方（縦長＝cover／横長＝contain）
+  embedFit: z.enum(["cover", "contain"]).default("cover"),
   category: z.enum(["women", "men", "gay", "lesbian"], { message: "ジャンルを選んでください" }),
   // 刺激の強さは投稿画面から外したので、既定値（1）にする
   intensity: z.coerce.number().int().min(1).max(3).default(1),

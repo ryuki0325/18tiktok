@@ -22,7 +22,7 @@ const EMBED_SANDBOX = "allow-scripts allow-same-origin allow-presentation allow-
 type Resume = {
   id: string; caption: string; tags: string[]; category: string | null; intensity: number | null;
   visibility: "public" | "private"; comments: boolean; poster: string | null; hasMedia: boolean;
-  destId: string; linkUrl: string; embedUrl: string;
+  destId: string; linkUrl: string; embedUrl: string; embedFit: "cover" | "contain";
   kind: "video" | "photo"; images: { url: string; w: number; h: number }[] | null;
 };
 
@@ -43,6 +43,7 @@ export function PostForm({ destinations, drafts, resume, maxImages, myLink }: {
   const [destId, setDestId] = useState(resume?.destId ?? myLink?.destId ?? "");
   const [linkUrl, setLinkUrl] = useState(resume?.linkUrl ?? myLink?.url ?? "");
   const [embed, setEmbed] = useState(resume?.embedUrl ?? "");
+  const [embedFit, setEmbedFit] = useState<"cover" | "contain">(resume?.embedFit ?? "cover");
   const [checks, setChecks] = useState({ c1: false, c2: false, c3: false, c4: false });
 
   // 写真投稿（複数枚）
@@ -123,6 +124,7 @@ export function PostForm({ destinations, drafts, resume, maxImages, myLink }: {
       <input type="hidden" name="kind" value={isPhoto ? "photo" : "video"} />
       {isPhoto && <input type="hidden" name="images" value={JSON.stringify(images)} />}
       {!isPhoto && <input type="hidden" name="embed" value={embed.trim()} />}
+      {!isPhoto && <input type="hidden" name="embedFit" value={embedFit} />}
       {resume && <input type="hidden" name="draftId" value={resume.id} />}
       <input type="hidden" name="visibility" value={visibility} />
       <input type="hidden" name="commentsEnabled" value={comments ? "on" : "off"} />
@@ -147,6 +149,15 @@ export function PostForm({ destinations, drafts, resume, maxImages, myLink }: {
                   <span className="cap" style={{ display: "block", marginTop: 6 }}>↑ ここに動画が出れば表示できます。<b>真っ白のまま</b>なら、そのサイトは埋め込み非対応です（下の案内を参照）。</span>
                 </div>
               : <span className="cap" style={{ color: "var(--warn)" }}>この入力からは埋め込みを作れません。URL か <code>&lt;iframe…&gt;</code> のコードを貼ってください。</span>)}
+            {/* 動画の向き：縦長は全画面、横長は全体表示（切らない） */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span className="label">動画の向き</span>
+              <div className="seg" role="radiogroup" aria-label="動画の向き">
+                <button type="button" role="radio" aria-checked={embedFit === "cover"} onClick={() => setEmbedFit("cover")}>縦長（全画面）</button>
+                <button type="button" role="radio" aria-checked={embedFit === "contain"} onClick={() => setEmbedFit("contain")}>横長（全体表示）</button>
+              </div>
+              <span className="cap">縦長の動画（Shorts等）は<b>全画面</b>、横長の動画（16:9）は<b>全体表示</b>がきれいです。横長で全画面にすると左右が切れます。</span>
+            </div>
             <span className="cap" style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
               <span style={{ flexShrink: 0, lineHeight: 0, marginTop: 2 }}><Icon name="shield" size={14} /></span>
               <span>

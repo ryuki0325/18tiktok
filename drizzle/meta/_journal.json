@@ -141,6 +141,13 @@
    "when": 1791321445561,
    "tag": "0019_drop_uploads",
    "breakpoints": true
+  },
+  {
+   "idx": 20,
+   "version": "7",
+   "when": 1791321446561,
+   "tag": "0020_embed_fit",
+   "breakpoints": true
   }
  ]
 }

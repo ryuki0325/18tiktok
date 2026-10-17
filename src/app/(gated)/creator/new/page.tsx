@@ -38,7 +38,7 @@ export default async function NewVideo({ searchParams }: { searchParams: Promise
   let resume = null as null | {
     id: string; caption: string; tags: string[]; category: string | null; intensity: number | null;
     visibility: "public" | "private"; comments: boolean; poster: string | null; hasMedia: boolean;
-    destId: string; linkUrl: string; embedUrl: string;
+    destId: string; linkUrl: string; embedUrl: string; embedFit: "cover" | "contain";
     kind: "video" | "photo"; images: { url: string; w: number; h: number }[] | null;
   };
   if (draftId) {
@@ -57,7 +57,7 @@ export default async function NewVideo({ searchParams }: { searchParams: Promise
         visibility: d.visibility === "private" ? "private" : "public",
         comments: d.commentsEnabled,
         poster: d.thumbnailUrl, hasMedia: d.mediaStatus !== "none" || !!d.embedUrl,
-        destId: lk[0]?.destinationId ?? "", linkUrl: lk[0]?.url ?? "", embedUrl: d.embedUrl ?? "",
+        destId: lk[0]?.destinationId ?? "", linkUrl: lk[0]?.url ?? "", embedUrl: d.embedUrl ?? "", embedFit: d.embedFit,
         kind: d.kind, images: d.images,
       };
     }

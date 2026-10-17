@@ -74,6 +74,8 @@ export async function createVideo(conn: DB, input: {
   /** 動画の埋め込みURL（公式サンプル等）。自社に保存せず、ここから再生する */
   embedUrl?: string;
   embedDomain?: string;
+  /** 埋め込みの見せ方（cover＝全画面／contain＝全体表示） */
+  embedFit?: "cover" | "contain";
 }) {
   if (!input.asDraft && !input.consents.every(Boolean)) return { ok: false as const, error: "3つの確認事項すべてにチェックが必要です" };
   const isPhoto = input.kind === "photo";
@@ -99,7 +101,7 @@ export async function createVideo(conn: DB, input: {
           thumbnailUrl: input.images[0].url, width: input.images[0].w, height: input.images[0].h, playbackUrl: null }
       : input.embedUrl
         ? { kind: "video" as const, embedUrl: input.embedUrl, embedDomain: input.embedDomain ?? null,
-            mediaStatus: "ready" as const, playbackUrl: null }
+            embedFit: input.embedFit ?? "cover", mediaStatus: "ready" as const, playbackUrl: null }
         : {};
     const now = new Date();
     // 投稿直後は「調査中」として一定時間（既定60秒）だけ他の人に見せない。時間が来たら自動で公開される。

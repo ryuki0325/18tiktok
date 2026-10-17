@@ -26,6 +26,7 @@ export default async function EditVideo({ params }: { params: Promise<{ id: stri
         comments={v.commentsEnabled}
         kind={v.kind}
         embedUrl={v.embedUrl}
+        embedFit={v.embedFit}
         linkUrl={link?.url ?? ""}
       />
     </div>

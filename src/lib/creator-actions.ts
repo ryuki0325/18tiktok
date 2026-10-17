@@ -89,6 +89,7 @@ function readPost(form: FormData) {
     title: form.get("title"), description: form.get("description") ?? "", tags: form.getAll("tags"),
     link: form.get("link") || undefined,
     embed: form.get("embed") || undefined,
+    embedFit: form.get("embedFit") === "contain" ? "contain" : "cover",
     // 下書きのときは未選択（null）を undefined にして、必須チェックを通さない
     category: form.get("category") ?? undefined, intensity: form.get("intensity") ?? undefined,
     visibility: form.get("visibility") === "private" ? "private" : "public",
@@ -157,7 +158,7 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
     category: (parsed.data.category ?? "women") as "women" | "men" | "gay" | "lesbian",
     intensity: parsed.data.intensity || 1,
     consents, ipHash: await clientIpHash(), userAgent: (await headers()).get("user-agent") ?? "",
-    asDraft, draftId, kind, images, embedUrl: embed?.embedUrl, embedDomain: embed?.embedDomain,
+    asDraft, draftId, kind, images, embedUrl: embed?.embedUrl, embedDomain: embed?.embedDomain, embedFit: parsed.data.embedFit,
   });
   if (!r.ok) return { error: r.error };
   revalidatePath("/creator/videos");
@@ -188,6 +189,7 @@ const Edit = z.object({
   description: z.string().trim().max(300, "説明は300文字までです"),
   visibility: z.enum(["public", "private"]).default("public"),
   commentsEnabled: z.coerce.boolean().default(true),
+  embedFit: z.enum(["cover", "contain"]).default("cover"),
 });
 
 /**
@@ -203,6 +205,7 @@ export async function updateVideoAction(_: FormState, form: FormData): Promise<F
     id: form.get("id"), title: form.get("title"), description: form.get("description") ?? "",
     visibility: form.get("visibility") === "private" ? "private" : "public",
     commentsEnabled: form.get("commentsEnabled") !== "off",
+    embedFit: form.get("embedFit") === "contain" ? "contain" : "cover",
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const d = parsed.data;
@@ -214,7 +217,7 @@ export async function updateVideoAction(_: FormState, form: FormData): Promise<F
   const bad = tagsFromCaption.map((t) => checkTag(t)).find((c) => !c.ok);
   if (bad && !bad.ok) return { error: bad.error };
   await conn.transaction(async (tx) => {
-    await tx.update(videos).set({ title: d.title, description: d.description, visibility: d.visibility, commentsEnabled: d.commentsEnabled }).where(eq(videos.id, v.id));
+    await tx.update(videos).set({ title: d.title, description: d.description, visibility: d.visibility, commentsEnabled: d.commentsEnabled, embedFit: d.embedFit }).where(eq(videos.id, v.id));
     await tx.delete(videoTags).where(eq(videoTags.videoId, v.id));
     const { resolveTags } = await import("./tags");
     const tg = tagsFromCaption.length ? await resolveTags(tx as unknown as typeof conn, tagsFromCaption, u.id) : { ids: [] as number[] };
