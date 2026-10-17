@@ -43,7 +43,7 @@ export function PostForm({ destinations, drafts, resume, maxImages, myLink }: {
   const [destId, setDestId] = useState(resume?.destId ?? myLink?.destId ?? "");
   const [linkUrl, setLinkUrl] = useState(resume?.linkUrl ?? myLink?.url ?? "");
   const [embed, setEmbed] = useState(resume?.embedUrl ?? "");
-  const [embedFit, setEmbedFit] = useState<"cover" | "contain">(resume?.embedFit ?? "cover");
+  const [embedFit, setEmbedFit] = useState<"cover" | "contain">(resume?.embedFit ?? "contain");
   const [checks, setChecks] = useState({ c1: false, c2: false, c3: false, c4: false });
 
   // 写真投稿（複数枚）

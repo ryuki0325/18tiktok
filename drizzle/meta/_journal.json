@@ -148,6 +148,13 @@
    "when": 1791321446561,
    "tag": "0020_embed_fit",
    "breakpoints": true
+  },
+  {
+   "idx": 21,
+   "version": "7",
+   "when": 1791321447561,
+   "tag": "0021_embed_fit_default_contain",
+   "breakpoints": true
   }
  ]
 }

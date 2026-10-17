@@ -101,7 +101,7 @@ export async function createVideo(conn: DB, input: {
           thumbnailUrl: input.images[0].url, width: input.images[0].w, height: input.images[0].h, playbackUrl: null }
       : input.embedUrl
         ? { kind: "video" as const, embedUrl: input.embedUrl, embedDomain: input.embedDomain ?? null,
-            embedFit: input.embedFit ?? "cover", mediaStatus: "ready" as const, playbackUrl: null }
+            embedFit: input.embedFit ?? "contain", mediaStatus: "ready" as const, playbackUrl: null }
         : {};
     const now = new Date();
     // 投稿直後は「調査中」として一定時間（既定60秒）だけ他の人に見せない。時間が来たら自動で公開される。

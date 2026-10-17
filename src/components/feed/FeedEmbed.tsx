@@ -30,7 +30,7 @@ function withAutoplay(src: string): string {
   } catch { return src; }
 }
 
-export function FeedEmbed({ src, active, fit = "cover" }: { src: string; active: boolean; fit?: "cover" | "contain"; near?: boolean }) {
+export function FeedEmbed({ src, active, fit = "contain" }: { src: string; active: boolean; fit?: "cover" | "contain"; near?: boolean }) {
   const [loaded, setLoaded] = useState(false);
   // 表示中のカードだけ iframe を置く（自動再生が複数同時に走らないように）。離れたら外して止める。
   const mounted = active;

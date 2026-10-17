@@ -89,7 +89,7 @@ function readPost(form: FormData) {
     title: form.get("title"), description: form.get("description") ?? "", tags: form.getAll("tags"),
     link: form.get("link") || undefined,
     embed: form.get("embed") || undefined,
-    embedFit: form.get("embedFit") === "contain" ? "contain" : "cover",
+    embedFit: form.get("embedFit") === "cover" ? "cover" : "contain",
     // 下書きのときは未選択（null）を undefined にして、必須チェックを通さない
     category: form.get("category") ?? undefined, intensity: form.get("intensity") ?? undefined,
     visibility: form.get("visibility") === "private" ? "private" : "public",
