@@ -185,6 +185,9 @@ export const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 
 export type TusTarget = { endpoint: string; headers: Record<string, string>; metadata: Record<string, string>; chunkSize: number };
 
+/** アップロード開始の失敗（原因を投稿者に見せてよいもの）。ルート側でこのメッセージをそのまま返す。 */
+export class StartUploadError extends Error {}
+
 export async function startUpload(conn: DB, userId: string, f: { filename: string; mime: string; size: number }): Promise<{ upload: Upload; tus: TusTarget }> {
   const provider = mediaProvider();
   if (!provider) throw new Error("NO_PROVIDER");
@@ -200,7 +203,15 @@ export async function startUpload(conn: DB, userId: string, f: { filename: strin
     method: "POST", headers: { AccessKey: b.key, "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify({ title: `glow-${u.id}` }),
   });
-  if (!res.ok) throw new Error(`Bunny Stream に動画を作れませんでした（${res.status}）`);
+  if (!res.ok) {
+    // 原因が分かる文言にする（投稿者＝運営が自分で直せるように）
+    const hint = res.status === 401 || res.status === 403
+      ? "動画サービス（Bunny Stream）の認証に失敗しました。BUNNY_STREAM_API_KEY が、そのライブラリ（Stream → ライブラリ → API）の API Key か確認してください。"
+      : res.status === 404
+        ? "動画ライブラリが見つかりません。BUNNY_STREAM_LIBRARY_ID を確認してください。"
+        : `動画サービスが ${res.status} を返しました。少し待ってからもう一度お試しください。`;
+    throw new StartUploadError(hint);
+  }
   const { guid } = (await res.json()) as { guid: string };
   const [u2] = await conn.update(s.uploads).set({ providerRef: guid }).where(eq(s.uploads.id, u.id)).returning();
   // 署名付きの直接アップロード（APIキーはブラウザに渡さない）

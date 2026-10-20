@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { uploads } from "@/db/schema";
 import { currentUser } from "@/lib/auth";
 import { fail, json, rateLimit, sameOrigin } from "@/lib/http";
-import { maxUploadBytes, mediaProvider, startUpload } from "@/lib/media";
+import { maxUploadBytes, mediaProvider, StartUploadError, startUpload } from "@/lib/media";
 
 const Body = z.object({
   filename: z.string().trim().min(1).max(200),
@@ -36,6 +36,8 @@ export async function POST(req: Request) {
     return json({ id: upload.id, provider: upload.provider, tus }, 201);
   } catch (e) {
     console.error("[glow] アップロードを開始できません", e);
+    // 原因が分かるもの（認証エラー等）は、その文言をそのまま投稿者に返す
+    if (e instanceof StartUploadError) return fail("UPSTREAM", e.message, 502);
     return fail("UPSTREAM", "アップロードを開始できませんでした。しばらくしてからお試しください", 502);
   }
 }
