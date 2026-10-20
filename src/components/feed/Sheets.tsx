@@ -222,8 +222,11 @@ export function MoreSheet({ card, rate, loggedIn, mine, onClose, onShare, onNotI
         </div>
       )}
       {view === "speed" && (
-        <div className="seg" role="radiogroup" aria-label="動画速度">
-          {RATES.map((r) => <button key={r} role="radio" aria-checked={rate === r} className="num" onClick={() => onRate(r)}>{r === 1 ? "標準" : `${r}x`}</button>)}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="seg" role="radiogroup" aria-label="動画速度">
+            {RATES.map((r) => <button key={r} role="radio" aria-checked={rate === r} className="num" onClick={() => onRate(r)}>{r === 1 ? "標準" : `${r}x`}</button>)}
+          </div>
+          <span className="cap num">現在：{rate === 1 ? "標準（1x）" : `${rate}x`}・選ぶとすぐ反映されます</span>
         </div>
       )}
     </Sheet>

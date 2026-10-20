@@ -37,6 +37,9 @@ function seekVideo(root: HTMLElement | null, id: string, t: number) {
   if (v && t > 0) v.currentTime = t;
 }
 
+/** 秒 → m:ss（尺・現在位置の表示用） */
+const fmtTime = (s: number) => { const n = Math.max(0, Math.floor(s || 0)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`; };
+
 export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initialHasMore, scoped = false, initialIndex = 0, scopedTitle, backHref = "/" }: { cards: VideoCard[]; tab: string; loggedIn: boolean; myId: string | null; hasMore: boolean; scoped?: boolean; initialIndex?: number; scopedTitle?: string; backHref?: string }) {
   const [cards, setCards] = useState(initial);
   const [hasMore, setHasMore] = useState(initialHasMore);
@@ -50,6 +53,9 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
   const [rateOverride, setRate] = useState<number | null>(null);
   const rate = rateOverride ?? storedRate;
   const [paused, setPaused] = useState<Record<string, boolean>>({});
+  // シーク中の時間表示（頭出しの位置／全体の長さ）。離すと少し見せてから消す。
+  const [scrub, setScrub] = useState<{ id: string; cur: number; dur: number } | null>(null);
+  const scrubTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [fs, setFs] = useState<{ card: VideoCard; t: number } | null>(null);
   const [photoFs, setPhotoFs] = useState<{ images: { url: string; w: number; h: number }[] } | null>(null);
   const searchFocus = useRef<HTMLInputElement>(null);
@@ -187,7 +193,8 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
     }
     setSheet({ kind: "share", card: c });
   };
-  const changeRate = (r: number) => { setRate(r); try { localStorage.setItem("glow.rate", String(r)); } catch {} setSheet(null); toast(r === 1 ? "標準の速度で再生します" : `${r}倍速で再生します`); };
+  // 速度はその場で反映。シートは閉じずに残し、続けて微調整できるようにする（記憶もする）。
+  const changeRate = (r: number) => { setRate(r); try { localStorage.setItem("glow.rate", String(r)); } catch {} };
   const openFullscreen = (c: VideoCard) => {
     const v = trackRef.current?.querySelector<HTMLVideoElement>(`.item[data-vid="${c.id}"] video`);
     setFs({ card: c, t: v?.currentTime ?? 0 });
@@ -200,15 +207,21 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
   // 検索：先に隠し入力欄にフォーカスしてキーボードを出しておき、「探す」の検索欄に引き継ぐ（iPhoneでも自動でキーボードが出る）
   const goSearch = () => { searchFocus.current?.focus(); router.push("/explore?focus=1"); };
   const toggleMute = () => { const m = !muted; setMuted(m); try { localStorage.setItem("glow.muted", m ? "1" : "0"); } catch {} toast(m ? "音をオフにしました" : "音をオンにしました（設定を記憶します）"); };
-  // 自社ホスト動画のシーク（頭出し）。バー上の位置から再生位置を決め、見た目もすぐ反映する。
+  // 自社ホスト動画のシーク（頭出し）。バー上の位置から再生位置を決め、見た目（塗り・つまみ・時間）もすぐ反映する。
   const seekBar = (id: string, clientX: number, el: HTMLElement) => {
     const rect = el.getBoundingClientRect();
     const f = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(1, rect.width)));
     const v = trackRef.current?.querySelector<HTMLVideoElement>(`.item[data-vid="${id}"] video`);
-    if (v && v.duration && isFinite(v.duration)) v.currentTime = f * v.duration;
+    const dur = v && isFinite(v.duration) ? v.duration : 0;
+    if (v && dur) v.currentTime = f * dur;
     const bar = el.querySelector<HTMLElement>("i");
     if (bar) bar.style.transform = `scaleX(${f})`;
+    const knob = el.querySelector<HTMLElement>(".knob");
+    if (knob) knob.style.left = `${f * 100}%`;
+    if (scrubTimer.current) { clearTimeout(scrubTimer.current); scrubTimer.current = null; }
+    setScrub({ id, cur: f * dur, dur });
   };
+  const endScrub = () => { if (scrubTimer.current) clearTimeout(scrubTimer.current); scrubTimer.current = setTimeout(() => setScrub(null), 700); };
 
   return (
     <div className={`vt${uiHidden ? " ui-hidden" : ""}`}>
@@ -229,7 +242,7 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
                     : c.src
                     ? <FeedVideo src={c.src} poster={c.poster} width={c.width} height={c.height} active={active} paused={!!paused[c.id] || !!fs} muted={muted} rate={rate}
                         preload={active ? "active" : i === index + 1 ? "next" : "idle"}
-                        onTime={(t) => { const bar = trackRef.current?.querySelector<HTMLElement>(`.item[data-vid="${c.id}"] .progress i`); if (bar) bar.style.transform = `scaleX(${t})`; }} />
+                        onTime={(t) => { const item = trackRef.current?.querySelector(`.item[data-vid="${c.id}"]`); const bar = item?.querySelector<HTMLElement>(".progress i"); if (bar) bar.style.transform = `scaleX(${t})`; const knob = item?.querySelector<HTMLElement>(".progress .knob"); if (knob) knob.style.left = `${t * 100}%`; }} />
                     : <VideoBackdrop hue={c.hue} live={active && !paused[c.id] && !fs} />}
                   <div className="scrim" />
                   <div className="center-ind"><Icon name="play" size={30} filled /></div>
@@ -272,12 +285,16 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
                       </div>
                     )}
                   </div>
+                  {scrub?.id === c.id && (
+                    <div className="scrub-time" aria-hidden="true">{fmtTime(scrub.cur)}<span> / {fmtTime(scrub.dur)}</span></div>
+                  )}
                   {c.src ? (
-                    <div className="progress seekable" data-no-swipe
+                    <div className={`progress seekable${scrub?.id === c.id ? " scrubbing" : ""}`} data-no-swipe
                       onPointerDown={(e) => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); seekBar(c.id, e.clientX, e.currentTarget); }}
                       onPointerMove={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) { e.stopPropagation(); seekBar(c.id, e.clientX, e.currentTarget); } }}
-                      onPointerUp={(e) => { e.stopPropagation(); try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {} }}
-                    ><i /></div>
+                      onPointerUp={(e) => { e.stopPropagation(); try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {} endScrub(); }}
+                      onPointerCancel={endScrub}
+                    ><i /><span className="knob" /></div>
                   ) : <div className="progress"><i /></div>}
                 </article>
               );
