@@ -3,9 +3,11 @@ import { AG_COOKIE, readAgToken } from "@/lib/agegate-token";
 
 /**
  * 年齢確認の一次チェック（署名と期限）。DB上の有効性はサーバー側（requireAgeGate / contentGuard）で再確認する。
- * ゲートの外：年齢確認・退出・法務ページ・削除請求・地域制限・管理画面のログイン
+ * ゲートの外：年齢確認・退出・法務ページ・削除請求・地域制限・管理画面のログイン・共有ページ
+ * /v/<id> は共有プレビュー（SNSのカード生成用）。本編サムネイルは出さず、タイトルと
+ * 「VYBEで見る（18歳以上）」の入口だけ。再生はそこからフィード（/?v=）へ送り、通常の年齢確認を通す。
  */
-const PUBLIC = [/^\/age-gate/, /^\/leave/, /^\/legal(\/|$)/, /^\/takedown/, /^\/unavailable/, /^\/admin/, /^\/robots\.txt$/];
+const PUBLIC = [/^\/age-gate/, /^\/leave/, /^\/legal(\/|$)/, /^\/takedown/, /^\/unavailable/, /^\/admin/, /^\/v\//, /^\/robots\.txt$/];
 
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;

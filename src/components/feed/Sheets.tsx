@@ -160,7 +160,8 @@ function CommentRow({ c, reply = false, onLike, onReply, onReport, onRemove }: {
 
 export function ShareSheet({ card, onClose }: { card: VideoCard; onClose: () => void }) {
   const toast = useToast();
-  const url = typeof window !== "undefined" ? `${location.origin}/?v=${card.id}` : "";
+  // 共有は /v/<id>（プレビューカード付きの公開ページ）。SNSでサムネイル＋タイトルが出る。
+  const url = typeof window !== "undefined" ? `${location.origin}/v/${card.id}` : "";
   const copy = async () => {
     try { await navigator.clipboard.writeText(url); toast("リンクをコピーしました"); } catch { toast("リンクを選択してコピーしてください"); }
   };

@@ -246,6 +246,17 @@ test.describe("投稿（埋め込み・写真）と配信", () => {
     // 埋め込みの iframe が表示される（自社に保存せず提携先から再生）
     await expect(page.locator(".item.active .fembed-frame")).toBeVisible();
     await expect(page.locator(".item.active").getByRole("button", { name: "いいね" })).toBeVisible();
+
+    // 共有ページ /v/<id> は年齢確認の外（公開）で、SNS用の og:title が入る（＝集客の入口）
+    const fresh = await page.context().browser()!.newContext();
+    const sp = await fresh.newPage();
+    await sp.goto(`/v/${v.id}`);
+    expect(new URL(sp.url()).pathname).toBe(`/v/${v.id}`); // ゲートへ飛ばされない（公開）
+    await expect(sp.getByRole("link", { name: /VYBEで見る/ })).toBeVisible();
+    expect(await sp.locator('meta[property="og:title"]').getAttribute("content")).toContain(title);
+    // 本編サムネイルはページ上に出さない（年齢確認の外のため）
+    await expect(sp.locator("main img")).toHaveCount(0);
+    await fresh.close();
   });
 
   test("安全でない埋め込みURL（https以外）は投稿できない", async ({ page }) => {
