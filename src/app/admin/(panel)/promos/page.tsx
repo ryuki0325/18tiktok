@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { desc } from "drizzle-orm";
 import { db } from "@/db";
 import { promos } from "@/db/schema";
@@ -39,11 +40,12 @@ export default async function Promos() {
             <div style={{ flex: 1, minWidth: 220 }}>
               <b>{p.title || (p.kind === "network" ? "（広告コード）" : "（無題）")}</b>
               <span className="cap" style={{ display: "block" }}>
-                {KIND[p.kind]}・{CAT[p.category]}・重み{p.weight}・表示 {fmt(p.impressions)}・クリック {fmt(p.clicks)}
+                {KIND[p.kind]}・{CAT[p.category]}・重み{p.weight}・表示 {fmt(p.impressions)}・クリック {fmt(p.clicks)}・CTR {p.impressions ? Math.round((p.clicks / p.impressions) * 1000) / 10 : 0}%
               </span>
               {p.targetUrl && <span className="cap" style={{ display: "block", wordBreak: "break-all", opacity: 0.7 }}>{p.targetUrl}</span>}
             </div>
             <span className={`badge ${p.active ? "b-ok" : "b-bad"}`} style={{ flexShrink: 0 }}>{p.active ? "表示中" : "停止"}</span>
+            <Link className="btn btn-sm btn-secondary" href={`/admin/promos/${p.id}`}>編集</Link>
             <form action={promoAction}>
               <input type="hidden" name="op" value="toggle" />
               <input type="hidden" name="id" value={p.id} />

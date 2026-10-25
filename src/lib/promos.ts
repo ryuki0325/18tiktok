@@ -26,12 +26,15 @@ export async function getFeedPromos(audience?: string, conn?: DB): Promise<FeedP
 
 const isHttps = (u: string) => { try { const x = new URL(u); return x.protocol === "https:"; } catch { return false; } };
 
-/** クリックを記録し、安全な遷移先URLを返す（network はクリック記録しない） */
-export async function recordPromoClick(id: string): Promise<string | null> {
+/**
+ * クリックを処理し、安全な遷移先URLを返す（network はクリック記録しない）。
+ * count=false（bot 等）のときは、URLは返すが集計は増やさない。
+ */
+export async function recordPromoClick(id: string, count = true): Promise<string | null> {
   const conn = await db();
   const [p] = await conn.select({ kind: promos.kind, targetUrl: promos.targetUrl, active: promos.active }).from(promos).where(eq(promos.id, id));
   if (!p || !p.active || p.kind === "network" || !p.targetUrl || !isHttps(p.targetUrl)) return null;
-  await conn.update(promos).set({ clicks: sql`${promos.clicks} + 1` }).where(eq(promos.id, id));
+  if (count) await conn.update(promos).set({ clicks: sql`${promos.clicks} + 1` }).where(eq(promos.id, id));
   return p.targetUrl;
 }
 

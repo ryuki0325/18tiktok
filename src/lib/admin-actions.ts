@@ -365,4 +365,5 @@ export async function promoAction(form: FormData) {
     if (row) await audit(conn, a.id, "promo.add", "promo", row.id, { kind, title });
   }
   revalidatePath("/admin/promos");
+  redirect("/admin/promos");
 }
