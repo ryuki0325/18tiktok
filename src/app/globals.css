@@ -191,6 +191,18 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
 /* シーク中の時間表示（現在位置 / 全体の尺） */
 .scrub-time { position: absolute; left: 50%; bottom: calc(var(--nav-h) + 20px); transform: translateX(-50%); z-index: 6; background: rgba(0,0,0,.66); color: #fff; padding: 5px 12px; border-radius: 999px; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; pointer-events: none; }
 .scrub-time span { opacity: .7; font-weight: 500; }
+
+/* 広告・アフィリ枠（フィードに差し込むプロモ） */
+.promo-item { background: #0b0b12; overflow: hidden; }
+.promo-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.promo-bg-grad { background: linear-gradient(160deg, #2a1033, #0b0b12 70%); }
+.promo-scrim { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,.85), rgba(0,0,0,.2) 45%, rgba(0,0,0,.5)); }
+.promo-label { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 14px); left: 14px; z-index: 3; background: rgba(0,0,0,.55); color: #fff; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; letter-spacing: .04em; }
+.promo-body { position: absolute; left: 0; right: 0; bottom: calc(var(--nav-h) + 24px); z-index: 3; padding: 0 20px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.promo-title { color: #fff; font-size: 24px; line-height: 1.25; margin: 0; font-weight: 800; text-shadow: 0 2px 12px rgba(0,0,0,.5); }
+.promo-sub { color: rgba(255,255,255,.85); font-size: 15px; margin: 0; text-shadow: 0 1px 8px rgba(0,0,0,.5); }
+.promo-cta { display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(90deg, #ff2d78, #ff6a3d); color: #fff; border: 0; font-weight: 800; font-size: 16px; padding: 12px 22px; border-radius: 999px; margin-top: 4px; box-shadow: 0 6px 20px rgba(255,45,120,.35); cursor: pointer; }
+.promo-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
 @keyframes prog { to { transform: scaleX(1); } }
 
 /* 横画面：中央の細い列をやめて画面いっぱいに使い、操作ボタンは右端に縦並びで画面中央寄せ（見切れない） */

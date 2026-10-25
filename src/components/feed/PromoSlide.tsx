@@ -1,0 +1,46 @@
+"use client";
+import type { FeedPromo } from "@/lib/promos";
+import { Icon } from "../Icon";
+
+/**
+ * フィードに差し込む広告・アフィリ枠の1スライド。
+ * - affiliate / sponsor：画像＋見出し＋CTAボタン（タップで記録して遷移先を開く）
+ * - network：広告ネットワークのコードを隔離iframe（sandbox）で表示。親ページには触れない。
+ */
+export function PromoSlide({ p, i, active, onOpen }: { p: FeedPromo; i: number; active: boolean; onOpen: (p: FeedPromo) => void }) {
+  const top = `${i * 100}%`;
+
+  if (p.kind === "network") {
+    const doc = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;height:100vh;display:grid;place-items:center;background:#000;overflow:hidden">${active ? (p.html ?? "") : ""}</body>`;
+    return (
+      <article className="item promo-item" data-promo={p.id} style={{ top }} aria-hidden={!active}>
+        <span className="promo-label">{p.label || "広告"}</span>
+        <iframe
+          className="promo-frame"
+          title="広告"
+          sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms"
+          referrerPolicy="no-referrer"
+          srcDoc={doc}
+        />
+      </article>
+    );
+  }
+
+  return (
+    <article className="item promo-item" data-promo={p.id} style={{ top }} aria-hidden={!active}>
+      {p.imageUrl
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img className="promo-bg" src={p.imageUrl} alt="" aria-hidden="true" />
+        : <span className="promo-bg promo-bg-grad" aria-hidden="true" />}
+      <span className="promo-scrim" aria-hidden="true" />
+      <span className="promo-label">{p.label || "PR"}</span>
+      <div className="promo-body">
+        {p.title && <h2 className="promo-title">{p.title}</h2>}
+        {p.body && <p className="promo-sub">{p.body}</p>}
+        <button type="button" className="promo-cta" onClick={() => onOpen(p)}>
+          {p.ctaText || "詳しく見る"} <Icon name="arrowR" size={20} stroke={2.2} />
+        </button>
+      </div>
+    </article>
+  );
+}

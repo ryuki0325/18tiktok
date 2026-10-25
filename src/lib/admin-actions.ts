@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import QRCode from "qrcode";
 import { db } from "@/db";
-import { comments, creatorAffiliates, creatorProfiles, destinations, featuredSlots, moderationCases, notifications, outboundLinks, sessions, takedownRequests, users, videos, type Role } from "@/db/schema";
+import { comments, creatorAffiliates, creatorProfiles, destinations, featuredSlots, moderationCases, notifications, outboundLinks, promos, sessions, takedownRequests, users, videos, type Role } from "@/db/schema";
 import { adminOrNull, authenticate, createSession, currentUser, isAdminRole, markMfaVerified } from "./auth";
 import { clientIpHash, rateLimit } from "./http";
 import { audit } from "./ledger";
@@ -305,4 +305,64 @@ export async function destinationAction(form: FormData) {
     await audit(conn, a.id, "destination.delete", "destination", id, { serviceName: row.serviceName, reason: str(form, "reason") });
   }
   revalidatePath("/admin/links");
+}
+
+/* ---------- プロモ枠（広告・アフィリ） ---------- */
+const isHttpsUrl = (u: string) => { try { return new URL(u).protocol === "https:"; } catch { return false; } };
+const PROMO_KINDS = ["affiliate", "network", "sponsor"] as const;
+const PROMO_CATS = ["all", "women", "men", "gay", "lesbian"] as const;
+
+/** 広告・アフィリの枠を追加／編集／表示切替／削除する（運営のみ） */
+export async function promoAction(form: FormData) {
+  const a = await need(["super_admin"]);
+  const conn = await db();
+  const op = str(form, "op");
+  const id = str(form, "id");
+
+  if (op === "delete") {
+    if (!id) return;
+    await conn.delete(promos).where(eq(promos.id, id));
+    await audit(conn, a.id, "promo.delete", "promo", id, {});
+    revalidatePath("/admin/promos");
+    return;
+  }
+  if (op === "toggle") {
+    if (!id) return;
+    const [p] = await conn.select({ active: promos.active }).from(promos).where(eq(promos.id, id));
+    if (!p) return;
+    await conn.update(promos).set({ active: !p.active }).where(eq(promos.id, id));
+    await audit(conn, a.id, "promo.toggle", "promo", id, { active: !p.active });
+    revalidatePath("/admin/promos");
+    return;
+  }
+
+  // add / update 共通の値
+  const kind = (PROMO_KINDS as readonly string[]).includes(str(form, "kind")) ? (str(form, "kind") as "affiliate" | "network" | "sponsor") : "affiliate";
+  const category = (PROMO_CATS as readonly string[]).includes(str(form, "category")) ? (str(form, "category") as "all" | "women" | "men" | "gay" | "lesbian") : "all";
+  const title = str(form, "title").slice(0, 80);
+  const body = str(form, "body").slice(0, 200);
+  const imageUrl = str(form, "imageUrl") || null;
+  const ctaText = (str(form, "ctaText") || "詳しく見る").slice(0, 24);
+  const targetUrl = str(form, "targetUrl") || null;
+  const html = str(form, "html") || null;
+  const label = (str(form, "label") || "PR").slice(0, 12);
+  const weight = Math.max(1, Math.min(100, Number(str(form, "weight")) || 1));
+
+  // 入力チェック：affiliate/sponsor は https の遷移先が必須、network は広告コードが必須
+  if (kind === "network") {
+    if (!html) return;
+  } else {
+    if (!title || !targetUrl || !isHttpsUrl(targetUrl)) return;
+    if (imageUrl && !isHttpsUrl(imageUrl)) return;
+  }
+
+  const values = { kind, category, title, body, imageUrl, ctaText, targetUrl, html, label, weight };
+  if (op === "update" && id) {
+    const [row] = await conn.update(promos).set(values).where(eq(promos.id, id)).returning();
+    if (row) await audit(conn, a.id, "promo.update", "promo", id, { kind, title });
+  } else {
+    const [row] = await conn.insert(promos).values(values).returning();
+    if (row) await audit(conn, a.id, "promo.add", "promo", row.id, { kind, title });
+  }
+  revalidatePath("/admin/promos");
 }

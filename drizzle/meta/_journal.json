@@ -162,6 +162,13 @@
    "when": 1791321448561,
    "tag": "0022_restore_uploads",
    "breakpoints": true
+  },
+  {
+   "idx": 23,
+   "version": "7",
+   "when": 1791321449561,
+   "tag": "0023_promos",
+   "breakpoints": true
   }
  ]
 }

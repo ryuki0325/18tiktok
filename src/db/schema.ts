@@ -667,6 +667,35 @@ export const linkClicks = pgTable("link_clicks", {
   index("link_clicks_creator_idx").on(t.creatorId, t.createdAt),
 ]);
 
+/**
+ * プロモ枠（広告・アフィリエイト）。フィードに一定間隔で差し込む運営の収益枠。
+ * - affiliate：ライブチャット／出会い系／グッズEC／VPN 等への送客カード（targetUrl へ）
+ * - sponsor：スポンサーのPRカード（広告表記つき・targetUrl へ）
+ * - network：アダルトOKの広告ネットワークのコード（html）を隔離iframeで表示
+ * クリック数・表示回数は行に貯めて、運営がざっくり効果を見られるようにする。
+ */
+export const promos = pgTable("promos", {
+  id: uuid().primaryKey().defaultRandom(),
+  kind: text().$type<"affiliate" | "network" | "sponsor">().notNull().default("affiliate"),
+  title: text().notNull().default(""),
+  body: text().notNull().default(""),
+  imageUrl: text(),
+  ctaText: text().notNull().default("詳しく見る"),
+  targetUrl: text(),
+  /** network のときに隔離iframeで表示する広告コード（管理者のみ設定） */
+  html: text(),
+  /** 広告表記（景表法・ステマ規制対策。既定「PR」） */
+  label: text().notNull().default("PR"),
+  /** 出し分け：all＝全員／women・men・gay・lesbian＝その分岐の視聴者に */
+  category: text().$type<"all" | "women" | "men" | "gay" | "lesbian">().notNull().default("all"),
+  /** 重み（大きいほど多く出る） */
+  weight: integer().notNull().default(1),
+  active: boolean().notNull().default(true),
+  clicks: integer().notNull().default(0),
+  impressions: integer().notNull().default(0),
+  createdAt: now(),
+}, (t) => [index("promos_active_idx").on(t.active, t.category)]);
+
 /* ---------- 運営 ---------- */
 /** 🔒 追記専用 */
 export const adminAuditLogs = pgTable("admin_audit_logs", {

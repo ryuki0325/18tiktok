@@ -1,8 +1,9 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { VideoCard } from "@/lib/content";
+import type { FeedPromo } from "@/lib/promos";
 import { Icon } from "../Icon";
 import { VideoBackdrop } from "../VideoBackdrop";
 import { fmt } from "../format";
@@ -12,6 +13,7 @@ import { CommentSheet, MoreSheet, RATES, ShareSheet } from "./Sheets";
 import { ReportSheet } from "../ReportSheet";
 import { FeedVideo, loadHls } from "./FeedVideo";
 import { FeedEmbed } from "./FeedEmbed";
+import { PromoSlide } from "./PromoSlide";
 import { PhotoCarousel } from "./PhotoCarousel";
 import { FullscreenView } from "./FullscreenView";
 import { PhotoFullscreen } from "./PhotoFullscreen";
@@ -30,6 +32,26 @@ const WINDOW = 1;
 /** 残り何本になったら次を読み込むか */
 const PREFETCH_AT = 3;
 const DOUBLE_TAP_MS = 280;
+/** 何本の動画ごとに広告・アフィリ枠を1つ差し込むか */
+const PROMO_EVERY = 6;
+
+/** フィードの1スライド：動画か、プロモ枠（広告・アフィリ）か */
+type Slide = { t: "v"; v: VideoCard } | { t: "p"; p: FeedPromo; key: string };
+
+/** 動画の並びにプロモ枠を一定間隔で差し込む（先頭はプロモにしない） */
+function buildSlides(cards: VideoCard[], promos: FeedPromo[]): Slide[] {
+  const out: Slide[] = [];
+  let pi = 0;
+  cards.forEach((v, i) => {
+    out.push({ t: "v", v });
+    if (promos.length && (i + 1) % PROMO_EVERY === 0) {
+      const p = promos[pi % promos.length];
+      out.push({ t: "p", p, key: `promo-${i}-${p.id}` });
+      pi++;
+    }
+  });
+  return out;
+}
 
 /** 全画面から戻った時、フィードの動画を同じ位置から続ける */
 function seekVideo(root: HTMLElement | null, id: string, t: number) {
@@ -40,7 +62,7 @@ function seekVideo(root: HTMLElement | null, id: string, t: number) {
 /** 秒 → m:ss（尺・現在位置の表示用） */
 const fmtTime = (s: number) => { const n = Math.max(0, Math.floor(s || 0)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`; };
 
-export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initialHasMore, scoped = false, initialIndex = 0, scopedTitle, backHref = "/" }: { cards: VideoCard[]; tab: string; loggedIn: boolean; myId: string | null; hasMore: boolean; scoped?: boolean; initialIndex?: number; scopedTitle?: string; backHref?: string }) {
+export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initialHasMore, scoped = false, initialIndex = 0, scopedTitle, backHref = "/", promos = [] }: { cards: VideoCard[]; tab: string; loggedIn: boolean; myId: string | null; hasMore: boolean; scoped?: boolean; initialIndex?: number; scopedTitle?: string; backHref?: string; promos?: FeedPromo[] }) {
   const [cards, setCards] = useState(initial);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -83,9 +105,16 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
   const cardsRef = useRef(cards);
   useEffect(() => { cardsRef.current = cards; }, [cards]);
 
-  const { viewportRef, trackRef, pullRef, index, refreshing } = usePager(cards.length, {
+  // 動画＋プロモ枠を合わせた「スライド」。ページャ・描画・各種エフェクトはこれを単位にする。
+  const slides = useMemo(() => buildSlides(cards, scoped ? [] : promos), [cards, promos, scoped]);
+  const slidesRef = useRef(slides);
+  useEffect(() => { slidesRef.current = slides; }, [slides]);
+
+  const { viewportRef, trackRef, pullRef, index, refreshing } = usePager(slides.length, {
     onTap: (x, y, i) => {
-      const c = cardsRef.current[i];
+      const s = slidesRef.current[i];
+      if (!s || s.t === "p") return; // プロモ枠はタップで何もしない（CTAボタンで遷移）
+      const c = s.v;
       if (!c) return;
       const lt = lastTap.current;
       const now = performance.now();
@@ -111,7 +140,7 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
 
   // 残りが少なくなったら次のページを先に読み込む（無限スクロール）
   useEffect(() => {
-    if (!hasMore || loading.current || cards.length - index > PREFETCH_AT) return;
+    if (!hasMore || loading.current || slides.length - index > PREFETCH_AT) return;
     loading.current = true;
     setLoadingMore(true);
     api<{ videos: VideoCard[]; nextOffset: number | null }>(`/api/v1/feed?tab=${tab}&offset=${cards.length}`).then((r) => {
@@ -121,7 +150,7 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
       setCards((cs) => { const seen = new Set(cs.map((c) => c.id)); return [...cs, ...r.data.videos.filter((v) => !seen.has(v.id))]; });
       setHasMore(r.data.nextOffset !== null);
     });
-  }, [index, cards.length, hasMore, tab]);
+  }, [index, slides.length, cards.length, hasMore, tab]);
 
   // HLS の動画があれば、プレイヤー（hls.js）を手の空いた時に先に読み込んでおく。2本先のサムネイルも先読み
   useEffect(() => {
@@ -129,18 +158,33 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
       const idle = window.requestIdleCallback ?? ((f: () => void) => setTimeout(f, 300));
       idle(() => void loadHls());
     }
-    const far = cards[index + 2];
-    if (far?.poster) new Image().src = far.poster;
-  }, [cards, index]);
+    const far = slides[index + 2];
+    if (far?.t === "v" && far.v.poster) new Image().src = far.v.poster;
+  }, [cards, slides, index]);
 
-  // 2秒以上表示されたら再生として記録（サーバー側で重複・bot・本人を除外）
+  // 2秒以上表示されたら再生として記録（動画）／プロモ枠は表示回数を記録（1回ずつ）
   const viewed = useRef(new Set<string>());
+  const promoSeen = useRef(new Set<string>());
   useEffect(() => {
-    const c = cards[index];
-    if (!c || viewed.current.has(c.id)) return;
+    const s = slides[index];
+    if (!s) return;
+    if (s.t === "p") {
+      if (promoSeen.current.has(s.key)) return;
+      const t = setTimeout(() => { promoSeen.current.add(s.key); void api(`/api/v1/promo/${s.p.id}`, { method: "POST", body: { event: "impression" } }); }, 1000);
+      return () => clearTimeout(t);
+    }
+    const c = s.v;
+    if (viewed.current.has(c.id)) return;
     const t = setTimeout(() => { viewed.current.add(c.id); void api(`/api/v1/videos/${c.id}/view`, { method: "POST", body: {} }); }, 2000);
     return () => clearTimeout(t);
-  }, [index, cards]);
+  }, [index, slides]);
+
+  // プロモ枠のCTA：クリックを記録して遷移先を開く（＝「本編を見る」の広告版）
+  const openPromo = async (p: FeedPromo) => {
+    const r = await api<{ url: string }>(`/api/v1/promo/${p.id}`, { method: "POST", body: { event: "click" } });
+    if (!r.ok) { toast("この広告は現在開けません"); return; }
+    if (!window.open(r.data.url, "_blank", "noopener")) location.href = r.data.url;
+  };
 
   const save = async (c: VideoCard) => {
     patch(c.id, (x) => ({ saved: !x.saved }));
@@ -184,7 +228,7 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
     catch { toast("削除できませんでした"); }
   };
   const share = async (c: VideoCard) => {
-    const url = `${location.origin}/?v=${c.id}`;
+    const url = `${location.origin}/v/${c.id}`;
     // スマホは OS の共有メニュー、使えない環境ではリンクのコピー画面
     if (navigator.share) {
       setSheet(null);
@@ -229,9 +273,11 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
         <div className="pager" ref={viewportRef} aria-roledescription="縦スワイプで動画を切り替え">
           <div className="pull" ref={pullRef} aria-hidden="true"><span className={`spinner${refreshing ? " spin" : ""}`} /></div>
           <div className="track" ref={trackRef}>
-            {cards.map((c, i) => {
+            {slides.map((s, i) => {
               if (Math.abs(i - index) > WINDOW) return null;
               const active = i === index;
+              if (s.t === "p") return <PromoSlide key={s.key} p={s.p} i={i} active={active} onOpen={openPromo} />;
+              const c = s.v;
               return (
                 <article key={c.id} className={`item${active ? " active" : ""}${paused[c.id] ? " paused" : ""}${c.src ? " real" : ""}`} data-vid={c.id} style={{ top: `${i * 100}%` }}
                   aria-hidden={!active} onContextMenu={(e) => e.preventDefault()}>
@@ -299,7 +345,7 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
                 </article>
               );
             })}
-            {loadingMore && <div className="feed-end" style={{ top: `${cards.length * 100}%` }}><span className="spinner spin" /></div>}
+            {loadingMore && <div className="feed-end" style={{ top: `${slides.length * 100}%` }}><span className="spinner spin" /></div>}
           </div>
         </div>
       ) : (

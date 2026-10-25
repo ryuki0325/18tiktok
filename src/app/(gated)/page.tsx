@@ -1,5 +1,6 @@
 import { feed, hydrate, type FeedTab } from "@/lib/content";
 import { viewerContext } from "@/lib/viewer";
+import { getFeedPromos } from "@/lib/promos";
 import { FeedClient } from "@/components/feed/FeedClient";
 import { NavTabs } from "@/components/NavTabs";
 
@@ -15,9 +16,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
     if (i > 0) cards = [cards[i], ...cards.slice(0, i), ...cards.slice(i + 1)];
     if (i < 0) cards = [...(await hydrate([v], ctx)), ...cards];
   }
+  // フィードに差し込む広告・アフィリ枠（視聴者の分岐に合うもの）
+  const promos = await getFeedPromos(ctx.audience);
   return (
     <>
-      <FeedClient key={`${tab}:${v ?? ""}`} cards={cards} tab={tab} hasMore={cards.length === 6} loggedIn={!!ctx.user} myId={ctx.user?.id ?? null} />
+      <FeedClient key={`${tab}:${v ?? ""}`} cards={cards} tab={tab} hasMore={cards.length === 6} loggedIn={!!ctx.user} myId={ctx.user?.id ?? null} promos={promos} />
       <NavTabs onVideo />
     </>
   );
