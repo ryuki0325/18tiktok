@@ -30,17 +30,6 @@ const DEMO_COMMENTS = ["色の雰囲気が本当にきれい…", "このシリ�
 /** 何度呼んでも安全（初回だけ入る） */
 export async function seed(db: DB, opts: { demo: boolean }) {
   await db.insert(s.tags).values(SEED_TAGS.map((name) => ({ name, slug: encodeURIComponent(name) }))).onConflictDoNothing();
-  // 「完全版を見る」の送客先。運営が承認したサービスだけを並べる
-  await db.insert(s.destinations).values([
-    { serviceName: "Example（提携先サンプル）", domain: "example.com", status: "approved", approvedAt: new Date(), affiliateUrl: "https://example.com/" },
-    { serviceName: "Partner A（サンプル）", domain: "partner-a.example", status: "approved", approvedAt: new Date(), affiliateUrl: "https://partner-a.example/" },
-    { serviceName: "Partner B（サンプル）", domain: "partner-b.example", status: "pending", affiliateUrl: "https://partner-b.example/" },
-  ]).onConflictDoNothing();
-  await db.insert(s.affiliateDomains).values([
-    { domain: "example.com", displayName: "Example（提携先サンプル）" },
-    { domain: "partner-a.example", displayName: "Partner A（サンプル）" },
-    { domain: "partner-b.example", displayName: "Partner B（サンプル）" },
-  ]).onConflictDoNothing();
 
   const adminEmail = (process.env.ADMIN_EMAIL || "admin@example.com").toLowerCase();
   const [admin] = await db.select().from(s.users).where(eq(s.users.email, adminEmail));
@@ -61,7 +50,19 @@ export async function seed(db: DB, opts: { demo: boolean }) {
 
   if (!opts.demo) return;
   const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(s.videos);
-  if (n > 0) return;
+  if (n > 0) return; // 既にデータがある＝初回ではない。ここから下（デモ・サンプル）は入れ直さない＝削除したものは復活しない
+
+  // サンプルの送客先（初回のデモ投入時だけ。削除したら再起動でも戻らない）
+  await db.insert(s.destinations).values([
+    { serviceName: "Example（提携先サンプル）", domain: "example.com", status: "approved", approvedAt: new Date(), affiliateUrl: "https://example.com/" },
+    { serviceName: "Partner A（サンプル）", domain: "partner-a.example", status: "approved", approvedAt: new Date(), affiliateUrl: "https://partner-a.example/" },
+    { serviceName: "Partner B（サンプル）", domain: "partner-b.example", status: "pending", affiliateUrl: "https://partner-b.example/" },
+  ]).onConflictDoNothing();
+  await db.insert(s.affiliateDomains).values([
+    { domain: "example.com", displayName: "Example（提携先サンプル）" },
+    { domain: "partner-a.example", displayName: "Partner A（サンプル）" },
+    { domain: "partner-b.example", displayName: "Partner B（サンプル）" },
+  ]).onConflictDoNothing();
 
   const tagRows = await db.select().from(s.tags);
   const tagId = new Map(tagRows.map((t) => [t.name, t.id]));
