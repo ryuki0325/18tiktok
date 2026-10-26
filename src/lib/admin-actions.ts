@@ -342,6 +342,7 @@ export async function promoAction(form: FormData) {
   const title = str(form, "title").slice(0, 80);
   const body = str(form, "body").slice(0, 200);
   const imageUrl = str(form, "imageUrl") || null;
+  const videoUrl = str(form, "videoUrl") || null;
   const ctaText = (str(form, "ctaText") || "詳しく見る").slice(0, 24);
   const targetUrl = str(form, "targetUrl") || null;
   const html = str(form, "html") || null;
@@ -358,15 +359,19 @@ export async function promoAction(form: FormData) {
     embedUrl = chk.embedUrl;
   }
 
+  // 画像・動画は https、または自社アップロードの /media/ パスのみ許可
+  const isMediaUrl = (u: string) => isHttpsUrl(u) || u.startsWith("/media/");
+
   // 入力チェック：affiliate/sponsor は https の遷移先が必須、network は広告コードが必須
   if (kind === "network") {
     if (!html) return;
   } else {
     if (!title || !targetUrl || !isHttpsUrl(targetUrl)) return;
-    if (imageUrl && !isHttpsUrl(imageUrl)) return;
+    if (imageUrl && !isMediaUrl(imageUrl)) return;
+    if (videoUrl && !isMediaUrl(videoUrl)) return;
   }
 
-  const values = { kind, category, title, body, imageUrl, embedUrl, ctaText, targetUrl, html, label, weight };
+  const values = { kind, category, title, body, imageUrl, embedUrl, videoUrl, ctaText, targetUrl, html, label, weight };
   if (op === "update" && id) {
     const [row] = await conn.update(promos).set(values).where(eq(promos.id, id)).returning();
     if (row) await audit(conn, a.id, "promo.update", "promo", id, { kind, title });

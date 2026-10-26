@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { promos } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { promoAction } from "@/lib/admin-actions";
+import { maxUploadBytes, maxUploadSec } from "@/lib/media";
 import { fmt } from "@/components/format";
 import { ConfirmButton } from "../ConfirmButton";
 import { PromoForm } from "./PromoForm";
@@ -30,7 +31,7 @@ export default async function Promos() {
         ライブチャット・出会い系・グッズ・VPN 等への送客はここに「アフィリ送客」で登録してください。
       </p>
 
-      <PromoForm />
+      <PromoForm maxMb={Math.round(maxUploadBytes() / 1024 / 1024)} maxSec={maxUploadSec()} />
 
       <div className="card" style={{ padding: 8, maxWidth: 760, display: "flex", flexDirection: "column" }}>
         {rows.length === 0 ? (

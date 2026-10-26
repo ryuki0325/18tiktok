@@ -682,6 +682,8 @@ export const promos = pgTable("promos", {
   imageUrl: text(),
   /** 広告に動画を使う場合の埋め込みURL（投稿と同じ方式。公式サンプル／配信中の映像など）。自動再生ミュートでカード背景に流す */
   embedUrl: text(),
+  /** 自社にアップロードした広告動画の再生URL（HLS/MP4）。embed より優先して FeedVideo で再生する */
+  videoUrl: text(),
   ctaText: text().notNull().default("詳しく見る"),
   targetUrl: text(),
   /** network のときに隔離iframeで表示する広告コード（管理者のみ設定） */

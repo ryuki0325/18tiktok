@@ -7,7 +7,7 @@ export type Promo = typeof promos.$inferSelect;
 /** フィードに渡す表示用（html/targetUrl は必要なものだけ・内部情報は出さない） */
 export type FeedPromo = {
   id: string; kind: "affiliate" | "network" | "sponsor";
-  title: string; body: string; imageUrl: string | null; embedUrl: string | null; ctaText: string; label: string; html: string | null;
+  title: string; body: string; imageUrl: string | null; embedUrl: string | null; videoUrl: string | null; ctaText: string; label: string; html: string | null;
 };
 
 /** フィードに差し込む有効なプロモ（重みの大きい順）。視聴者の分岐に合うものだけ。 */
@@ -19,7 +19,8 @@ export async function getFeedPromos(audience?: string, conn?: DB): Promise<FeedP
     .orderBy(desc(promos.weight), desc(promos.createdAt)).limit(20);
   // network は html を渡す。affiliate/sponsor は html を渡さない（クリックは /api/v1/promo で記録）
   return rows.map((p) => ({
-    id: p.id, kind: p.kind, title: p.title, body: p.body, imageUrl: p.imageUrl, embedUrl: p.kind === "network" ? null : p.embedUrl,
+    id: p.id, kind: p.kind, title: p.title, body: p.body, imageUrl: p.imageUrl,
+    embedUrl: p.kind === "network" ? null : p.embedUrl, videoUrl: p.kind === "network" ? null : p.videoUrl,
     ctaText: p.ctaText, label: p.label, html: p.kind === "network" ? p.html : null,
   }));
 }

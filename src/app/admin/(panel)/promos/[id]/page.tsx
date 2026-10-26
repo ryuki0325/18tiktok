@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { promos } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
+import { maxUploadBytes, maxUploadSec } from "@/lib/media";
 import { PromoForm } from "../PromoForm";
 
 export const metadata = { title: "枠を編集" };
@@ -21,8 +22,8 @@ export default async function EditPromo({ params }: { params: Promise<{ id: stri
     <>
       <h1>枠を編集</h1>
       <p className="cap"><Link href="/admin/promos" style={{ color: "var(--accent)" }}>← 広告・アフィリ枠の一覧へ</Link></p>
-      <PromoForm editing={{
-        id: p.id, kind: p.kind, title: p.title, body: p.body, imageUrl: p.imageUrl, embedUrl: p.embedUrl,
+      <PromoForm maxMb={Math.round(maxUploadBytes() / 1024 / 1024)} maxSec={maxUploadSec()} editing={{
+        id: p.id, kind: p.kind, title: p.title, body: p.body, imageUrl: p.imageUrl, embedUrl: p.embedUrl, videoUrl: p.videoUrl,
         ctaText: p.ctaText, targetUrl: p.targetUrl, html: p.html, label: p.label, category: p.category, weight: p.weight,
       }} />
     </>

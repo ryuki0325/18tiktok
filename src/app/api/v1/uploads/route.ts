@@ -2,7 +2,7 @@ import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { uploads } from "@/db/schema";
-import { currentUser } from "@/lib/auth";
+import { currentUser, isAdminRole } from "@/lib/auth";
 import { fail, json, rateLimit, sameOrigin } from "@/lib/http";
 import { maxUploadBytes, mediaProvider, StartUploadError, startUpload } from "@/lib/media";
 
@@ -20,7 +20,8 @@ export async function POST(req: Request) {
   if (!(await sameOrigin())) return fail("BAD_ORIGIN", "不正なリクエストです", 403);
   const u = await currentUser();
   if (!u) return fail("UNAUTHORIZED", "ログインが必要です", 401);
-  if (u.creatorStatus !== "approved") return fail("FORBIDDEN", "投稿者として承認されていません", 403);
+  // 投稿者、または運営（広告動画のアップロード用）のみ
+  if (u.creatorStatus !== "approved" && !isAdminRole(u.role)) return fail("FORBIDDEN", "投稿者として承認されていません", 403);
   if (!mediaProvider()) return fail("UNAVAILABLE", "動画のアップロードは準備中です", 503);
   if (!(await rateLimit(`upload:${u.id}`, 30, 86400))) return fail("RATE_LIMITED", "1日のアップロード上限に達しました", 429);
   // 未完了のアップロードを大量に作らせない（ディスクと枠の食い潰しを防ぐ）
