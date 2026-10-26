@@ -32,19 +32,23 @@ const WINDOW = 1;
 /** 残り何本になったら次を読み込むか */
 const PREFETCH_AT = 3;
 const DOUBLE_TAP_MS = 280;
-/** 何本の動画ごとに広告・アフィリ枠を1つ差し込むか */
+/** 最初の広告・アフィリ枠を何本目の後に出すか（少ない動画でも1件は出るように早めに） */
+const FIRST_PROMO_AFTER = 3;
+/** 以降、何本の動画ごとに差し込むか */
 const PROMO_EVERY = 6;
 
 /** フィードの1スライド：動画か、プロモ枠（広告・アフィリ）か */
 type Slide = { t: "v"; v: VideoCard } | { t: "p"; p: FeedPromo; key: string };
 
-/** 動画の並びにプロモ枠を一定間隔で差し込む（先頭はプロモにしない） */
+/** 動画の並びにプロモ枠を差し込む（最初は3本目の後、以降は6本ごと。先頭はプロモにしない） */
 function buildSlides(cards: VideoCard[], promos: FeedPromo[]): Slide[] {
   const out: Slide[] = [];
   let pi = 0;
   cards.forEach((v, i) => {
     out.push({ t: "v", v });
-    if (promos.length && (i + 1) % PROMO_EVERY === 0) {
+    const n = i + 1;
+    const show = n === FIRST_PROMO_AFTER || (n > FIRST_PROMO_AFTER && (n - FIRST_PROMO_AFTER) % PROMO_EVERY === 0);
+    if (promos.length && show) {
       const p = promos[pi % promos.length];
       out.push({ t: "p", p, key: `promo-${i}-${p.id}` });
       pi++;
