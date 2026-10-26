@@ -348,6 +348,16 @@ export async function promoAction(form: FormData) {
   const label = (str(form, "label") || "PR").slice(0, 12);
   const weight = Math.max(1, Math.min(100, Number(str(form, "weight")) || 1));
 
+  // 埋め込み動画（任意・affiliate/sponsor のみ）。投稿と同じ検証（URL/iframeコード → 安全な埋め込みsrc）
+  let embedUrl: string | null = null;
+  const embedRaw = str(form, "embed").trim();
+  if (kind !== "network" && embedRaw) {
+    const { checkEmbedUrl } = await import("./embeds");
+    const chk = await checkEmbedUrl(conn, embedRaw);
+    if (!chk.ok) return; // 不正な埋め込みは保存しない
+    embedUrl = chk.embedUrl;
+  }
+
   // 入力チェック：affiliate/sponsor は https の遷移先が必須、network は広告コードが必須
   if (kind === "network") {
     if (!html) return;
@@ -356,7 +366,7 @@ export async function promoAction(form: FormData) {
     if (imageUrl && !isHttpsUrl(imageUrl)) return;
   }
 
-  const values = { kind, category, title, body, imageUrl, ctaText, targetUrl, html, label, weight };
+  const values = { kind, category, title, body, imageUrl, embedUrl, ctaText, targetUrl, html, label, weight };
   if (op === "update" && id) {
     const [row] = await conn.update(promos).set(values).where(eq(promos.id, id)).returning();
     if (row) await audit(conn, a.id, "promo.update", "promo", id, { kind, title });

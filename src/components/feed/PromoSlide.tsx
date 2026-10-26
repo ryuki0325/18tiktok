@@ -1,6 +1,7 @@
 "use client";
 import type { FeedPromo } from "@/lib/promos";
 import { Icon } from "../Icon";
+import { FeedEmbed } from "./FeedEmbed";
 
 /**
  * フィードに差し込む広告・アフィリ枠の1スライド。
@@ -34,10 +35,14 @@ export function PromoSlide({ p, i, active, onOpen }: { p: FeedPromo; i: number; 
 
   return (
     <article className="item promo-item" data-promo={p.id} style={{ top }} aria-hidden={!active} onContextMenu={(e) => e.preventDefault()}>
-      {p.imageUrl
-        // eslint-disable-next-line @next/next/no-img-element
-        ? <img className="promo-bg" src={p.imageUrl} alt="" aria-hidden="true" />
-        : <span className="promo-bg promo-bg-grad" aria-hidden="true" />}
+      {/* 背景：埋め込み動画（配信中の映像・公式サンプル等） ＞ 画像 ＞ グラデ */}
+      {p.embedUrl
+        ? <FeedEmbed src={p.embedUrl} active={active} fit="cover" />
+        : p.imageUrl
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img className="promo-bg" src={p.imageUrl} alt="" aria-hidden="true" />
+          : <span className="promo-bg promo-bg-grad" aria-hidden="true" />}
+      {/* スクリム：埋め込みiframeの上でスワイプ／タップを拾う（CTAはこの上に出す） */}
       <span className="promo-scrim" aria-hidden="true" />
       <span className="promo-label">{p.label || "PR"}</span>
       <div className="promo-body">

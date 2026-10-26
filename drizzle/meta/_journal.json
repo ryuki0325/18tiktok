@@ -169,6 +169,13 @@
    "when": 1791321449561,
    "tag": "0023_promos",
    "breakpoints": true
+  },
+  {
+   "idx": 24,
+   "version": "7",
+   "when": 1791321450561,
+   "tag": "0024_promo_embed",
+   "breakpoints": true
   }
  ]
 }

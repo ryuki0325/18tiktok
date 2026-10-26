@@ -4,7 +4,7 @@ import { promoAction } from "@/lib/admin-actions";
 
 export type EditPromo = {
   id: string; kind: "affiliate" | "network" | "sponsor"; title: string; body: string;
-  imageUrl: string | null; ctaText: string; targetUrl: string | null; html: string | null;
+  imageUrl: string | null; embedUrl: string | null; ctaText: string; targetUrl: string | null; html: string | null;
   label: string; category: string; weight: number;
 };
 
@@ -31,7 +31,9 @@ export function PromoForm({ editing }: { editing?: EditPromo }) {
           <input className="input" name="title" placeholder="見出し（例：ライブチャットで今すぐ話す）" maxLength={80} defaultValue={e?.title ?? ""} required />
           <input className="input" name="body" placeholder="説明（任意・例：登録無料／国内最大級）" maxLength={200} defaultValue={e?.body ?? ""} />
           <input className="input num" name="targetUrl" type="url" inputMode="url" placeholder="遷移先 https://（あなたのアフィリリンク）" defaultValue={e?.targetUrl ?? ""} required />
-          <input className="input num" name="imageUrl" type="url" inputMode="url" placeholder="画像URL https://（任意・16:9か縦型）" defaultValue={e?.imageUrl ?? ""} />
+          <textarea className="input num" name="embed" rows={2} placeholder="埋め込み動画（任意）：配信中の映像・公式サンプルのURL、または『共有→埋め込み』の <iframe…> コード" style={{ resize: "vertical", minHeight: 44 }} defaultValue={e?.embedUrl ?? ""} />
+          <input className="input num" name="imageUrl" type="url" inputMode="url" placeholder="画像URL https://（任意・動画がない時の背景）" defaultValue={e?.imageUrl ?? ""} />
+          <span className="cap">背景は「動画 ＞ 画像 ＞ 色」の順で使われます。動画を入れると、投稿と同じく自動再生（ミュート）で流れて目を引きます。</span>
           <input className="input" name="ctaText" placeholder="ボタン文言（既定：詳しく見る）" maxLength={24} defaultValue={e?.ctaText ?? ""} />
         </>
       ) : (

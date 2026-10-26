@@ -22,7 +22,7 @@ export default async function EditPromo({ params }: { params: Promise<{ id: stri
       <h1>枠を編集</h1>
       <p className="cap"><Link href="/admin/promos" style={{ color: "var(--accent)" }}>← 広告・アフィリ枠の一覧へ</Link></p>
       <PromoForm editing={{
-        id: p.id, kind: p.kind, title: p.title, body: p.body, imageUrl: p.imageUrl,
+        id: p.id, kind: p.kind, title: p.title, body: p.body, imageUrl: p.imageUrl, embedUrl: p.embedUrl,
         ctaText: p.ctaText, targetUrl: p.targetUrl, html: p.html, label: p.label, category: p.category, weight: p.weight,
       }} />
     </>
