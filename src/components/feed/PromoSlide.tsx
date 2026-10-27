@@ -36,15 +36,19 @@ export function PromoSlide({ p, i, active, onOpen }: { p: FeedPromo; i: number; 
 
   return (
     <article className="item promo-item" data-promo={p.id} style={{ top }} aria-hidden={!active} onContextMenu={(e) => e.preventDefault()}>
-      {/* 背景：自社アップロード動画 ＞ 埋め込み動画 ＞ 画像 ＞ グラデ */}
+      {/* 背景フィル：画像があればそれをぼかして敷く（端末比率が違っても黒帯が目立たず、全体表示でも自然） */}
+      {p.imageUrl
+        ? <span className="promo-blur" style={{ backgroundImage: `url("${p.imageUrl.replace(/"/g, "%22")}")` }} aria-hidden="true" />
+        : <span className="promo-bg promo-bg-grad" aria-hidden="true" />}
+      {/* 主役メディア：全体表示（contain）＝どの端末でも切れずに全部見える。動画 ＞ 埋め込み ＞ 画像 */}
       {p.videoUrl
-        ? <FeedVideo src={p.videoUrl} poster={p.imageUrl} width={null} height={null} active={active} paused={!active} muted rate={1} preload={active ? "active" : "idle"} />
+        ? <FeedVideo src={p.videoUrl} poster={p.imageUrl} width={null} height={null} active={active} paused={!active} muted rate={1} preload={active ? "active" : "idle"} contain />
         : p.embedUrl
-          ? <FeedEmbed src={p.embedUrl} active={active} fit="cover" />
+          ? <FeedEmbed src={p.embedUrl} active={active} fit="contain" />
           : p.imageUrl
             // eslint-disable-next-line @next/next/no-img-element
-            ? <img className="promo-bg" src={p.imageUrl} alt="" aria-hidden="true" />
-            : <span className="promo-bg promo-bg-grad" aria-hidden="true" />}
+            ? <img className="promo-media" src={p.imageUrl} alt="" aria-hidden="true" />
+            : null}
       {/* スクリム：埋め込みiframeの上でスワイプ／タップを拾う（CTAはこの上に出す） */}
       <span className="promo-scrim" aria-hidden="true" />
       <span className="promo-label">{p.label || "PR"}</span>
