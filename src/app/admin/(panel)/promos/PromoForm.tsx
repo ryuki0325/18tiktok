@@ -19,6 +19,12 @@ export function PromoForm({ editing, maxMb, maxSec }: { editing?: EditPromo; max
       <input type="hidden" name="op" value={e ? "update" : "add"} />
       {e && <input type="hidden" name="id" value={e.id} />}
       <b>{e ? "枠を編集" : "枠を追加"}</b>
+
+      {/* かんたん：ASPの広告コードを貼るだけで自動設定（DTI Cash 等のバナー<a><img>／HTML広告<iframe>に対応） */}
+      <label className="label">広告コードを貼る（かんたん・任意）<small>DTI等のバナー／HTML広告コードをそのまま</small></label>
+      <textarea className="input num" name="adCode" rows={3} placeholder={`例）<a href='https://clear-tv.com/Click/...'><img src='https://.../banner.jpg'></a>\nまたは <iframe src='https://...?affid=...' ...></iframe>`} style={{ resize: "vertical", minHeight: 56, fontFamily: "monospace", fontSize: 12 }} />
+      <span className="cap">↑ ここに貼ると、画像リンクは「アフィリ送客」、iframeは「広告ネットワーク」に自動で振り分けます。遷移先・画像も自動。貼らない場合は下で手入力。</span>
+
       <label className="label">種類
         <select className="input" name="kind" value={kind} onChange={(ev) => setKind(ev.target.value as typeof kind)} style={{ height: 42 }}>
           <option value="affiliate">アフィリ送客（ライブチャット・出会い系・グッズ・VPN 等）</option>
@@ -29,9 +35,9 @@ export function PromoForm({ editing, maxMb, maxSec }: { editing?: EditPromo; max
 
       {!isNet ? (
         <>
-          <input className="input" name="title" placeholder="見出し（例：ライブチャットで今すぐ話す）" maxLength={80} defaultValue={e?.title ?? ""} required />
+          <input className="input" name="title" placeholder="見出し（任意・例：ライブチャットで今すぐ話す）" maxLength={80} defaultValue={e?.title ?? ""} />
           <input className="input" name="body" placeholder="説明（任意・例：登録無料／国内最大級）" maxLength={200} defaultValue={e?.body ?? ""} />
-          <input className="input num" name="targetUrl" type="url" inputMode="url" placeholder="遷移先 https://（あなたのアフィリリンク）" defaultValue={e?.targetUrl ?? ""} required />
+          <input className="input num" name="targetUrl" type="url" inputMode="url" placeholder="遷移先 https://（あなたのアフィリリンク。広告コードを貼った場合は不要）" defaultValue={e?.targetUrl ?? ""} />
           <PromoMedia maxMb={maxMb} maxSec={maxSec} initial={{ imageUrl: e?.imageUrl ?? null, videoUrl: e?.videoUrl ?? null, embedUrl: e?.embedUrl ?? null }} />
           <input className="input" name="ctaText" placeholder="ボタン文言（既定：詳しく見る）" maxLength={24} defaultValue={e?.ctaText ?? ""} />
         </>

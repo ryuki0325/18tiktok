@@ -14,8 +14,9 @@ export function PromoSlide({ p, i, active, onOpen }: { p: FeedPromo; i: number; 
   const top = `${i * 100}%`;
 
   if (p.kind === "network") {
-    // active のときだけ広告コードを流し込む（表示していない枠で広告を読み込まない＝通信節約）
-    const doc = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;height:100vh;display:grid;place-items:center;background:#000;overflow:hidden">${active ? (p.html ?? "") : ""}</body>`;
+    // active のときだけ広告コードを流し込む（表示していない枠で広告を読み込まない＝通信節約）。
+    // 固定サイズの広告（例：960x1200）は枠に収まるよう自動で縮小する。
+    const doc = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;height:100%;background:#000;overflow:hidden}body{display:grid;place-items:center}#w{transform-origin:center center}</style><body><div id="w">${active ? (p.html ?? "") : ""}</div><script>(function(){function f(){var w=document.getElementById('w');if(!w||!w.firstElementChild)return;var e=w.firstElementChild;var cw=e.offsetWidth||parseInt(e.getAttribute('width'))||0;var ch=e.offsetHeight||parseInt(e.getAttribute('height'))||0;if(!cw||!ch)return;var s=Math.min(innerWidth/cw,innerHeight/ch);if(isFinite(s)&&s<1)w.style.transform='scale('+s+')';}addEventListener('load',f);setTimeout(f,300);setTimeout(f,1500);})();</script></body>`;
     return (
       <article className="item promo-item" data-promo={p.id} style={{ top }} aria-hidden={!active} onContextMenu={(e) => e.preventDefault()}>
         <span className="promo-bg promo-bg-grad" aria-hidden="true" />

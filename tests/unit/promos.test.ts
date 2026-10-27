@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { createDb, setDbForTest, type DB } from "@/db";
 import * as s from "@/db/schema";
-import { getFeedPromos, recordPromoClick, recordPromoImpression } from "@/lib/promos";
+import { getFeedPromos, parseAdCode, recordPromoClick, recordPromoImpression } from "@/lib/promos";
 
 let db: DB;
 
@@ -50,6 +50,18 @@ describe("プロモ枠（広告・アフィリ）", () => {
     const off = await add({ active: false });
     expect(await recordPromoClick(off.id)).toBeNull();
     expect(await recordPromoClick("00000000-0000-0000-0000-000000000000")).toBeNull();
+  });
+
+  it("DTI等の広告コードを解釈する（バナー=アフィリ／iframe=ネットワーク）", () => {
+    // DTI Cash のバナー（<a href><img>）
+    const banner = `<a href='https://clear-tv.com/Click/1369012-369-240947' target='_blank' rel='noopener'><img src='https://pixelarchivenow.com/image/sakuralive_job/1369012.jpg' border=0></a>`;
+    expect(parseAdCode(banner)).toEqual({ kind: "affiliate", targetUrl: "https://clear-tv.com/Click/1369012-369-240947", imageUrl: "https://pixelarchivenow.com/image/sakuralive_job/1369012.jpg" });
+    // DTI Cash の HTML広告（<IFRAME>）
+    const iframe = `<IFRAME SRC="https://galleries-pro.com/table/dx/newrashiteLP/index.html?affid=240947" width=960 height=1200 frameborder="no" scrolling="no"></IFRAME>`;
+    expect(parseAdCode(iframe)).toEqual({ kind: "network", html: iframe });
+    // 解釈できないものは null
+    expect(parseAdCode("ただのテキスト")).toBeNull();
+    expect(parseAdCode("")).toBeNull();
   });
 
   it("表示回数を記録する", async () => {

@@ -362,22 +362,38 @@ export async function promoAction(form: FormData) {
   // 画像・動画は https、または自社アップロードの /media/ パスのみ許可
   const isMediaUrl = (u: string) => isHttpsUrl(u) || u.startsWith("/media/");
 
-  // 入力チェック：affiliate/sponsor は https の遷移先が必須、network は広告コードが必須
-  if (kind === "network") {
-    if (!html) return;
+  // 広告コードの貼り付け（DTI Cash 等）：<a href><img></a>（バナー）か <iframe>（HTML広告）を解釈して自動で埋める
+  let effKind = kind, effTarget = targetUrl, effImage = imageUrl, effHtml = html;
+  const adCode = str(form, "adCode").trim();
+  if (adCode) {
+    const { parseAdCode } = await import("./promos");
+    const parsed = parseAdCode(adCode);
+    if (!parsed) return; // 解釈できないコードは保存しない
+    if (parsed.kind === "network") {
+      effKind = "network"; effHtml = parsed.html;
+    } else {
+      if (!isHttpsUrl(parsed.targetUrl) || !isMediaUrl(parsed.imageUrl)) return;
+      effKind = "affiliate"; effTarget = parsed.targetUrl; effImage = parsed.imageUrl;
+    }
+  }
+
+  // 入力チェック：affiliate/sponsor は https の遷移先が必須（見出しかメディアのどちらかは必要）、network は広告コードが必須
+  if (effKind === "network") {
+    if (!effHtml) return;
   } else {
-    if (!title || !targetUrl || !isHttpsUrl(targetUrl)) return;
-    if (imageUrl && !isMediaUrl(imageUrl)) return;
+    if (!effTarget || !isHttpsUrl(effTarget)) return;
+    if (!title && !effImage && !embedUrl && !videoUrl) return; // 見出しも画像も動画も無いのは不可
+    if (effImage && !isMediaUrl(effImage)) return;
     if (videoUrl && !isMediaUrl(videoUrl)) return;
   }
 
-  const values = { kind, category, title, body, imageUrl, embedUrl, videoUrl, ctaText, targetUrl, html, label, weight };
+  const values = { kind: effKind, category, title, body, imageUrl: effImage, embedUrl, videoUrl, ctaText, targetUrl: effTarget, html: effHtml, label, weight };
   if (op === "update" && id) {
     const [row] = await conn.update(promos).set(values).where(eq(promos.id, id)).returning();
-    if (row) await audit(conn, a.id, "promo.update", "promo", id, { kind, title });
+    if (row) await audit(conn, a.id, "promo.update", "promo", id, { kind: effKind, title });
   } else {
     const [row] = await conn.insert(promos).values(values).returning();
-    if (row) await audit(conn, a.id, "promo.add", "promo", row.id, { kind, title });
+    if (row) await audit(conn, a.id, "promo.add", "promo", row.id, { kind: effKind, title });
   }
   revalidatePath("/admin/promos");
   redirect("/admin/promos");

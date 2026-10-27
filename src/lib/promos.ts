@@ -28,6 +28,25 @@ export async function getFeedPromos(audience?: string, conn?: DB): Promise<FeedP
 const isHttps = (u: string) => { try { const x = new URL(u); return x.protocol === "https:"; } catch { return false; } };
 
 /**
+ * ASPの広告コード（DTI Cash 等）を解釈する。
+ * - <iframe …> → 広告ネットワーク（html をそのまま隔離iframeで表示）
+ * - <a href><img src></a> → アフィリ送客（遷移先＝href、画像＝img src）
+ * 解釈できなければ null。
+ */
+export function parseAdCode(code: string):
+  | { kind: "network"; html: string }
+  | { kind: "affiliate"; targetUrl: string; imageUrl: string }
+  | null {
+  const c = code.trim();
+  if (!c) return null;
+  if (/<iframe/i.test(c)) return { kind: "network", html: c };
+  const href = c.match(/<a[^>]*\shref=["']([^"']+)["']/i)?.[1];
+  const img = c.match(/<img[^>]*\ssrc=["']([^"']+)["']/i)?.[1];
+  if (href && img) return { kind: "affiliate", targetUrl: href, imageUrl: img };
+  return null;
+}
+
+/**
  * クリックを処理し、安全な遷移先URLを返す（network はクリック記録しない）。
  * count=false（bot 等）のときは、URLは返すが集計は増やさない。
  */
