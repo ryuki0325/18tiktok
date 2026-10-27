@@ -208,7 +208,7 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
 .promo-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
 /* 広告ネットワーク：中央カードで表示（上下の余白でフィードをスワイプできる） */
 .promo-net { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(100%, 440px); height: min(76vh, 680px); background: #000; border-radius: 14px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
-.promo-net-frame { width: 100%; height: 100%; border: 0; display: block; }
+.promo-net-frame { border: 0; display: block; }
 .promo-net-hint { position: absolute; left: 0; right: 0; bottom: calc(var(--nav-h) + 14px); z-index: 3; display: flex; gap: 4px; align-items: center; justify-content: center; color: rgba(255,255,255,.6); font-size: 12px; pointer-events: none; }
 .promo-net-hint svg { transform: rotate(90deg); }
 @keyframes prog { to { transform: scaleX(1); } }
