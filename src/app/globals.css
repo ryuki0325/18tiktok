@@ -477,6 +477,10 @@ html.standalone .navbar { height: calc(50px + env(safe-area-inset-top, 0px)); }
 /* 下は iPhone のホームバーぶんだけ底上げ（ブラウザのときは 0） */
 html.standalone { --nav-h: calc(52px + env(safe-area-inset-bottom, 0px)); }
 html.standalone .tabbar a { height: 52px; }
+/* ホーム画面から開いたとき、下部バーを（ほぼ）不透明にして、ホームバー領域を
+   きれいに埋める。半透明だと安全領域が黒く空いて見えるため。 */
+html.standalone .tabbar { background: color-mix(in srgb, var(--bg) 98%, transparent); }
+html.standalone .tabbar.on-video { background: #07080c; }
 /* 画面の端から始まる横スワイプ（戻るジェスチャー）とページャーがぶつからないように */
 html.standalone .pager { touch-action: none; }
 
