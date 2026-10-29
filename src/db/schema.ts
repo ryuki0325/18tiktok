@@ -188,6 +188,8 @@ export const videos = pgTable("videos", {
   visibility: text().$type<"public" | "private">().notNull().default("public"),
   /** 表紙に使う位置（ミリ秒）。投稿者が動画の中から選ぶ */
   coverTimeMs: integer(),
+  /** 表紙に使う画像のURL。投稿者がアップロードした独自カバー。あれば常にこれを表紙にする（コマ送りより優先） */
+  coverImageUrl: text(),
   /** 審査を通した日時（approved に入った時刻） */
   approvedAt: ts(),
   /** 削除した日時（ファイルの片付けの起点） */
@@ -265,6 +267,8 @@ export const uploads = pgTable("uploads", {
   durationMs: integer(),
   /** 表紙に選んだ位置（ミリ秒） */
   coverTimeMs: integer(),
+  /** 表紙に使う独自カバー画像のURL。公開時に動画へ引き継ぐ */
+  coverImageUrl: text(),
   /** 切り取り（トリミング）の範囲。null は切り取らない。変換のときに実際に切る */
   trimStartMs: integer(),
   trimEndMs: integer(),

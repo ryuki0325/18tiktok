@@ -183,6 +183,13 @@
    "when": 1791321451561,
    "tag": "0025_promo_video",
    "breakpoints": true
+  },
+  {
+   "idx": 26,
+   "version": "7",
+   "when": 1791321452561,
+   "tag": "0026_cover_image",
+   "breakpoints": true
   }
  ]
 }

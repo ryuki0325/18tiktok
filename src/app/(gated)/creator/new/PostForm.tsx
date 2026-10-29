@@ -6,6 +6,7 @@ import { Check, FormMessage } from "@/components/forms/Field";
 import { Icon } from "@/components/Icon";
 import { usePhotos } from "@/components/upload/usePhotos";
 import { useUpload } from "@/components/upload/useUpload";
+import { CoverPicker } from "@/components/upload/CoverPicker";
 import { normalizeEmbed } from "@/lib/embed-normalize";
 import { VIDEO_CATEGORIES } from "@/lib/audience";
 
@@ -63,6 +64,8 @@ export function PostForm({ destinations, drafts, resume, maxImages, maxMb, maxSe
   const [uploadId, setUploadId] = useState<string | null>(null);
   const up = useUpload({ maxMb, maxSec, onReady: setUploadId });
   const videoInput = useRef<HTMLInputElement>(null);
+  // 表紙（カバー）を選ぶシート
+  const [coverOpen, setCoverOpen] = useState(false);
   // 下書きの続きで、すでに動画が付いている（アップロード済み）なら選び直さなくてよい
   const [resumedMedia] = useState(resume?.kind !== "photo" && !resume?.embedUrl && !!resume?.hasMedia);
 
@@ -194,6 +197,13 @@ export function PostForm({ destinations, drafts, resume, maxImages, maxMb, maxSe
             {up.state.k === "processing" && <span className="cap num"><span className="spinner spin" /> 変換中です…（このまま投稿できます。完了後に再生できます）</span>}
             {up.state.k === "ready" && <span className="cap num" style={{ color: "var(--ok)" }}><Icon name="check" size={14} /> アップロード完了</span>}
             {up.state.k === "failed" && <span className="cap" style={{ color: "var(--bad)" }}>{up.state.message}</span>}
+
+            {/* 表紙（カバー）＝一覧やフィードでずっと表紙として出る。コマ送りから選ぶ／画像をアップロード */}
+            {up.state.k === "ready" && up.file && uploadId && (
+              <button type="button" className="cap-chip" onClick={() => setCoverOpen(true)} style={{ alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 6 }}>
+                <Icon name="images" size={14} /> {up.cover ? "表紙（カバー）を変える" : "表紙（カバー）を設定する"}
+              </button>
+            )}
 
             <button type="button" className="cap-chip" onClick={() => videoInput.current?.click()} style={{ alignSelf: "flex-start" }}>
               {up.state.k === "idle" && !resumedMedia ? "動画ファイルを選ぶ" : "別の動画に差し替える"}
@@ -376,6 +386,15 @@ export function PostForm({ destinations, drafts, resume, maxImages, maxMb, maxSe
         <button className="btn btn-secondary" name="intent" value="draft" disabled={!canDraft}>下書き保存</button>
         <button className="btn btn-primary" name="intent" value="submit" disabled={!ready}>{pending ? "送信中…" : "投稿する"}</button>
       </div>
+
+      {coverOpen && up.file && uploadId && (
+        <CoverPicker
+          file={up.file}
+          uploadId={uploadId}
+          durationMs={up.info?.durationMs ?? 0}
+          onClose={(cover) => { if (cover?.changed && cover.dataUrl) up.setCover(cover.dataUrl); setCoverOpen(false); }}
+        />
+      )}
     </form>
   );
 }

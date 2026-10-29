@@ -3,10 +3,34 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
 
 /**
- * 表紙（サムネイル）を動画の中から選ぶ。TikTok と同じく、下のコマ送りを横に動かして決める。
- * 選んだ位置はサーバーに送り、動画からその1コマを切り出し直してもらう。
+ * 表紙（サムネイル）を決める。2通り：
+ *  - 動画の中から1コマを選ぶ（下のコマ送りを横に動かす）→ サーバーでその場面を切り出す
+ *  - 自分で用意した画像をアップロードして表紙にする（＝ずっとこの絵が表紙）
  */
 const FRAMES = 8;
+
+/** カバー画像を長辺1280pxまで縮めてJPEGにする（端末内で処理） */
+const COVER_MAX_SIDE = 1280;
+function shrinkImage(file: File): Promise<{ dataUrl: string; w: number; h: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, COVER_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      const ctx = c.getContext("2d");
+      URL.revokeObjectURL(url);
+      if (!ctx) { reject(new Error("no ctx")); return; }
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve({ dataUrl: c.toDataURL("image/jpeg", 0.8), w, h });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("画像を読み込めませんでした")); };
+    img.src = url;
+  });
+}
 
 export function CoverPicker({ file, uploadId, durationMs, onClose }: {
   file: File; uploadId: string; durationMs: number; onClose: (cover: { timeMs: number; dataUrl: string; changed: boolean } | null) => void;
@@ -19,6 +43,7 @@ export function CoverPicker({ file, uploadId, durationMs, onClose }: {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const src = useRef<string>("");
+  const imgInput = useRef<HTMLInputElement>(null);
 
   // コマ送りの帯を作る（端末の中で作るので、通信は発生しない）
   useEffect(() => {
@@ -103,6 +128,23 @@ export function CoverPicker({ file, uploadId, durationMs, onClose }: {
     onClose({ timeMs, dataUrl: big ?? "", changed: true });
   };
 
+  // 自分で用意した画像を表紙にする
+  const pickImage = async (file: File) => {
+    setNote(null); setBusy(true);
+    try {
+      const im = await shrinkImage(file);
+      const r = await fetch(`/api/v1/uploads/${uploadId}/cover`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ image: im }),
+      }).then((x) => x.json()).catch(() => ({ ok: false }));
+      setBusy(false);
+      if (!r.ok) { setNote("カバー画像を設定できませんでした。別の画像でお試しください"); return; }
+      onClose({ timeMs: -1, dataUrl: im.dataUrl, changed: true });
+    } catch {
+      setBusy(false);
+      setNote("画像を読み込めませんでした");
+    }
+  };
+
   return (
     <>
       <div className="sheet-bg" onClick={() => onClose(null)} />
@@ -134,8 +176,14 @@ export function CoverPicker({ file, uploadId, durationMs, onClose }: {
         </div>
         {note && <span className="cap" style={{ color: "var(--bad)" }}>{note}</span>}
         <button type="button" className="btn btn-primary pill" disabled={busy || !frames.length} onClick={save}>
-          {busy ? "設定中…" : "この表紙にする"}
+          {busy ? "設定中…" : "この場面を表紙にする"}
         </button>
+        {/* 自分で用意した画像を表紙にする（＝ずっとこの絵が表紙） */}
+        <button type="button" className="btn btn-secondary pill" disabled={busy} onClick={() => imgInput.current?.click()} style={{ marginTop: -4 }}>
+          <Icon name="images" size={18} /> 画像をアップロードして表紙にする
+        </button>
+        <input ref={imgInput} type="file" accept="image/*" hidden aria-label="表紙にする画像を選ぶ"
+          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void pickImage(f); }} />
       </div>
     </>
   );

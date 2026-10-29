@@ -18,7 +18,10 @@ export function MeMenu({ isCreator, isAdmin }: { isCreator: boolean; isAdmin: bo
     if (!open) return;
     const k = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
+    // シートを開いている間は背景（ページ）をスクロールさせない
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", k); document.body.style.overflow = prev; };
   }, [open]);
 
   const creator: Row[] = isCreator

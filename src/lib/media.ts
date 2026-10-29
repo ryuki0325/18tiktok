@@ -331,7 +331,7 @@ export async function applyUploadToVideo(conn: DB, u: Upload) {
   await conn.update(s.videos).set({
     mediaStatus: u.status === "ready" ? "ready" : u.status === "failed" ? "failed" : "processing",
     playbackUrl: u.playbackUrl, thumbnailUrl: u.thumbnailUrl, width: u.width, height: u.height, durationMs: u.durationMs,
-    coverTimeMs: u.coverTimeMs,
+    coverTimeMs: u.coverTimeMs, coverImageUrl: u.coverImageUrl,
   }).where(eq(s.videos.id, u.videoId));
 }
 
@@ -398,8 +398,9 @@ export async function dropSource(u: Upload) {
  */
 export async function setCover(conn: DB, u: Upload, timeMs: number): Promise<boolean> {
   const t = Math.max(0, Math.min(timeMs, u.durationMs ?? timeMs)) / 1000;
-  await conn.update(s.uploads).set({ coverTimeMs: Math.round(t * 1000), updatedAt: new Date() }).where(eq(s.uploads.id, u.id));
-  if (u.videoId) await conn.update(s.videos).set({ coverTimeMs: Math.round(t * 1000) }).where(eq(s.videos.id, u.videoId));
+  // 動画のコマを表紙にするときは、独自カバー画像の指定を外す（コマ送りの絵を表紙に戻す）
+  await conn.update(s.uploads).set({ coverTimeMs: Math.round(t * 1000), coverImageUrl: null, updatedAt: new Date() }).where(eq(s.uploads.id, u.id));
+  if (u.videoId) await conn.update(s.videos).set({ coverTimeMs: Math.round(t * 1000), coverImageUrl: null }).where(eq(s.videos.id, u.videoId));
 
   if (u.provider === "local") {
     if (!(await hasFfmpeg())) return false;
@@ -425,6 +426,18 @@ export async function setCover(conn: DB, u: Upload, timeMs: number): Promise<boo
     console.error("[glow] Bunny の表紙を変えられませんでした", e);
     return false;
   }
+}
+
+/**
+ * 独自カバー画像を表紙にする。投稿者が端末で縮めたJPEGを受け取って保存し、
+ * アップロード（と、あれば動画）の cover_image_url に入れる。これがあればコマ送りより優先して表紙に出る。
+ */
+export async function setCoverImage(conn: DB, u: Upload, dataUrl: string, w: number, h: number): Promise<{ ok: boolean; url?: string }> {
+  const saved = await saveImage(u.userId, dataUrl, w, h);
+  if ("error" in saved) return { ok: false };
+  await conn.update(s.uploads).set({ coverImageUrl: saved.url, updatedAt: new Date() }).where(eq(s.uploads.id, u.id));
+  if (u.videoId) await conn.update(s.videos).set({ coverImageUrl: saved.url }).where(eq(s.videos.id, u.videoId));
+  return { ok: true, url: saved.url };
 }
 
 /** 中断されたまま期限が切れたアップロードを片付ける（cron の purge から呼ぶ） */

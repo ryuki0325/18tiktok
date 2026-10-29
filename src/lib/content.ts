@@ -75,7 +75,7 @@ export async function hydrate(ids: string[], o: Opts, conn?: DB, includeUnpublis
       link: link ? { id: link.id, domain: link.domain } : null,
       liked: liked.has(v.id), saved: saved.has(v.id), following: fol.has(v.creatorId),
       publishedAt: v.publishedAt?.toISOString() ?? null, commentsEnabled: v.commentsEnabled,
-      src: v.mediaStatus === "ready" ? v.playbackUrl : null, embedUrl: v.embedUrl, embedFit: v.embedFit, poster: v.thumbnailUrl, width: v.width, height: v.height, category: v.category, intensity: v.intensity, status: v.status,
+      src: v.mediaStatus === "ready" ? v.playbackUrl : null, embedUrl: v.embedUrl, embedFit: v.embedFit, poster: v.coverImageUrl ?? v.thumbnailUrl, width: v.width, height: v.height, category: v.category, intensity: v.intensity, status: v.status,
       kind: v.kind, images: v.images, pinned: !!v.pinnedAt,
     };
     return [v.id, card];
