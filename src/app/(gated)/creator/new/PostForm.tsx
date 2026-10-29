@@ -196,8 +196,16 @@ export function PostForm({ destinations, drafts, resume, maxImages, maxMb, maxSe
                 </span>
               </div>
             )}
-            {up.state.k === "processing" && <span className="cap num"><span className="spinner spin" /> 変換中です…（このまま投稿できます。完了後に再生できます）</span>}
-            {up.state.k === "ready" && <span className="cap num" style={{ color: "var(--ok)" }}><Icon name="check" size={14} /> アップロード完了</span>}
+            {up.state.k === "processing" && (
+              <div className="convert-card" role="status" aria-live="polite">
+                <span className="spinner spin" />
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <b style={{ fontSize: 14 }}>動画を変換しています…</b>
+                  <span className="cap">スマホで途切れず再生できるように最適化中です。<b>このまま投稿できます</b>（完了すると自動で公開・再生可能になります）。閉じても変換は続きます。</span>
+                </div>
+              </div>
+            )}
+            {up.state.k === "ready" && <span className="cap num" style={{ color: "var(--ok)" }}><Icon name="check" size={14} /> 変換が完了しました。すぐに再生できます</span>}
             {up.state.k === "failed" && <span className="cap" style={{ color: "var(--bad)" }}>{up.state.message}</span>}
 
             {/* 表紙（カバー）＝一覧やフィードでずっと表紙として出る。コマ送りから選ぶ／画像をアップロード */}

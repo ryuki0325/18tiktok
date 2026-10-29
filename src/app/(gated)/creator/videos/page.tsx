@@ -32,7 +32,10 @@ export default async function MyVideos({ searchParams }: { searchParams: Promise
               const [label, cls] = held ? ["調査中", "b-warn"] as const : statusLabel(v.status, v.hiddenReason);
               return (
                 <div key={v.id} className="row" style={{ alignItems: "flex-start", padding: "14px 16px", gap: 12 }}>
-                  <span className="sth"><Thumb card={{ hue: v.hue, poster: v.thumbnailUrl }} /></span>
+                  <span className="sth" style={{ position: "relative" }}>
+                    <Thumb card={{ hue: v.hue, poster: v.thumbnailUrl }} />
+                    {v.mediaStatus === "processing" && <span className="thumb-convert" aria-label="変換中"><span className="spinner spin dark" /></span>}
+                  </span>
                   <div className="grow" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between" }}><b style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.title}</b><span className={`badge ${cls}`}>{label}</span></div>
                     <span className="cap">{ago(v.createdAt)}{held && "・AIが投稿可能か調査中です（まもなく公開）"}{v.mediaStatus === "processing" && "・動画を変換中"}{v.mediaStatus === "failed" && "・動画の変換に失敗"}{link === "pending_domain_review" && "・リンク審査中"}{!v.commentsEnabled && "・コメントオフ"}</span>

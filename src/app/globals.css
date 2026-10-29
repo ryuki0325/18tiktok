@@ -152,6 +152,11 @@ textarea.input { height: 96px; padding: 12px 14px; resize: none; }
 .spinner { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,.25); border-top-color: #fff; display: block; }
 .spinner.spin { animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* 変換中のローディング表示（投稿フォーム） */
+.convert-card { display: flex; gap: 12px; align-items: center; padding: 14px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+.convert-card > .spinner { width: 22px; height: 22px; flex-shrink: 0; border-color: color-mix(in srgb, var(--accent) 30%, transparent); border-top-color: var(--accent); }
+/* サムネの変換中オーバーレイ（投稿一覧） */
+.thumb-convert { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); backdrop-filter: blur(1px); }
 .feed-end { position: absolute; left: 0; right: 0; height: 120px; margin-top: -120px; display: grid; place-items: center; }
 .ov { position: absolute; inset: 0; color: #fff; transition: opacity .2s; }
 .ui-hidden .ov, .ui-hidden .feedtop { opacity: 0; }
