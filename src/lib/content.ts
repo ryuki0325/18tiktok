@@ -108,40 +108,46 @@ export async function feed(tab: FeedTab, o: Opts, limit = 20, offset = 0): Promi
   const byAudience = tab !== "following" && o.audience && o.audience !== "all" ? eq(s.videos.category, o.audience) : undefined;
   // 刺激の強さの上限（フォロー中も含めて常に守る）
   const byIntensity = o.maxIntensity && o.maxIntensity < 3 ? lte(s.videos.intensity, o.maxIntensity) : undefined;
-  let idRows = await d.select({ id: s.videos.id, creatorId: s.videos.creatorId, publishedAt: s.videos.publishedAt, baseLikes: s.videos.baseLikes })
+  // 候補の読み込みと「興味がない」は互いに独立 → 同時に取得して往復を1回にまとめる
+  const idRowsP = d.select({ id: s.videos.id, creatorId: s.videos.creatorId, publishedAt: s.videos.publishedAt, baseLikes: s.videos.baseLikes })
     .from(s.videos).where(and(eq(s.videos.status, "published"), or(isNull(s.videos.releaseAt), lte(s.videos.releaseAt, new Date())), byAudience, byIntensity)).orderBy(desc(s.videos.publishedAt)).limit(300);
+  const niP = o.viewerKey
+    ? d.select({ id: s.notInterested.videoId }).from(s.notInterested).where(eq(s.notInterested.viewerKey, o.viewerKey))
+    : Promise.resolve([] as { id: string }[]);
+  let [idRows, niList] = await Promise.all([idRowsP, niP]);
   // 「興味がない」にした動画は出さない
-  if (o.viewerKey) {
-    const ni = new Set((await d.select({ id: s.notInterested.videoId }).from(s.notInterested).where(eq(s.notInterested.viewerKey, o.viewerKey))).map((r) => r.id));
-    if (ni.size) idRows = idRows.filter((r) => !ni.has(r.id));
-  }
+  if (niList.length) { const ni = new Set(niList.map((r) => r.id)); idRows = idRows.filter((r) => !ni.has(r.id)); }
   if (tab === "following") {
     if (!o.userId) return [];
     const f = new Set((await d.select({ id: s.follows.creatorId }).from(s.follows).where(eq(s.follows.followerId, o.userId))).map((r) => r.id));
     idRows = idRows.filter((r) => f.has(r.creatorId));
     return hydrate(idRows.slice(offset, offset + limit).map((r) => r.id), o, d);
   }
+  // 視聴履歴（見た動画は下げる）と「いいね」履歴（好みプロフィール）は互いに独立 → 同時に取得
+  const watchedP = o.userId
+    ? d.select({ id: s.watchHistory.videoId }).from(s.watchHistory).where(eq(s.watchHistory.userId, o.userId))
+    : Promise.resolve([] as { id: string }[]);
+  const likedIdsP = o.viewerKey
+    ? d.select({ id: s.likes.videoId }).from(s.likes).where(eq(s.likes.viewerKey, o.viewerKey)).orderBy(desc(s.likes.createdAt)).limit(60)
+    : Promise.resolve([] as { id: string }[]);
+  const [watchedRows, likedIdRows] = await Promise.all([watchedP, likedIdsP]);
   // すでに見た動画は「おすすめ」では下げる（毎回同じ動画が続かないように）。ログイン中だけ
-  let watched = new Set<string>();
-  if (o.userId) {
-    watched = new Set((await d.select({ id: s.watchHistory.videoId }).from(s.watchHistory).where(eq(s.watchHistory.userId, o.userId))).map((r) => r.id));
-  }
+  const watched = new Set(watchedRows.map((r) => r.id));
   // TikTok風のおすすめ：この人が「いいね」した動画のタグと文面から好みプロフィールを作り、
   // 似ている動画（同じタグ・近い言葉）をこの人のおすすめで上がりやすくする。
   const likeTagW = new Map<string, number>();
   const likeGramW = new Map<string, number>();
   const likedIdSet = new Set<string>();
-  if (o.viewerKey) {
-    const likedIds = (await d.select({ id: s.likes.videoId }).from(s.likes)
-      .where(eq(s.likes.viewerKey, o.viewerKey)).orderBy(desc(s.likes.createdAt)).limit(60)).map((r) => r.id);
-    for (const id of likedIds) likedIdSet.add(id);
-    if (likedIds.length) {
-      const lt = await d.select({ name: s.tags.name }).from(s.videoTags)
-        .innerJoin(s.tags, eq(s.tags.id, s.videoTags.tagId)).where(inArray(s.videoTags.videoId, likedIds));
-      for (const r of lt) likeTagW.set(r.name, (likeTagW.get(r.name) ?? 0) + 1);
-      const lv = await d.select({ title: s.videos.title, description: s.videos.description }).from(s.videos).where(inArray(s.videos.id, likedIds));
-      for (const r of lv) for (const g of bigrams(`${r.title} ${r.description ?? ""}`)) likeGramW.set(g, (likeGramW.get(g) ?? 0) + 1);
-    }
+  const likedIds = likedIdRows.map((r) => r.id);
+  for (const id of likedIds) likedIdSet.add(id);
+  if (likedIds.length) {
+    // タグの集計と本文の集計も互いに独立 → 同時に取得
+    const [lt, lv] = await Promise.all([
+      d.select({ name: s.tags.name }).from(s.videoTags).innerJoin(s.tags, eq(s.tags.id, s.videoTags.tagId)).where(inArray(s.videoTags.videoId, likedIds)),
+      d.select({ title: s.videos.title, description: s.videos.description }).from(s.videos).where(inArray(s.videos.id, likedIds)),
+    ]);
+    for (const r of lt) likeTagW.set(r.name, (likeTagW.get(r.name) ?? 0) + 1);
+    for (const r of lv) for (const g of bigrams(`${r.title} ${r.description ?? ""}`)) likeGramW.set(g, (likeGramW.get(g) ?? 0) + 1);
   }
   const hasLikeProfile = likeTagW.size > 0 || likeGramW.size > 0;
   // 似ている度：同じタグ（強い信号）＋文面の近さ（文字2文字の重なり）

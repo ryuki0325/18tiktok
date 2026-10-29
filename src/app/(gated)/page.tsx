@@ -10,14 +10,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
   const { tab: t, v } = await searchParams;
   const tab: FeedTab = t === "popular" || t === "following" ? t : "recommended";
   const ctx = await viewerContext();
-  let cards = await feed(tab, ctx, 6);
+  // フィードと広告枠は互いに独立 → 同時に取得して待ち時間を短くする
+  const [feedCards, promos] = await Promise.all([feed(tab, ctx, 6), getFeedPromos(ctx.audience)]);
+  let cards = feedCards;
   if (v) {
     const i = cards.findIndex((c) => c.id === v);
     if (i > 0) cards = [cards[i], ...cards.slice(0, i), ...cards.slice(i + 1)];
     if (i < 0) cards = [...(await hydrate([v], ctx)), ...cards];
   }
-  // フィードに差し込む広告・アフィリ枠（視聴者の分岐に合うもの）
-  const promos = await getFeedPromos(ctx.audience);
   return (
     <>
       <FeedClient key={`${tab}:${v ?? ""}`} cards={cards} tab={tab} hasMore={cards.length === 6} loggedIn={!!ctx.user} myId={ctx.user?.id ?? null} promos={promos} />
