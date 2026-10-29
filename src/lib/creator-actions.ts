@@ -175,8 +175,10 @@ export async function createVideoAction(_: FormState, form: FormData): Promise<F
     // アップロードを投稿に紐づけ、動画の行に「場所」（再生URL等）を写す。
     const [linked] = await conn.update(uploads).set({ videoId: r.video.id }).where(eq(uploads.id, upload.id)).returning();
     await applyUploadToVideo(conn, linked);
-    // ここから先は切り取り直さないので、元ファイルを消す（保存料の節約）
-    await dropSource(linked);
+    // 変換が終わっていれば元ファイルを消す（保存料の節約）。
+    // まだ変換中(processing)なら消さない——変換は元ファイルを読み続けており、消すと残りの画質が壊れる。
+    // その場合は変換の完了時（transcodeLocal の最後）に元ファイルを片付ける。
+    if (linked.status === "ready") await dropSource(linked);
   }
   revalidatePath("/creator/videos");
   redirect(asDraft ? "/creator/videos?saved=1" : `/creator/videos?submitted=1${r.linkPending ? "&linkPending=1" : ""}`);

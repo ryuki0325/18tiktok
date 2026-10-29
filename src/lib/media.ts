@@ -476,12 +476,15 @@ export async function purgeRemovedMedia(conn: DB, graceDays = 7) {
 
 /* ---------------- local：ffmpeg で HLS（複数の解像度・ビットレート）に変換 ---------------- */
 
-/** 画質の段（短い辺のピクセル数とビットレート）。元の動画より大きい段は作らない */
+/**
+ * 画質の段（短い辺のピクセル数とビットレート）。元の動画より大きい段は作らない。
+ * 上限は 720p：フィードのプレイヤーは 720p までしか再生しない（FeedVideo の MAX_HEIGHT）ため、
+ * 1080p を作っても使われず、変換時間と保存容量・通信量を無駄にするだけなので作らない。
+ */
 const LADDER = [
   { short: 360, kbps: 700 },
   { short: 540, kbps: 1400 },
   { short: 720, kbps: 2600 },
-  { short: 1080, kbps: 4800 },
 ];
 /** セグメントの長さ（秒）。短いほど再生開始と画質の切り替えが速い */
 const SEGMENT_SEC = 2;
@@ -551,8 +554,12 @@ async function transcodeLocal(conn: DB, id: string, srcName: string, hasPoster: 
   }
   // 元ファイルは配信しない。切り取りをやり直せるよう、動画に紐づくまでは残しておく（dropSource で消す）
   const outMs = trim ? trim.endMs - trim.startMs : info.durationMs;
-  return markUpload(conn, id, {
+  const row = await markUpload(conn, id, {
     status: "ready", width: info.width, height: info.height, durationMs: outMs,
     playbackUrl: localUrl(`${id}/master.m3u8`), thumbnailUrl: localUrl(`${id}/poster.jpg`),
   });
+  // 変換中に投稿された場合、この時点ですでに動画へ紐づいている。
+  // 投稿時は元ファイルを消さず変換を優先したので、ここで片付ける（保存料の節約）。
+  if (row?.videoId) await dropSource(row);
+  return row;
 }

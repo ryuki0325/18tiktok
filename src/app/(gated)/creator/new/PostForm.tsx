@@ -79,8 +79,10 @@ export function PostForm({ destinations, drafts, resume, maxImages, maxMb, maxSe
   // 入力（URL か <iframe> コード）から埋め込み用URLを作る（プレビューと送信前チェックに使う）
   const embedPreview = isEmbed && embed.trim() ? normalizeEmbed(embed) : null;
 
+  // 変換（processing）中でも投稿してよい：アップロード送信さえ終われば、変換は裏で続き、
+  // 終わりしだい自動で再生可能になる（待たせない）。送信中(uploading)・失敗(failed)はまだ不可。
   const hasMedia = isPhoto ? (ph.readyCount > 0 && !ph.uploading)
-    : isUpload ? (up.state.k === "ready" || resumedMedia)
+    : isUpload ? (up.state.k === "ready" || up.state.k === "processing" || resumedMedia)
     : embed.trim().length > 0;
   const ready = hasMedia && !!cat && caption.trim().length > 0
     && !!destId && linkUrl.trim().length > 0
