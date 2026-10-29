@@ -5,11 +5,13 @@ export function VideoBackdrop({ hue, live = false }: { hue: [number, number, num
   const [a, b, c] = hue;
   return (
     <>
-      <div className={`vid${live ? " live" : ""}`} style={{ background: `radial-gradient(120% 80% at 50% 30%, hsl(${a} 42% 20%), hsl(${a} 30% 7%))` }} aria-hidden="true">
-        <i style={{ width: "95%", height: "65%", left: "-5%", top: "10%", background: blob(a, 80, 50, 0.8) }} />
-        <i style={{ width: "85%", height: "60%", right: "-10%", top: "35%", background: blob(b, 85, 52, 0.7) }} />
-        <i style={{ width: "70%", height: "45%", left: "22%", top: "0%", background: blob(c, 70, 62, 0.5) }} />
-        <i style={{ width: "110%", height: "45%", left: "-5%", bottom: "-5%", background: blob(a, 60, 28, 0.85) }} />
+      <div className={`vid${live ? " live" : ""}`} style={{ background: `radial-gradient(140% 115% at 50% 44%, hsl(${a} 46% 23%), hsl(${a} 34% 10%))` }} aria-hidden="true">
+        <i style={{ width: "95%", height: "65%", left: "-5%", top: "4%", background: blob(a, 80, 50, 0.8) }} />
+        <i style={{ width: "90%", height: "62%", right: "-12%", top: "30%", background: blob(b, 85, 52, 0.72) }} />
+        <i style={{ width: "72%", height: "48%", left: "20%", top: "-2%", background: blob(c, 72, 62, 0.5) }} />
+        {/* 下側も色で満たす（プレースホルダーの下部が暗く空いて見えないように） */}
+        <i style={{ width: "125%", height: "62%", left: "-12%", bottom: "-14%", background: blob(b, 74, 46, 0.6) }} />
+        <i style={{ width: "85%", height: "42%", right: "-8%", bottom: "2%", background: blob(a, 78, 52, 0.42) }} />
       </div>
     </>
   );
