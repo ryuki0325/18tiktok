@@ -50,6 +50,8 @@ export function FeedVideo({ src, poster, width, height, active, paused, muted, r
   const hls = useRef<HlsType | null>(null);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [waiting, setWaiting] = useState(false);
+  // 再生に失敗した（復帰もできなかった）。無限スピナーを避け、表紙のまま止める
+  const [failed, setFailed] = useState(false);
   const preloadRef = useRef(preload);
   useEffect(() => { preloadRef.current = preload; }, [preload]);
 
@@ -58,6 +60,7 @@ export function FeedVideo({ src, poster, width, height, active, paused, muted, r
     const v = ref.current;
     if (!v) return;
     let cancelled = false;
+    setFailed(false); setWaiting(false);
     if (isHls(src) && !preferNativeHls()) {
       void loadHls().then((Hls) => {
         if (cancelled) return;
@@ -78,6 +81,28 @@ export function FeedVideo({ src, poster, width, height, active, paused, muted, r
         h.on(Hls.Events.MANIFEST_PARSED, () => {
           const max = h.levels.reduce((best, lv, i) => (lv.height <= MAX_HEIGHT && lv.height >= (h.levels[best]?.height ?? 0) ? i : best), 0);
           h.autoLevelCapping = max;
+        });
+        // エラー時の復帰。ここが無いと、1回でも失敗した瞬間に“読み込み中”のまま止まってしまう（無限スピナー）。
+        let netRetry = 0, mediaRetry = 0;
+        const bail = () => {
+          // 復帰できない → hls.js をやめて端末ネイティブ再生を試す（だめなら表紙のまま止める。無限スピナーにしない）
+          try { h.destroy(); } catch {}
+          hls.current = null;
+          try { v.src = src; v.load(); if (preloadRef.current !== "idle") void v.play().catch(() => {}); } catch {}
+          setFailed(true);
+        };
+        h.on(Hls.Events.ERROR, (_e, data) => {
+          if (!data.fatal) return;
+          // コーデック非対応は hls.js では直せない → すぐフォールバック
+          const codecIssue = /Codec/i.test(String(data.details));
+          if (!codecIssue && data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            // ある画質だけ壊れている投稿（旧データ等）に備え、画質上限を外して再読込を試す
+            h.autoLevelCapping = -1;
+            if (netRetry++ < 3) { h.startLoad(); return; }
+          } else if (!codecIssue && data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            if (mediaRetry++ < 1) { h.recoverMediaError(); return; }
+          }
+          bail();
         });
         hls.current = h;
       });
@@ -145,7 +170,7 @@ export function FeedVideo({ src, poster, width, height, active, paused, muted, r
         onWaiting={() => setWaiting(true)} onPlaying={() => setWaiting(false)} onCanPlay={() => setWaiting(false)}
         onTimeUpdate={(e) => { const v = e.currentTarget; if (v.duration) onTime?.(v.currentTime / v.duration); }}
       />
-      {active && waiting && !paused && <span className="vwait" aria-hidden="true"><span className="spinner spin" /></span>}
+      {active && waiting && !paused && !failed && <span className="vwait" aria-hidden="true"><span className="spinner spin" /></span>}
     </>
   );
 }

@@ -290,9 +290,9 @@ export function FeedClient({ cards: initial, tab, loggedIn, myId, hasMore: initi
                     : c.embedUrl
                     ? <><VideoBackdrop hue={c.hue} /><FeedEmbed src={c.embedUrl} fit={c.embedFit} active={active} /></>
                     : c.src
-                    ? <FeedVideo src={c.src} poster={c.poster} width={c.width} height={c.height} active={active} paused={!!paused[c.id] || !!fs} muted={muted} rate={rate}
+                    ? <><VideoBackdrop hue={c.hue} /><FeedVideo src={c.src} poster={c.poster} width={c.width} height={c.height} active={active} paused={!!paused[c.id] || !!fs} muted={muted} rate={rate}
                         preload={active ? "active" : i === index + 1 ? "next" : "idle"}
-                        onTime={(t) => { const item = trackRef.current?.querySelector(`.item[data-vid="${c.id}"]`); const bar = item?.querySelector<HTMLElement>(".progress i"); if (bar) bar.style.transform = `scaleX(${t})`; const knob = item?.querySelector<HTMLElement>(".progress .knob"); if (knob) knob.style.left = `${t * 100}%`; }} />
+                        onTime={(t) => { const item = trackRef.current?.querySelector(`.item[data-vid="${c.id}"]`); const bar = item?.querySelector<HTMLElement>(".progress i"); if (bar) bar.style.transform = `scaleX(${t})`; const knob = item?.querySelector<HTMLElement>(".progress .knob"); if (knob) knob.style.left = `${t * 100}%`; }} /></>
                     : <VideoBackdrop hue={c.hue} live={active && !paused[c.id] && !fs} />}
                   <div className="scrim" />
                   <div className="center-ind"><Icon name="play" size={30} filled /></div>
